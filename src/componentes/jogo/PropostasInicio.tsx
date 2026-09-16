@@ -51,8 +51,16 @@ export function PropostasInicio({ carreira }: { carreira: EstadoCarreira }) {
             <div className="condicoes-oferta">
               <b>{dinheiro(proposta.salario)} / semana</b>
               <span>
-                {proposta.duracaoAnos} anos · Elenco {clube.forcaGeral}
+                {proposta.duracaoAnos} anos · Papel:{" "}
+                {(proposta.papelPrometido ?? "rotacao").replace(
+                  "rotacao",
+                  "rotação",
+                )}{" "}
+                · Elenco {clube.forcaGeral}
               </span>
+              {proposta.etapa === "sondagem" && (
+                <span>Sondagem (fora da janela formal)</span>
+              )}
               <span>Responder até {formatarData(proposta.validade)}</span>
             </div>
             <div className="acoes-oferta">

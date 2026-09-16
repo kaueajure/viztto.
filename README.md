@@ -55,24 +55,17 @@ Docs da API: http://localhost:8000/docs — para subir só a API: `npm run api`.
 
 O progresso pertence ao navegador e à origem do site (domínio/porta). Limpar os dados do navegador apaga a carreira. Não há conta, banco de dados ou sincronização entre dispositivos.
 
-## API-Football
+## Transfermarkt (bootstrap)
 
-Integração direta com API-Sports v3:
+Fonte de clubes e elencos reais via Transfermarkt API local (`API/`):
 
-- Edições iniciais fixas: Brasileirão 2026 e ligas europeias 2025/2026.
-- `GET /leagues?id=ID&season=ANO`: consulta as datas da edição escolhida (2026 no Brasil, 2025 na Europa).
-- `GET /teams?league=ID&season=ANO`: importa os clubes da liga selecionada.
-- O navegador acessa apenas `GET /api/futebol?liga=ID_INTERNO`.
-- Respostas validadas com Zod, timeout de 12 segundos por tentativa e cache em memória de 24 horas para respostas úteis.
-- Consultas iguais são deduplicadas; a fila respeita os limites retornados nos headers. Falhas transitórias têm tentativas limitadas, com espera progressiva e respeito a `Retry-After`.
-- Restrições de temporada ficam memorizadas por uma hora, evitando repetir consultas recusadas pelo plano.
-- Erros, ausência de chave e limites do plano levam ao modo demonstração identificado.
-- Se o plano não cobrir a edição inicial, mostramos a limitação e usamos somente clubes fictícios de demonstração nessa mesma edição. Nunca importamos clubes de anos anteriores.
-- Nenhum resultado real alimenta a simulação. Depois da criação, o jogo não precisa consultar a API.
+- `npm run dev` sobe a API e o Next juntos (`TRANSFERMARKT_API_URL`).
+- Ao escolher a liga na criação, a importação grava JSON em `src/dados/futebol/`.
+- Edições: Brasileirão 2026 / Europa 2026-27.
+- Depois que a carreira começa, o universo é um snapshot do viztto — não sincroniza de novo com a API.
+- Overall e potencial dos NPCs são gerados pelo jogo (não vêm da API).
 
-Referências: [documentação API-Football](https://www.api-football.com/documentation-v3), [consulta de clubes por liga](https://www.api-football.com/news/post/how-to-get-all-teams-and-their-ids), [instalação do Next.js](https://nextjs.org/docs/app/getting-started/installation).
-
-Escudos são servidos por `/api/futebol/escudos/ID`, com cache local em `.cache/viztto/escudos` por 30 dias (até 256 imagens, 1 MiB por imagem). O servidor valida PNG, deduplica downloads e reaproveita a imagem antiga se a atualização falhar. Na primeira consulta sem acesso ao CDN, aparece um escudo neutro com o código do clube. O cache não contém saves e pode ser apagado; em hospedagens com disco efêmero ele é perdido ao reiniciar. As forças, finanças e qualidade da base são geradas pelo viztto a partir de liga e identidade, **não são um ranking oficial ou uma avaliação fiel dos clubes reais**.
+Sem chave. Docs da API local: http://localhost:8000/docs
 
 ## Comandos de verificação
 
@@ -93,28 +86,24 @@ Next.js App Router, React, TypeScript strict, Tailwind CSS 4, Zustand persist, Z
 src/
   app/                        Rotas, layout e endpoint de importação
   componentes/                Interface e interação do jogo
-  dominio/                    Entidades, configuração de ligas e regras
+  dominio/                    Entidades, JogadorMundo, formação, ligas
   aplicacao/casos-de-uso/      Criação, avanço e transição de temporadas
-  simulacao/                  Partidas, evolução, treinos, mercado e eventos
-  infraestrutura/transfermarkt/ Cliente, importação e normalização Transfermarkt
-  infraestrutura/persistencia/ Adaptador local e validação do save
+  simulacao/                  Partidas, elenco, mundo, mercado, decisões
+  infraestrutura/transfermarkt/ Cliente, importação e normalização
+  infraestrutura/persistencia/ Adaptador local e validação do save (v2)
   estado/                     Zustand e ponte para casos de uso
-  dados/                      Clubes fictícios de demonstração
+  dados/                      Demonstração e JSON importados
   utilitarios/                Seed, datas e formatação
 ```
 
-Leia [ARQUITETURA.md](ARQUITETURA.md) para decisões e limites desta versão.
+Leia [ARQUITETURA.md](ARQUITETURA.md) para decisões e limites.
 
-## Limites deliberados da fase 1
+## Limites deliberados (fase 2)
 
-O mundo ativo contém a liga escolhida. As outras cinco são opções de início; não são importadas nem simuladas em segundo plano. Transferências são imediatas entre clubes desse mundo, sem janelas ou negociação nesta etapa. Não há elenco nominal completo de terceiros: concorrência e necessidade são abstraídas por força do setor. A base usa uma competição Sub-20 simplificada com os mesmos clubes.
+O mundo pode carregar várias ligas importadas em paralelo (liga do jogador detalhada; demais intermediárias). Há Série B no catálogo para promoção/rebaixamento futuro. Mercado NPC↔NPC e propostas ao usuário usam necessidade/orçamento/reputação; janelas verão/inverno. Treinador e agente existem com decisões condicionais — ainda sem troca completa de técnico nem geração mundial de jovens.
 
-As regras disciplinares e de classificação são simplificadas e configuráveis; não reproduzem todos os regulamentos nacionais. Não há copas, seleções, acesso/rebaixamento, empréstimos, vida pessoal ou aposentadoria automática. Contrato vencido sem acordo gera vínculo provisório de 90 dias com redução salarial, evitando encerrar a jogabilidade antes de existir um sistema de agentes livres. A carreira continua depois dos 40 anos, com declínio, até uma futura implementação de aposentadoria.
-
-A importação com credencial real deve ser verificada com uma chave e plano válidos. Testes automatizados usam respostas controladas e não consomem a cota da API.
-
-Detalhes da integração e fontes oficiais: [documentacao/API-FUTEBOL.md](documentacao/API-FUTEBOL.md).
+Não há Champions/Libertadores/seleção/vida pessoal nesta etapa.
 
 ### Edição inicial da carreira
 
-Novas carreiras começam na data de início da edição: Brasileirão 2026 ou Europa 2025/2026. Após isso, calendários, resultados e anos seguintes são simulados. A temporada europeia é armazenada pelo ano inicial e exibida com os dois anos. Saves anteriores não são reescritos: crie uma nova carreira para usar esta configuração. Reiniciar um save antigo preserva sua edição original.
+Novas carreiras começam na data de início da edição: Brasileirão 2026 ou Europa 2026/27. Após isso, calendários, resultados e anos seguintes são simulados.

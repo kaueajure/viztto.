@@ -27,7 +27,7 @@ export function MercadoClube({
       <>
         <p className="sobretitulo">ESTRUTURA / EQUIPE</p>
         <h1>{clube.nome.toUpperCase()}</h1>
-        <PainelEquipe clube={clube} />
+        <PainelEquipe clube={clube} jogadorUsuario={c.jogador} />
         <section className="painel espaco">
           <div className="linha-titulo">
             <h2>SEU VÍNCULO</h2>
@@ -128,12 +128,18 @@ export function MercadoClube({
           <h2>PROPOSTAS RECEBIDAS</h2>
           <span className="rotulo">{pendentes.length} EM ABERTO</span>
         </div>
+        <p className="texto-suave">
+          Janela: {c.janelaTransferencias === "fechada" ? "fechada" : c.janelaTransferencias}
+          {c.ligas.length > 1
+            ? ` · ${c.ligas.length} ligas no mundo`
+            : ""}
+        </p>
         {!pendentes.length ? (
           <Vazio
             texto={
               c.jogador.categoria === "base"
                 ? "Seu agente acompanha seu desenvolvimento. As propostas profissionais surgem após a promoção."
-                : "Nenhuma proposta em aberto. O interesse depende do seu desempenho, nível e das necessidades dos clubes."
+                : "Nenhuma proposta em aberto. O interesse depende do desempenho e das necessidades dos clubes."
             }
           />
         ) : (
@@ -153,10 +159,25 @@ export function MercadoClube({
               <span>
                 {c.clubes.find((cl) => cl.id === p.clubeId)?.nome} ·{" "}
                 {p.status}
+                {p.papelPrometido ? ` · ${p.papelPrometido}` : ""}
               </span>
             </div>
           ))}
       </section>
+      {(c.transferenciasRecentes?.length ?? 0) > 0 && (
+        <section className="painel espaco">
+          <h2>TRANSFERÊNCIAS NO MUNDO</h2>
+          {c.transferenciasRecentes.slice(0, 8).map((t) => (
+            <div className="proposta-arquivada" key={t.id}>
+              <span>
+                {t.nomeJogador}:{" "}
+                {c.clubes.find((cl) => cl.id === t.deClubeId)?.nome ?? "?"} →{" "}
+                {c.clubes.find((cl) => cl.id === t.paraClubeId)?.nome ?? "?"}
+              </span>
+            </div>
+          ))}
+        </section>
+      )}
     </>
   );
 }

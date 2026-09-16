@@ -1,4 +1,5 @@
 import { PropostasInicio } from "./PropostasInicio";
+import { DecisoesInicio } from "./DecisoesInicio";
 import { PainelUltimaPartida } from "@/componentes/partida/PainelUltimaPartida";
 import Link from "next/link";
 import { formatarTemporada } from "@/dominio/constantes/temporadas-iniciais";
@@ -48,6 +49,7 @@ export function InicioCarreira({
   return (
     <>
       <PropostasInicio carreira={c} />
+      <DecisoesInicio carreira={c} />
       <div className="linha-titulo titulo-pagina">
         <div>
           <p className="sobretitulo">

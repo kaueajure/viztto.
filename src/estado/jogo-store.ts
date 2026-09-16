@@ -15,6 +15,7 @@ import { avancarSemana } from "@/aplicacao/casos-de-uso/avancar-tempo";
 import { iniciarProximaTemporada } from "@/aplicacao/casos-de-uso/temporada";
 import { validarSave } from "@/infraestrutura/persistencia/validar-save";
 import { responderProposta } from "@/simulacao/transferencias/mercado";
+import { responderDecisao } from "@/simulacao/decisoes/decisoes";
 interface JogoStore {
   carreira: EstadoCarreira | null;
   hidratado: boolean;
@@ -24,6 +25,7 @@ interface JogoStore {
   proximaTemporada: () => void;
   escolherTreino: (foco: FocoTreino) => void;
   responder: (id: string, aceitar: boolean) => void;
+  responderDecisao: (id: string, opcaoId: string) => void;
   excluir: () => void;
   reiniciar: () => void;
   lerNoticias: () => void;
@@ -71,6 +73,8 @@ export const useJogoStore = create<JogoStore>()(
         escolherTreino: (foco) => aplicar((c) => ({ ...c, focoTreino: foco })),
         responder: (id, aceitar) =>
           aplicar((c) => responderProposta(c, id, aceitar)),
+        responderDecisao: (id, opcaoId) =>
+          aplicar((c) => responderDecisao(c, id, opcaoId)),
         excluir: () => {
           set({ carreira: null, erro: null });
           const erro = obterErroPersistencia();
@@ -103,7 +107,7 @@ export const useJogoStore = create<JogoStore>()(
     },
     {
       name: "viztto-carreira",
-      version: 1,
+      version: 2,
       storage: createJSONStorage(() =>
         adaptarPersistencia(repositorioNavegador),
       ),

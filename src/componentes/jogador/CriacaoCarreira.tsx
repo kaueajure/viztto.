@@ -6,7 +6,7 @@ import Link from "next/link";
 import { ArrowLeft, ArrowRight, Check, RefreshCw } from "lucide-react";
 import type { Clube, IdentidadeJogador } from "@/dominio/entidades/modelos";
 import { POSICOES, esquemaIdentidade } from "@/dominio/regras/jogador";
-import { LIGAS_SUPORTADAS } from "@/dominio/constantes/ligas";
+import { LIGAS_CRIACAO, LIGAS_SUPORTADAS } from "@/dominio/constantes/ligas";
 import { esquemaImportacao } from "@/infraestrutura/transfermarkt/esquemas";
 import { useJogoStore } from "@/estado/jogo-store";
 import { Escudo } from "@/componentes/clube/Escudo";
@@ -43,7 +43,7 @@ export function CriacaoCarreira() {
       peso: 70,
       arquetipo: "equilibrado",
     });
-  const [ligaId, definirLiga] = useState(LIGAS_SUPORTADAS[0].id),
+  const [ligaId, definirLiga] = useState(LIGAS_CRIACAO[0].id),
     [clubes, definirClubes] = useState<Clube[]>([]),
     [clubeId, definirClube] = useState(""),
     [origem, definirOrigem] = useState<"api" | "demonstracao">("demonstracao"),
@@ -64,7 +64,7 @@ export function CriacaoCarreira() {
     } | null>(null),
     [tentativa, definirTentativa] = useState(0),
     [substituir, definirSubstituir] = useState(false);
-  const liga = LIGAS_SUPORTADAS.find((l) => l.id === ligaId)!,
+  const liga = LIGAS_CRIACAO.find((l) => l.id === ligaId)!,
     clube = clubes.find((c) => c.id === clubeId);
   const alterar = <Chave extends keyof IdentidadeJogador>(
     chave: Chave,
@@ -92,7 +92,7 @@ export function CriacaoCarreira() {
       );
     const dados = esquemaImportacao.parse(bruto);
     definirPrecisaImportar(false);
-    definirClubes(dados.clubes);
+    definirClubes(dados.clubes as Clube[]);
     definirOrigem(dados.origem);
     definirInicio(dados.inicio);
     definirAviso(dados.aviso);
@@ -233,8 +233,24 @@ export function CriacaoCarreira() {
     }
     definirEtapa(etapa + 1);
   }
-  function confirmar() {
+  async function confirmar() {
     if (!clube || !inicio) return;
+    const ligasMundo: typeof LIGAS_SUPORTADAS = [];
+    const clubesMundo: typeof clubes = [];
+    for (const outra of LIGAS_SUPORTADAS) {
+      if (outra.id === liga.id) continue;
+      try {
+        const resposta = await fetch(`/api/futebol?liga=${outra.id}`);
+        if (!resposta.ok) continue;
+        const bruto = await resposta.json();
+        const dados = esquemaImportacao.safeParse(bruto);
+        if (!dados.success || dados.data.clubes.length < 2) continue;
+        ligasMundo.push(outra);
+        clubesMundo.push(...(dados.data.clubes as Clube[]));
+      } catch {
+        /* liga ainda não importada */
+      }
+    }
     iniciar({
       identidade,
       liga,
@@ -243,6 +259,8 @@ export function CriacaoCarreira() {
       origem,
       seed: crypto.randomUUID(),
       dataInicio: inicio,
+      ligasMundo,
+      clubesMundo,
     });
     if (useJogoStore.getState().carreira) roteador.push("/carreira");
     else definirErro(useJogoStore.getState().erro);
@@ -445,7 +463,7 @@ export function CriacaoCarreira() {
           {etapa === 3 && (
             <>
               <div className="opcoes grade-dupla">
-                {LIGAS_SUPORTADAS.map((l) => (
+                {LIGAS_CRIACAO.map((l) => (
                   <button
                     aria-pressed={ligaId === l.id}
                     key={l.id}

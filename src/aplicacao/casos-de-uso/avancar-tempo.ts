@@ -27,6 +27,21 @@ import { calcularClassificacao } from "@/simulacao/temporada/classificacao";
 import { registrarEstatisticas } from "@/simulacao/temporada/estatisticas";
 import { PESOS_POSICOES } from "@/dominio/regras/jogador";
 import { finalizarTemporada } from "./temporada";
+import {
+  escalarElencoCompleto,
+  aplicarEscalacaoAoClube,
+  jogadorMundoComoCandidato,
+  jogadorUsuarioComoCandidato,
+  reescalarClube,
+} from "@/simulacao/elenco/escalacao-elenco";
+import { sincronizarForcaClube } from "@/simulacao/elenco/forca-escalacao";
+import {
+  evoluirJogadoresMundo,
+  podeAposentar,
+} from "@/simulacao/elenco/evolucao-mundo";
+import { avancarLigasExternas } from "@/simulacao/mundo/avancar-ligas";
+import { gerarDecisoesSemana } from "@/simulacao/decisoes/decisoes";
+
 function aplicarDesempenho(
   carreira: EstadoCarreira,
   partida: Partida,
@@ -46,6 +61,9 @@ function aplicarDesempenho(
     j.notasRecentes = [...j.notasRecentes, p.nota!].slice(-5);
     j.forma = limitar(j.forma * 0.7 + ((p.nota! - 3) / 7) * 100 * 0.3);
     j.confianca = limitar(j.confianca + p.confianca);
+    carreira.relacionamentos.treinador = limitar(
+      carreira.relacionamentos.treinador + p.confianca * 0.35,
+    );
     j.moral = limitar(j.moral + p.moral);
     j.fadiga = limitar(j.fadiga + p.minutos * 0.3);
     j.condicionamento = limitar(j.condicionamento - p.minutos * 0.22);
@@ -115,6 +133,7 @@ function aplicarDesempenho(
   }
   if (p.escalacao === "suspenso") j.suspensao = Math.max(0, j.suspensao - 1);
 }
+
 function avaliarPromocao(carreira: EstadoCarreira, clube: Clube): void {
   const j = carreira.jogador;
   if (j.categoria !== "base") return;
@@ -156,11 +175,49 @@ function avaliarPromocao(carreira: EstadoCarreira, clube: Clube): void {
     );
   }
 }
+
+function prepararClubesRodada(
+  carreira: EstadoCarreira,
+  aleatorio: GeradorAleatorio,
+): void {
+  const j = carreira.jogador;
+  for (const c of carreira.clubes) {
+    if (c.ligaId !== carreira.liga.id) continue;
+    const candidatos = c.elenco.map(jogadorMundoComoCandidato);
+    if (c.id === carreira.clubeAtualId && j.categoria === "profissional") {
+      candidatos.push(jogadorUsuarioComoCandidato(j));
+    }
+    const resultado = escalarElencoCompleto(
+      candidatos,
+      c.formacaoPreferida,
+      c.treinador,
+    );
+    aplicarEscalacaoAoClube(c, resultado);
+    sincronizarForcaClube(
+      c,
+      c.id === carreira.clubeAtualId ? j : undefined,
+    );
+    if (c.id !== carreira.clubeAtualId) {
+      evoluirJogadoresMundo(c.elenco, aleatorio, true);
+      c.elenco = c.elenco.filter((jog) => !podeAposentar(jog, aleatorio));
+    } else {
+      evoluirJogadoresMundo(c.elenco, aleatorio, true);
+    }
+  }
+}
+
 export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
   if (estado.temporada.encerrada) return estado;
   const carreira = structuredClone(estado),
     aleatorio = new GeradorAleatorio(carreira.estadoAleatorio),
     j = carreira.jogador;
+  if (!carreira.relacionamentos)
+    carreira.relacionamentos = { treinador: 50, diretoria: 50, agente: 60 };
+  if (!carreira.decisoes) carreira.decisoes = [];
+  if (!carreira.transferenciasRecentes) carreira.transferenciasRecentes = [];
+  if (!carreira.ligas?.length) carreira.ligas = [carreira.liga];
+  if (!carreira.temporadasExternas) carreira.temporadasExternas = {};
+
   const clube = carreira.clubes.find((c) => c.id === carreira.clubeAtualId)!;
   carreira.dataAtual = somarDias(carreira.dataAtual, 7);
   carreira.ultimaPartidaId = null;
@@ -186,6 +243,9 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
     aleatorio,
   );
   aplicarDeclinio(j);
+
+  prepararClubesRodada(carreira, aleatorio);
+
   const rodada = ++carreira.temporada.rodadaAtual;
   const mapa = new Map(carreira.clubes.map((c) => [c.id, c]));
   for (const chave of ["partidas", "partidasBase"] as const) {
@@ -209,7 +269,7 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
       return resultado;
     });
   }
-  for (const c of carreira.clubes) {
+  for (const c of carreira.clubes.filter((x) => x.ligaId === carreira.liga.id)) {
     const partida = carreira.temporada.partidas.find(
       (p) =>
         p.rodada === rodada && [p.mandanteId, p.visitanteId].includes(c.id),
@@ -224,8 +284,15 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
     );
     c.moral = limitar(c.moral + Math.sign(saldo) * 3);
     c.fadiga = aleatorio.inteiro(10, 30);
+    if (c.id === clube.id) reescalarClube(c);
+    sincronizarForcaClube(c, c.id === clube.id ? j : undefined);
   }
-  const ids = carreira.clubes.map((c) => c.id),
+
+  avancarLigasExternas(carreira, aleatorio);
+
+  const ids = carreira.clubes
+      .filter((c) => c.ligaId === carreira.liga.id)
+      .map((c) => c.id),
     regras = carreira.liga.regras;
   carreira.temporada.classificacao = calcularClassificacao(
     ids,
@@ -257,16 +324,27 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
   avaliarPromocao(carreira, clube);
   if (j.categoria === "profissional") {
     const anterior = j.status;
+    const candidatos = [
+      ...clube.elenco.map(jogadorMundoComoCandidato),
+      jogadorUsuarioComoCandidato(j),
+    ];
+    const esc = escalarElencoCompleto(
+      candidatos,
+      clube.formacaoPreferida,
+      clube.treinador,
+    );
+    aplicarEscalacaoAoClube(clube, esc);
+    sincronizarForcaClube(clube, j);
     j.status =
-      j.confianca > 90 && j.overall > clube.forcaGeral + 5
-        ? "estrela do time"
-        : j.confianca > 82
-          ? "jogador importante"
-          : j.confianca > 70 && j.overall >= clube.forcaGeral - 5
-            ? "titular"
-            : j.confianca > 55
-              ? "rotacao"
-              : "reserva";
+      esc.escalacaoUsuario === "titular"
+        ? j.confianca > 90 && j.overall > clube.forcaGeral + 5
+          ? "estrela do time"
+          : j.confianca > 82
+            ? "jogador importante"
+            : "titular"
+        : esc.escalacaoUsuario === "banco"
+          ? "rotacao"
+          : "reserva";
     if (
       ["titular", "jogador importante", "estrela do time"].includes(anterior) &&
       ["reserva", "rotacao"].includes(j.status)
@@ -282,6 +360,7 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
   atualizarObjetivos(carreira);
   j.valorMercado = calcularValorMercado(j, carreira.liga, carreira.dataAtual);
   avaliarMercado(carreira, aleatorio);
+  gerarDecisoesSemana(carreira, aleatorio);
   if (j.contrato.dataTermino < carreira.dataAtual) {
     j.contrato.dataTermino = somarDias(carreira.dataAtual, 90);
     j.contrato.salario = Math.round(j.contrato.salario * 0.9);
@@ -298,4 +377,3 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
     ? finalizarTemporada(carreira)
     : carreira;
 }
-export const simularProximaPartida = avancarSemana;

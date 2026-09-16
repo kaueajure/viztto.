@@ -4,6 +4,7 @@ import {
   escalarTitulares,
   grupoPosicao,
 } from "@/dominio/formacao";
+import { criarTreinador } from "@/dominio/mundo-futebol";
 import { GeradorAleatorio, gerarSeedNumerica } from "@/utilitarios/aleatorio";
 import type { z } from "zod";
 import {
@@ -37,6 +38,7 @@ function codigoDeNome(nome: string): string {
     .toUpperCase();
 }
 
+/** Snapshot de importação (hidratado para JogadorMundo na criação da carreira). */
 export function normalizarJogadores(elencoApi: ElencoApi): JogadorExterno[] {
   return elencoApi.players.map((jogador) => {
     const idTransfermarkt = String(jogador.id);
@@ -94,9 +96,13 @@ export function normalizarClube(
   const fundacao = perfil.foundedOn
     ? Number(perfil.foundedOn.slice(0, 4))
     : null;
+  const id = `tm-${idTransfermarkt}`;
+  const treinador = criarTreinador(id, formacaoPreferida, liga.id);
+  const poderFinanceiro = forca;
+  const valorElenco = perfil.currentMarketValue ?? null;
 
   return {
-    id: `tm-${idTransfermarkt}`,
+    id,
     idExterno: idNumerico(idTransfermarkt),
     idTransfermarkt,
     ligaId: liga.id,
@@ -111,22 +117,28 @@ export function normalizarClube(
     capacidadeEstadio: perfil.stadiumSeats ?? null,
     tamanhoElenco: perfil.squad?.size ?? elenco.length,
     idadeMedia: perfil.squad?.averageAge ?? null,
-    valorElenco: perfil.currentMarketValue ?? null,
+    valorElenco,
     registroTransferencias: perfil.currentTransferRecord ?? null,
     formacaoPreferida,
     goleiroTitularId: goleiroId,
     titularesIds: titularIds,
+    bancoIds: [],
+    treinador,
     reputacao: forca,
     forcaGeral: forca,
     forcaAtaque: forca + aleatorio.inteiro(-4, 4),
     forcaMeio: forca + aleatorio.inteiro(-4, 4),
     forcaDefesa: forca + aleatorio.inteiro(-4, 4),
     qualidadeBase: aleatorio.inteiro(45, 95),
-    poderFinanceiro: forca,
+    poderFinanceiro,
+    orcamento: Math.round(
+      poderFinanceiro * 1_200_000 + (valorElenco ?? 0) * 0.08,
+    ),
     forma: 50,
     moral: 60,
     fadiga: 10,
-    elenco,
+    // Snapshot de importação; hidratado para JogadorMundo em prepararClubesParaMundo.
+    elenco: elenco as Clube["elenco"],
     dadosBrutos: bruto ?? null,
   };
 }

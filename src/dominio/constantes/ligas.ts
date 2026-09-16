@@ -15,6 +15,17 @@ export const LIGAS_SUPORTADAS: Liga[] = [
     quantidadeClubes: 20,
   },
   {
+    id: "brasileirao-b",
+    idTransfermarkt: "BRA2",
+    termoBusca: "Série B",
+    nome: "Brasileirão Série B",
+    pais: "Brasil",
+    bandeira: "BR",
+    reputacao: 62,
+    forcaMedia: 64,
+    quantidadeClubes: 20,
+  },
+  {
     id: "premier-league",
     idTransfermarkt: "GB1",
     termoBusca: "Premier League",
@@ -73,3 +84,8 @@ export const LIGAS_SUPORTADAS: Liga[] = [
   ...liga,
   regras: { pontosVitoria: 3, pontosEmpate: 1, amarelosSuspensao: 3 },
 })) as Liga[];
+
+/** Ligas exibidas na criação (Série B entra no mundo se importada). */
+export const LIGAS_CRIACAO = LIGAS_SUPORTADAS.filter(
+  (l) => l.id !== "brasileirao-b",
+);

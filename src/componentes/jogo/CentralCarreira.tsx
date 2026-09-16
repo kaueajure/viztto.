@@ -187,8 +187,8 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
           <div className="faixa-demonstracao">
             MODO DEMONSTRAÇÃO{" "}
             <span>
-              Clubes fictícios · configure a API-Football para iniciar uma
-              carreira com clubes reais.
+              Clubes fictícios · importe uma liga via Transfermarkt para iniciar
+              com elencos reais.
             </span>
           </div>
         )}

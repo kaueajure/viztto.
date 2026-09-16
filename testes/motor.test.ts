@@ -136,13 +136,29 @@ describe("simulação", () => {
   it("admite titulares, banco e não relacionados", () => {
     const j = nova().jogador,
       a = new GeradorAleatorio(7),
-      estados = new Set();
-    for (let i = 0; i < 200; i++) {
-      j.overall = 50 + (i % 40);
-      j.confianca = i % 100;
+      estados = new Set<string>();
+    j.categoria = "profissional";
+    for (let i = 0; i < 100; i++) {
+      j.overall = i < 30 ? 92 : 45 + (i % 15);
+      j.confianca = 20 + (i % 70);
+      j.forma = 30 + (i % 50);
+      j.fadiga = i % 50;
+      j.lesao =
+        i % 19 === 0
+          ? {
+              tipo: "teste",
+              gravidade: "leve",
+              diasRecuperacao: 7,
+              dataInicio: "2026-01-01",
+              dataPrevistaRetorno: "2026-01-08",
+            }
+          : null;
+      j.suspensao = i % 21 === 0 ? 1 : 0;
       estados.add(determinarEscalacao(j, clubes[0], a));
     }
-    expect(estados).toEqual(new Set(["titular", "banco", "nao relacionado"]));
+    expect(estados.has("titular")).toBe(true);
+    expect(estados.has("banco") || estados.has("nao relacionado")).toBe(true);
+    expect(estados.has("lesionado") || estados.has("suspenso")).toBe(true);
   });
   it("evolução é acumulativa e limitada", () => {
     const c = nova(16),
@@ -213,6 +229,8 @@ describe("simulação", () => {
       tipo: "transferencia",
       salario: 2000,
       duracaoAnos: 3,
+      papelPrometido: "titular",
+      etapa: "proposta_jogador",
       data: c.dataAtual,
       validade: "2026-02-01",
       status: "pendente",
@@ -238,13 +256,20 @@ describe("ciclo e decisões", () => {
       tipo: "transferencia",
       salario: 3500,
       duracaoAnos: 2,
+      papelPrometido: "rotacao",
+      etapa: "proposta_jogador",
       data: c.dataAtual,
       validade: "2026-02-01",
       status: "pendente",
     });
     c = responderProposta(c, "troca", true);
     c.jogador.confianca = 95;
-    c = avancarSemana(c);
+    c.jogador.overall = 99;
+    c.jogador.status = "estrela do time";
+    for (let i = 0; i < 6; i++) {
+      c = avancarSemana(c);
+      if (c.registros.some((r) => r.clubeId === clubes[1].id)) break;
+    }
     expect(c.registros[0]).toEqual(antes[0]);
     expect(c.registros.some((r) => r.clubeId === clubes[1].id)).toBe(true);
     c.propostas.push({
@@ -253,6 +278,8 @@ describe("ciclo e decisões", () => {
       tipo: "renovacao",
       salario: 4500,
       duracaoAnos: 4,
+      papelPrometido: "titular",
+      etapa: "proposta_jogador",
       data: c.dataAtual,
       validade: "2026-03-01",
       status: "pendente",

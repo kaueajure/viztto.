@@ -1,5 +1,11 @@
 import type { Clube, Escalacao, Jogador } from "@/dominio/entidades/modelos";
 import { GeradorAleatorio } from "@/utilitarios/aleatorio";
+import {
+  escalarElencoCompleto,
+  jogadorMundoComoCandidato,
+  jogadorUsuarioComoCandidato,
+} from "@/simulacao/elenco/escalacao-elenco";
+
 export function determinarEscalacao(
   jogador: Jogador,
   clube: Clube,
@@ -7,27 +13,30 @@ export function determinarEscalacao(
 ): Escalacao {
   if (jogador.lesao) return "lesionado";
   if (jogador.suspensao > 0) return "suspenso";
-  const setor = ["CA", "PD", "PE"].includes(jogador.posicao)
-    ? clube.forcaAtaque
-    : ["MC", "MEI", "VOL"].includes(jogador.posicao)
-      ? clube.forcaMeio
-      : clube.forcaDefesa;
-  const concorrencia = setor - (jogador.categoria === "base" ? 19 : 3);
-  const mediaRecente = jogador.notasRecentes.length
-    ? jogador.notasRecentes.reduce((a, b) => a + b, 0) /
-      jogador.notasRecentes.length
-    : 6.5;
-  const avaliacao =
-    (jogador.overall - concorrencia) * 1.5 +
-    (jogador.confianca - 50) * 0.4 +
-    (jogador.forma - 50) * 0.15 +
-    (jogador.moral - 50) * 0.08 -
-    jogador.fadiga * 0.18 +
-    (mediaRecente - 6.5) * 4 +
-    aleatorio.inteiro(-12, 12);
-  return avaliacao > 4
-    ? "titular"
-    : avaliacao > -20
-      ? "banco"
-      : "nao relacionado";
+  if (jogador.categoria === "base") {
+    const mediaRecente = jogador.notasRecentes.length
+      ? jogador.notasRecentes.reduce((a, b) => a + b, 0) /
+        jogador.notasRecentes.length
+      : 6.5;
+    const avaliacao =
+      (jogador.overall - (clube.qualidadeBase - 8)) * 1.2 +
+      (jogador.confianca - 50) * 0.35 +
+      (mediaRecente - 6.5) * 3 +
+      aleatorio.inteiro(-8, 8);
+    return avaliacao > 6 ? "titular" : avaliacao > -10 ? "banco" : "nao relacionado";
+  }
+  const candidatos = [
+    ...clube.elenco.map(jogadorMundoComoCandidato),
+    jogadorUsuarioComoCandidato(jogador),
+  ];
+  // pequena variação semanal
+  for (const c of candidatos) {
+    if (c.ehUsuario) c.confiancaTreinador += aleatorio.inteiro(-3, 3);
+  }
+  const resultado = escalarElencoCompleto(
+    candidatos,
+    clube.formacaoPreferida,
+    clube.treinador,
+  );
+  return resultado.escalacaoUsuario;
 }

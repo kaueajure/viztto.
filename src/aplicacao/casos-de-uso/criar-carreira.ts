@@ -12,11 +12,15 @@ import {
   esquemaIdentidade,
   PESOS_POSICOES,
 } from "@/dominio/regras/jogador";
+import { prepararClubesParaMundo } from "@/dominio/mundo-futebol";
 import { gerarSeedNumerica, GeradorAleatorio } from "@/utilitarios/aleatorio";
 import { limitar, somarDias } from "@/utilitarios/formatacao";
 import { criarTemporada } from "@/simulacao/temporada/gerador-calendario";
 import { calcularValorMercado } from "@/simulacao/transferencias/mercado";
+import { resolverJanela } from "@/simulacao/transferencias/necessidade";
+import { criarTemporadasExternas } from "@/simulacao/mundo/avancar-ligas";
 import { registrarEvento } from "@/simulacao/eventos/eventos";
+
 export interface EntradaCarreira {
   identidade: IdentidadeJogador;
   liga: Liga;
@@ -25,12 +29,36 @@ export interface EntradaCarreira {
   origem: EstadoCarreira["origem"];
   seed: string;
   dataInicio: string;
+  /** Outras ligas já importadas para o mundo paralelo. */
+  ligasMundo?: Liga[];
+  clubesMundo?: Clube[];
 }
+
 export function criarCarreira(entrada: EntradaCarreira): EstadoCarreira {
   const identidade = esquemaIdentidade.parse(entrada.identidade),
-    clube = entrada.clubes.find((c) => c.id === entrada.clubeId);
-  if (!clube || entrada.clubes.length < 2)
+    clubeEntrada = entrada.clubes.find((c) => c.id === entrada.clubeId);
+  if (!clubeEntrada || entrada.clubes.length < 2)
     throw new Error("Selecione um clube de uma liga válida.");
+
+  const clubesPrincipais = prepararClubesParaMundo(
+    entrada.clubes,
+    entrada.liga,
+  );
+  const ligasExtra = (entrada.ligasMundo ?? []).filter(
+    (l) => l.id !== entrada.liga.id,
+  );
+  const clubesExtra = (entrada.clubesMundo ?? [])
+    .filter((c) => c.ligaId !== entrada.liga.id)
+    .flatMap((c) => {
+      const liga = ligasExtra.find((l) => l.id === c.ligaId);
+      if (!liga) return [];
+      return prepararClubesParaMundo([c], liga);
+    });
+
+  const clubes = [...clubesPrincipais, ...clubesExtra];
+  const ligas = [entrada.liga, ...ligasExtra];
+  const clube = clubes.find((c) => c.id === entrada.clubeId)!;
+
   const aleatorio = new GeradorAleatorio(gerarSeedNumerica(entrada.seed)),
     categoria = determinarCategoriaInicial(identidade.idade);
   const atributos = criarAtributosUniformes(40),
@@ -53,8 +81,9 @@ export function criarCarreira(entrada: EntradaCarreira): EstadoCarreira {
       99,
     );
   const overall = calcularOverall(atributos, identidade.posicao);
+  const ano = Number(entrada.dataInicio.slice(0, 4));
   const carreira: EstadoCarreira = {
-    versao: 1,
+    versao: 2,
     id: entrada.seed,
     seed: entrada.seed,
     estadoAleatorio: 0,
@@ -64,7 +93,8 @@ export function criarCarreira(entrada: EntradaCarreira): EstadoCarreira {
     clubeInicialId: clube.id,
     clubeAtualId: clube.id,
     liga: entrada.liga,
-    clubes: structuredClone(entrada.clubes),
+    ligas,
+    clubes,
     origem: entrada.origem,
     jogador: {
       ...identidade,
@@ -105,13 +135,20 @@ export function criarCarreira(entrada: EntradaCarreira): EstadoCarreira {
       amarelosAcumulados: 0,
       notasRecentes: [],
     },
-    temporada: criarTemporada(
-      entrada.clubes,
-      Number(entrada.dataInicio.slice(0, 4)),
+    temporada: criarTemporada(clubesPrincipais, ano, entrada.dataInicio),
+    temporadasExternas: criarTemporadasExternas(
+      ligas,
+      entrada.liga.id,
+      clubes,
+      ano,
       entrada.dataInicio,
     ),
     focoTreino: "equilibrado",
     propostas: [],
+    transferenciasRecentes: [],
+    janelaTransferencias: resolverJanela(entrada.dataInicio),
+    relacionamentos: { treinador: 50, diretoria: 50, agente: 60 },
+    decisoes: [],
     noticias: [],
     eventos: [],
     objetivos: [

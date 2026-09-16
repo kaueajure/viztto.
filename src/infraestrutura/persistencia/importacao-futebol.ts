@@ -57,7 +57,7 @@ export async function lerDadosLiga(
 ): Promise<DadosLigaImportados | null> {
   try {
     const bruto = await readFile(caminhoArquivo(ligaId), "utf8");
-    return esquemaDadosLigaImportados.parse(JSON.parse(bruto));
+    return esquemaDadosLigaImportados.parse(JSON.parse(bruto)) as DadosLigaImportados;
   } catch {
     return null;
   }

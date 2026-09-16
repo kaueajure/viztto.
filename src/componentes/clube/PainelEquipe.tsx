@@ -1,20 +1,25 @@
 "use client";
 import { useMemo, useState } from "react";
-import type { Clube, JogadorExterno } from "@/dominio/entidades/modelos";
+import type { Clube, Jogador, JogadorMundo } from "@/dominio/entidades/modelos";
 import { montarLinhasCampo } from "@/dominio/formacao";
+import {
+  concorrentesNaPosicao,
+  jogadorMundoComoCandidato,
+  jogadorUsuarioComoCandidato,
+} from "@/simulacao/elenco/escalacao-elenco";
 import { Escudo } from "@/componentes/clube/Escudo";
 import { Barra } from "@/componentes/interface/Elementos";
 import { dinheiro } from "@/utilitarios/formatacao";
 
-type Aba = "visao" | "elenco" | "formacao";
+type Aba = "visao" | "elenco" | "formacao" | "banco" | "concorrencia";
 
 function formatarValor(valor: number | null | undefined): string {
   if (valor == null || valor <= 0) return "—";
   return dinheiro(valor);
 }
 
-function jogadorPorId(elenco: JogadorExterno[], id: string | null) {
-  if (!id) return null;
+function jogadorPorId(elenco: JogadorMundo[], id: string | null) {
+  if (!id || id === "usuario") return null;
   return elenco.find((j) => j.id === id) ?? null;
 }
 
@@ -23,7 +28,7 @@ function TabelaGrupo({
   jogadores,
 }: {
   titulo: string;
-  jogadores: JogadorExterno[];
+  jogadores: JogadorMundo[];
 }) {
   if (!jogadores.length) return null;
   return (
@@ -35,10 +40,10 @@ function TabelaGrupo({
             <th>#</th>
             <th>Jogador</th>
             <th>Pos</th>
+            <th>OVR</th>
             <th>Idade</th>
-            <th>Nac.</th>
             <th>Valor</th>
-            <th>Contrato</th>
+            <th>Status</th>
           </tr>
         </thead>
         <tbody>
@@ -48,11 +53,11 @@ function TabelaGrupo({
               <td>
                 <strong>{j.nome}</strong>
               </td>
-              <td>{j.posicao}</td>
-              <td>{j.idade ?? "—"}</td>
-              <td>{j.nacionalidade[0] ?? "—"}</td>
+              <td>{j.posicaoPrincipal}</td>
+              <td>{j.overall}</td>
+              <td>{j.idade}</td>
               <td>{formatarValor(j.valorMercado)}</td>
-              <td>{j.contratoAte ?? "—"}</td>
+              <td>{j.statusElenco}</td>
             </tr>
           ))}
         </tbody>
@@ -61,14 +66,20 @@ function TabelaGrupo({
   );
 }
 
-export function PainelEquipe({ clube }: { clube: Clube }) {
+export function PainelEquipe({
+  clube,
+  jogadorUsuario,
+}: {
+  clube: Clube;
+  jogadorUsuario?: Jogador;
+}) {
   const [aba, definirAba] = useState<Aba>("visao");
   const grupos = useMemo(() => {
     const ordem = { GOL: 0, DEF: 1, MEI: 2, ATA: 3 } as const;
     const ordenados = [...clube.elenco].sort((a, b) => {
       const g = ordem[a.grupoPosicao] - ordem[b.grupoPosicao];
       if (g) return g;
-      return (b.valorMercado ?? 0) - (a.valorMercado ?? 0);
+      return b.overall - a.overall;
     });
     return {
       GOL: ordenados.filter((j) => j.grupoPosicao === "GOL"),
@@ -88,6 +99,23 @@ export function PainelEquipe({ clube }: { clube: Clube }) {
     [clube.formacaoPreferida, clube.goleiroTitularId, clube.titularesIds],
   );
 
+  const banco = useMemo(
+    () =>
+      (clube.bancoIds ?? [])
+        .map((id) => jogadorPorId(clube.elenco, id))
+        .filter(Boolean) as JogadorMundo[],
+    [clube.bancoIds, clube.elenco],
+  );
+
+  const concorrencia = useMemo(() => {
+    if (!jogadorUsuario) return [];
+    const candidatos = [
+      ...clube.elenco.map(jogadorMundoComoCandidato),
+      jogadorUsuarioComoCandidato(jogadorUsuario),
+    ];
+    return concorrentesNaPosicao(candidatos, jogadorUsuario.posicao, 6);
+  }, [clube.elenco, jogadorUsuario]);
+
   return (
     <section className="painel equipe-clube">
       <header className="equipe-cabecalho">
@@ -96,10 +124,10 @@ export function PainelEquipe({ clube }: { clube: Clube }) {
           <p className="sobretitulo">CLUBE</p>
           <h2>{clube.nome}</h2>
           <p className="texto-suave">
-            {clube.estadio}
-            {clube.capacidadeEstadio
-              ? ` · ${clube.capacidadeEstadio.toLocaleString("pt-BR")} lugares`
+            {clube.treinador?.nome
+              ? `Técnico: ${clube.treinador.nome} · `
               : ""}
+            {clube.estadio}
             {clube.pais ? ` · ${clube.pais}` : ""}
           </p>
         </div>
@@ -111,6 +139,8 @@ export function PainelEquipe({ clube }: { clube: Clube }) {
             ["visao", "Visão geral"],
             ["elenco", "Elenco"],
             ["formacao", "Formação"],
+            ["banco", "Banco"],
+            ["concorrencia", "Concorrência"],
           ] as const
         ).map(([id, rotulo]) => (
           <button
@@ -129,49 +159,33 @@ export function PainelEquipe({ clube }: { clube: Clube }) {
         <div className="equipe-visao">
           <dl className="ficha">
             <div>
-              <dt>Nome oficial</dt>
-              <dd>{clube.nomeOficial ?? clube.nome}</dd>
-            </div>
-            <div>
-              <dt>Fundação</dt>
-              <dd>{clube.fundacao ?? "—"}</dd>
+              <dt>Formação</dt>
+              <dd>{clube.formacaoPreferida}</dd>
             </div>
             <div>
               <dt>Plantel</dt>
-              <dd>{clube.tamanhoElenco ?? clube.elenco.length} jogadores</dd>
+              <dd>{clube.elenco.length} jogadores</dd>
             </div>
             <div>
-              <dt>Idade média</dt>
-              <dd>
-                {clube.idadeMedia != null
-                  ? clube.idadeMedia.toFixed(1)
-                  : "—"}
-              </dd>
+              <dt>Orçamento</dt>
+              <dd>{formatarValor(clube.orcamento)}</dd>
             </div>
             <div>
-              <dt>Valor do elenco</dt>
-              <dd>{formatarValor(clube.valorElenco)}</dd>
-            </div>
-            <div>
-              <dt>Formação-base (viztto)</dt>
-              <dd>{clube.formacaoPreferida}</dd>
+              <dt>Estilo</dt>
+              <dd>{clube.treinador?.estilo ?? "—"}</dd>
             </div>
           </dl>
-          <Barra nome="Ataque" valor={clube.forcaAtaque} />
-          <Barra nome="Meio-campo" valor={clube.forcaMeio} />
-          <Barra nome="Defesa" valor={clube.forcaDefesa} />
+          <Barra nome="Ataque (escalação)" valor={clube.forcaAtaque} />
+          <Barra nome="Meio (escalação)" valor={clube.forcaMeio} />
+          <Barra nome="Defesa (escalação)" valor={clube.forcaDefesa} />
           <Barra nome="Reputação" valor={clube.reputacao} />
-          <p className="texto-suave">
-            Forças e formação-base são avaliações do universo viztto, não dados
-            oficiais do Transfermarkt.
-          </p>
         </div>
       )}
 
       {aba === "elenco" && (
         <div className="equipe-elenco">
           {!clube.elenco.length ? (
-            <p className="estado-vazio">Nenhum jogador importado neste clube.</p>
+            <p className="estado-vazio">Nenhum jogador neste clube.</p>
           ) : (
             <>
               <TabelaGrupo titulo="Goleiros" jogadores={grupos.GOL} />
@@ -186,31 +200,65 @@ export function PainelEquipe({ clube }: { clube: Clube }) {
       {aba === "formacao" && (
         <div className="equipe-formacao">
           <div className="linha-titulo">
-            <h3>Formação-base {clube.formacaoPreferida}</h3>
-            <span className="rotulo">VIZTTO</span>
+            <h3>Titulares · {clube.formacaoPreferida}</h3>
           </div>
-          <p className="texto-suave">
-            Escalação inicial determinada pelo viztto a partir das posições e
-            valores de mercado do plantel importado.
-          </p>
           <div className="campo-formacao" role="img" aria-label="Campo tático">
             {linhas.map((linha, i) => (
               <div className="linha-campo" key={i}>
                 {linha.map((slot) => {
-                  const jogador = jogadorPorId(clube.elenco, slot.jogadorId);
+                  const doElenco = jogadorPorId(clube.elenco, slot.jogadorId);
+                  const rotulo =
+                    slot.jogadorId === "usuario" && jogadorUsuario
+                      ? `${jogadorUsuario.nome} · ${jogadorUsuario.overall}`
+                      : doElenco
+                        ? `${doElenco.nome.split(" ").slice(-1)[0]} · ${doElenco.overall}`
+                        : "—";
                   return (
-                    <div className="slot-campo" key={`${slot.slot}-${i}-${slot.jogadorId}`}>
+                    <div className="slot-campo" key={`${slot.slot}-${i}`}>
                       <span className="slot-pos">{slot.slot}</span>
-                      <strong>{jogador?.nome?.split(" ").slice(-1)[0] ?? "—"}</strong>
-                      <span className="slot-meta">
-                        {jogador?.posicao ?? "vago"}
-                      </span>
+                      <strong>{rotulo}</strong>
                     </div>
                   );
                 })}
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {aba === "banco" && (
+        <div className="equipe-elenco">
+          {!banco.length ? (
+            <p className="estado-vazio">Nenhum reserva selecionado.</p>
+          ) : (
+            <TabelaGrupo titulo="Reservas" jogadores={banco} />
+          )}
+        </div>
+      )}
+
+      {aba === "concorrencia" && (
+        <div className="equipe-elenco">
+          {!jogadorUsuario ? (
+            <p className="estado-vazio">
+              Concorrência disponível durante a carreira.
+            </p>
+          ) : (
+            <ol className="lista-concorrencia">
+              {concorrencia.map((item, i) => (
+                <li
+                  key={item.candidato.id}
+                  className={item.candidato.ehUsuario ? "voce" : ""}
+                >
+                  <span>{i + 1}.</span>
+                  <strong>
+                    {item.candidato.nome}
+                    {item.candidato.ehUsuario ? " (você)" : ""}
+                  </strong>
+                  <span>OVR {item.candidato.overall}</span>
+                </li>
+              ))}
+            </ol>
+          )}
         </div>
       )}
     </section>

@@ -3,6 +3,9 @@ import type { EstadoCarreira } from "@/dominio/entidades/modelos";
 import { NOMES_ATRIBUTOS } from "@/dominio/entidades/modelos";
 import { esquemaIdentidade } from "@/dominio/regras/jogador";
 import { esquemaClube } from "@/infraestrutura/transfermarkt/esquemas";
+import { prepararClubesParaMundo } from "@/dominio/mundo-futebol";
+import { criarTreinador } from "@/dominio/mundo-futebol";
+
 const numero = z.number().finite(),
   data = z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   texto = z.string();
@@ -96,8 +99,35 @@ const partidas = z.array(
     participacao: participacao.nullable(),
   }),
 );
+const esquemaLiga = z.object({
+  id: texto,
+  idTransfermarkt: texto,
+  termoBusca: texto,
+  nome: texto,
+  pais: texto,
+  bandeira: texto,
+  reputacao: numero,
+  forcaMedia: numero,
+  quantidadeClubes: numero,
+  regras: z.object({
+    pontosVitoria: numero,
+    pontosEmpate: numero,
+    amarelosSuspensao: numero,
+  }),
+});
+const esquemaTemporada = z.object({
+  ano: numero,
+  rodadaAtual: numero,
+  totalRodadas: numero,
+  partidas,
+  partidasBase: partidas,
+  classificacao,
+  classificacaoBase: classificacao,
+  encerrada: z.boolean(),
+});
+
 const esquemaCarreira = z.object({
-  versao: z.literal(1),
+  versao: z.literal(2),
   id: texto,
   seed: texto,
   estadoAleatorio: numero,
@@ -108,22 +138,8 @@ const esquemaCarreira = z.object({
   clubeAtualId: texto,
   origem: z.enum(["api", "demonstracao"]),
   clubes: z.array(esquemaClube).min(2),
-  liga: z.object({
-    id: texto,
-    idTransfermarkt: texto,
-    termoBusca: texto,
-    nome: texto,
-    pais: texto,
-    bandeira: texto,
-    reputacao: numero,
-    forcaMedia: numero,
-    quantidadeClubes: numero,
-    regras: z.object({
-      pontosVitoria: numero,
-      pontosEmpate: numero,
-      amarelosSuspensao: numero,
-    }),
-  }),
+  liga: esquemaLiga,
+  ligas: z.array(esquemaLiga).min(1),
   jogador: esquemaIdentidade.extend({
     idade: numero.min(15),
     atributos,
@@ -163,16 +179,8 @@ const esquemaCarreira = z.object({
     amarelosAcumulados: numero,
     notasRecentes: z.array(numero),
   }),
-  temporada: z.object({
-    ano: numero,
-    rodadaAtual: numero,
-    totalRodadas: numero,
-    partidas,
-    partidasBase: partidas,
-    classificacao,
-    classificacaoBase: classificacao,
-    encerrada: z.boolean(),
-  }),
+  temporada: esquemaTemporada,
+  temporadasExternas: z.record(texto, esquemaTemporada).default({}),
   focoTreino: z.enum([
     "equilibrado",
     "finalizacao",
@@ -190,11 +198,56 @@ const esquemaCarreira = z.object({
       tipo: z.enum(["transferencia", "renovacao"]),
       salario: numero,
       duracaoAnos: numero,
+      papelPrometido: texto.default("rotacao"),
+      etapa: texto.default("proposta_jogador"),
       data,
       validade: data,
       status: z.enum(["pendente", "aceita", "rejeitada", "expirada"]),
     }),
   ),
+  transferenciasRecentes: z
+    .array(
+      z.object({
+        id: texto,
+        jogadorId: texto,
+        nomeJogador: texto,
+        deClubeId: texto,
+        paraClubeId: texto,
+        valor: numero,
+        salario: numero,
+        duracaoAnos: numero,
+        papelPrometido: texto,
+        etapa: texto,
+        data,
+        aoUsuario: z.boolean(),
+      }),
+    )
+    .default([]),
+  janelaTransferencias: z
+    .enum(["fechada", "verao", "inverno"])
+    .default("fechada"),
+  relacionamentos: z
+    .object({
+      treinador: numero,
+      diretoria: numero,
+      agente: numero,
+    })
+    .default({ treinador: 50, diretoria: 50, agente: 60 }),
+  decisoes: z
+    .array(
+      z.object({
+        id: texto,
+        data,
+        tipo: texto,
+        remetente: texto,
+        titulo: texto,
+        texto,
+        opcoes: z.array(z.object({ id: texto, rotulo: texto })),
+        resolvida: z.boolean(),
+        opcaoEscolhida: texto.optional(),
+      }),
+    )
+    .default([]),
   noticias: z.array(evento),
   eventos: z.array(evento),
   objetivos: z.array(
@@ -220,18 +273,56 @@ const esquemaCarreira = z.object({
       ano: numero,
       campeaoId: texto,
       campeaoBaseId: texto,
+      ligaId: texto.optional(),
       classificacao,
       classificacaoBase: classificacao,
     }),
   ),
   ultimaPartidaId: texto.nullable(),
 });
+
+function migrarParaV2(valor: unknown): unknown {
+  if (!valor || typeof valor !== "object") return valor;
+  const bruto = valor as Record<string, unknown>;
+  if (bruto.versao === 2) return bruto;
+  if (bruto.versao !== 1) return bruto;
+  const liga = bruto.liga as EstadoCarreira["liga"];
+  const clubes = (bruto.clubes as EstadoCarreira["clubes"]).map((c) => ({
+    ...c,
+    bancoIds: c.bancoIds ?? [],
+    orcamento: c.orcamento ?? Math.round((c.poderFinanceiro ?? 60) * 1_200_000),
+    treinador:
+      c.treinador ??
+      criarTreinador(c.id, c.formacaoPreferida ?? "4-3-3", liga.id),
+  }));
+  return {
+    ...bruto,
+    versao: 2,
+    ligas: [liga],
+    clubes,
+    temporadasExternas: {},
+    transferenciasRecentes: [],
+    janelaTransferencias: "fechada",
+    relacionamentos: { treinador: 50, diretoria: 50, agente: 60 },
+    decisoes: [],
+    propostas: ((bruto.propostas as unknown[]) ?? []).map((p) => {
+      const prop = p as Record<string, unknown>;
+      return {
+        ...prop,
+        papelPrometido: prop.papelPrometido ?? "rotacao",
+        etapa: prop.etapa ?? "proposta_jogador",
+      };
+    }),
+  };
+}
+
 export function validarSave(valor: unknown): EstadoCarreira {
-  const resultado = esquemaCarreira.safeParse(valor);
+  const migrado = migrarParaV2(valor);
+  const resultado = esquemaCarreira.safeParse(migrado);
   if (!resultado.success)
     throw new Error("O save está incompleto ou incompatível.");
-  const c = resultado.data,
-    ids = new Set(c.clubes.map((clube) => clube.id));
+  const c = resultado.data;
+  const ids = new Set(c.clubes.map((clube) => clube.id));
   if (
     !ids.has(c.clubeAtualId) ||
     !ids.has(c.clubeInicialId) ||
@@ -240,6 +331,30 @@ export function validarSave(valor: unknown): EstadoCarreira {
     )
   )
     throw new Error("Os clubes do save são inválidos.");
-  // A validação garante a estrutura completa antes da fronteira de domínio.
-  return resultado.data as EstadoCarreira;
+
+  const carreira = c as unknown as EstadoCarreira;
+  // Só hidrata elencos legados (pré–JogadorMundo); saves v2 já vivos não são reprocessados.
+  carreira.clubes = carreira.clubes.map((clube) => {
+    const precisaHidratacao = clube.elenco.some(
+      (j) =>
+        typeof (j as { overall?: number }).overall !== "number" ||
+        !(j as { estatisticasCarreira?: unknown }).estatisticasCarreira,
+    );
+    if (!precisaHidratacao) {
+      if (!clube.treinador)
+        clube.treinador = criarTreinador(
+          clube.id,
+          clube.formacaoPreferida,
+          carreira.liga.id,
+        );
+      clube.bancoIds = clube.bancoIds ?? [];
+      clube.orcamento =
+        clube.orcamento ?? Math.round(clube.poderFinanceiro * 1_200_000);
+      return clube;
+    }
+    const liga =
+      carreira.ligas.find((l) => l.id === clube.ligaId) ?? carreira.liga;
+    return prepararClubesParaMundo([clube], liga)[0]!;
+  });
+  return carreira;
 }
