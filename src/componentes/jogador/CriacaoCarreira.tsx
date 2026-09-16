@@ -15,6 +15,7 @@ import {
   type LigaDisponivel,
 } from "@/dominio/regras/liga";
 import { esquemaImportacao } from "@/infraestrutura/transfermarkt/esquemas";
+import { EstadoPersistencia } from "@/componentes/jogo/EstadoPersistencia";
 import { useJogoStore } from "@/estado/jogo-store";
 import { Escudo } from "@/componentes/clube/Escudo";
 const ETAPAS = [
@@ -36,7 +37,9 @@ const ESTILOS = {
 export function CriacaoCarreira() {
   const roteador = useRouter(),
     iniciar = useJogoStore((s) => s.iniciar),
-    existente = useJogoStore((s) => s.carreira);
+    existente = useJogoStore((s) => s.temSave),
+    hidratado = useJogoStore((s) => s.hidratado),
+    operando = useJogoStore((s) => s.operando);
   const [etapa, definirEtapa] = useState(0),
     [identidade, definirIdentidade] = useState<IdentidadeJogador>({
       nome: "",
@@ -211,19 +214,22 @@ export function CriacaoCarreira() {
         ligasMundo.push(outra);
         clubesMundo.push(...(dados.clubes as Clube[]));
       }
-      iniciar({
-        identidade,
-        liga,
-        clubes: principal.clubes as Clube[],
-        clubeId,
-        origem: "api",
-        seed: crypto.randomUUID(),
-        dataInicio: principal.inicio,
-        ligasMundo,
-        clubesMundo,
-      });
+      const criada = await iniciar(
+        {
+          identidade,
+          liga,
+          clubes: principal.clubes as Clube[],
+          clubeId,
+          origem: "api",
+          seed: crypto.randomUUID(),
+          dataInicio: principal.inicio,
+          ligasMundo,
+          clubesMundo,
+        },
+        substituir,
+      );
       const estado = useJogoStore.getState();
-      if (!estado.erro && estado.carreira) roteador.push("/carreira");
+      if (criada) roteador.push("/carreira");
       else definirErro(estado.erro);
     } catch (falha) {
       definirErro(
@@ -576,6 +582,7 @@ export function CriacaoCarreira() {
               )}
             </div>
           )}
+          <EstadoPersistencia />
           {erro && (
             <p role="alert" className="aviso erro">
               {erro}
@@ -607,7 +614,12 @@ export function CriacaoCarreira() {
               <button
                 className="botao principal"
                 disabled={
-                  confirmando || !liga || !clube || (!!existente && !substituir)
+                  !hidratado ||
+                  operando ||
+                  confirmando ||
+                  !liga ||
+                  !clube ||
+                  (!!existente && !substituir)
                 }
                 onClick={confirmar}
               >

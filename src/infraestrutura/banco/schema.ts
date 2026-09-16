@@ -7,17 +7,19 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import type { EstadoCarreira } from "../../dominio/entidades/modelos";
+import type { EstadoCarreiraPersistido } from "../persistencia/carreira-persistida";
 
 // Declarativo: importado pelo Drizzle Kit sem criar conexão com o banco.
 export const careerSaves = pgTable("career_saves", {
   id: uuid("id").defaultRandom().primaryKey(),
+  accessTokenHash: text("access_token_hash").unique(),
+  revision: integer("revision").default(0).notNull(),
   saveVersion: integer("save_version").notNull(),
   name: text("name").notNull(),
   currentClubId: text("current_club_id"),
   currentLeagueId: text("current_league_id"),
   gameDate: date("game_date", { mode: "string" }).notNull(),
-  state: jsonb("state").$type<EstadoCarreira>().notNull(),
+  state: jsonb("state").$type<EstadoCarreiraPersistido>().notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),

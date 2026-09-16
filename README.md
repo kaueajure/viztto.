@@ -50,7 +50,7 @@ O catálogo e os códigos verificados estão em [documentacao/BASE-FUTEBOL.md](d
 - Contratos, renovação, propostas entre clubes da liga importada e transferências.
 - Notícias, caixa de entrada por remetente, objetivos, eventos e histórico estatístico.
 - Encerramento e início de temporadas seguintes sem apagar a história.
-- Save automático com Zustand persist e localStorage, continuar, excluir e reiniciar.
+- Save automático no PostgreSQL, Zustand em memória, continuar, excluir e reiniciar.
 - Interface responsiva com nove áreas da carreira e pós-jogo.
 
 ## Como jogar
@@ -64,9 +64,9 @@ O catálogo e os códigos verificados estão em [documentacao/BASE-FUTEBOL.md](d
 7. Ao acabar a liga, clique em **Próxima temporada**.
 8. As configurações da carreira permitem reiniciar ou excluir com confirmação.
 
-O progresso pertence ao navegador e à origem do site (domínio/porta). Limpar os dados do navegador apaga a carreira. Não há conta ou sincronização entre dispositivos. A fundação PostgreSQL já existe, mas ainda não recebe saves do jogo; o salvamento continua exclusivamente no localStorage.
+O progresso é armazenado no PostgreSQL. Um cookie HttpOnly identifica anonimamente a carreira deste navegador; limpar esse cookie perde o acesso automático, mas não apaga o registro no banco. Não há contas ou sincronização entre dispositivos. Aguarde a indicação de progresso salvo antes de fechar a página.
 
-## Fundação PostgreSQL
+## Persistência PostgreSQL
 
 Configure `DATABASE_URL` no ambiente do servidor ou no `.env` da raiz. O exemplo em `.env.example` é fictício. Com um banco PostgreSQL já provisionado:
 
@@ -75,7 +75,7 @@ npm run db:check
 npm run db:migrate
 ```
 
-Migrations são geradas em desenvolvimento com `npm run db:generate -- --name=nome_da_alteracao`. `npm run db:studio` abre a ferramenta de inspeção apenas em loopback. Nenhum desses comandos é executado automaticamente pelo jogo, build ou inicialização. Consulte [documentacao/POSTGRESQL.md](documentacao/POSTGRESQL.md) para schema, deploy e validação.
+Migrations são geradas em desenvolvimento com `npm run db:generate -- --name=nome_da_alteracao`. `npm run db:studio` abre a ferramenta de inspeção apenas em loopback. O jogo acessa o banco pela API de carreira. Migrations não são executadas em requests ou no build; o deploy aplica migrations antes de reiniciar a aplicação. Consulte [documentacao/POSTGRESQL.md](documentacao/POSTGRESQL.md) para schema, deploy e validação.
 
 ## Base inicial e simulação
 
@@ -94,7 +94,7 @@ npm start
 
 ## Tecnologias e arquitetura
 
-Next.js App Router, React, TypeScript strict, Tailwind CSS 4, Zustand persist, Zod, Lucide React e Vitest. Fontes Barlow e Barlow Condensed servidas localmente, com licença OFL em `public/fontes/LICENCA.txt`.
+Next.js App Router, React, TypeScript strict, Tailwind CSS 4, Zustand em memória, Drizzle/PostgreSQL, Zod, Lucide React e Vitest. Fontes Barlow e Barlow Condensed servidas localmente, com licença OFL em `public/fontes/LICENCA.txt`.
 
 ```text
 src/
@@ -104,8 +104,8 @@ src/
   aplicacao/casos-de-uso/      Criação, avanço e transição de temporadas
   simulacao/                  Partidas, elenco, mundo, mercado, decisões
   infraestrutura/transfermarkt/ Cliente, importação e normalização
-  infraestrutura/persistencia/ Adaptador local e validação do save (v2)
-  infraestrutura/banco/       Fundação PostgreSQL server-only, ainda sem integração ao jogo
+  infraestrutura/persistencia/ Serialização v3, hidratação, catálogo e cliente HTTP
+  infraestrutura/banco/       PostgreSQL server-only e repositório de saves
   estado/                     Zustand e ponte para casos de uso
   dados/                      Demonstração e JSON importados
   utilitarios/                Seed, datas e formatação

@@ -8,10 +8,6 @@ import {
   escalarTitulares,
   grupoPosicao,
 } from "@/dominio/formacao";
-import {
-  adaptarPersistencia,
-  obterErroPersistencia,
-} from "@/infraestrutura/persistencia/armazenamento";
 import { validarSave } from "@/infraestrutura/persistencia/validar-save";
 import { criarCarreira } from "@/aplicacao/casos-de-uso/criar-carreira";
 import { gerarClubesDemonstracao } from "@/dados/demonstracao";
@@ -66,7 +62,7 @@ describe("formação viztto", () => {
   });
 });
 
-describe("save local", () => {
+describe("validação do estado runtime", () => {
   it("valida e restaura uma carreira completa", () => {
     const liga = LIGAS_SUPORTADAS[0],
       clubes = gerarClubesDemonstracao(liga);
@@ -91,30 +87,6 @@ describe("save local", () => {
       origem: "demonstracao",
     });
     expect(validarSave(JSON.parse(JSON.stringify(carreira)))).toEqual(carreira);
-  });
-
-  it("abstrai armazenamento e informa erro de quota", () => {
-    const memoria = new Map<string, string>(),
-      adaptador = adaptarPersistencia({
-        ler: (chave) => memoria.get(chave) ?? null,
-        salvar: (chave, valor) => {
-          memoria.set(chave, valor);
-        },
-        remover: (chave) => {
-          memoria.delete(chave);
-        },
-      });
-    adaptador.setItem("teste", "save");
-    expect(adaptador.getItem("teste")).toBe("save");
-    const falho = adaptarPersistencia({
-      ler: () => null,
-      salvar: () => {
-        throw new Error("QuotaExceededError");
-      },
-      remover: () => {},
-    });
-    expect(() => falho.setItem("teste", "save")).not.toThrow();
-    expect(obterErroPersistencia()).toContain("Não foi possível salvar");
   });
 });
 

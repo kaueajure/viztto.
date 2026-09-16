@@ -10,8 +10,8 @@ import { criarTreinador } from "@/dominio/mundo-futebol";
 import { normalizarIdsEventos } from "@/simulacao/eventos/eventos";
 
 const numero = z.number().finite(),
-  data = z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  texto = z.string();
+  data = z.iso.date(),
+  texto = z.string().max(10000);
 const atributos = z.object(
   Object.fromEntries(
     Object.keys(NOMES_ATRIBUTOS).map((chave) => [chave, numero]),
@@ -115,7 +115,7 @@ const esquemaTemporada = z.object({
   encerrada: z.boolean(),
 });
 
-const esquemaCarreira = z.object({
+export const esquemaCarreira = z.object({
   versao: z.literal(2),
   id: texto,
   seed: texto,

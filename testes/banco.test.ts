@@ -1,3 +1,4 @@
+import { serializarCarreira } from "@/infraestrutura/persistencia/carreira-persistida";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -125,10 +126,10 @@ describe("fundação PostgreSQL", () => {
           const [salvo] = await tx
             .insert(careerSaves)
             .values({
-              saveVersion: state.versao,
+              saveVersion: 3,
               name: "Carreira de teste",
               gameDate: state.dataAtual,
-              state,
+              state: serializarCarreira(state),
             })
             .returning();
           expect(salvo.id).toMatch(/^[0-9a-f-]{36}$/);
@@ -141,19 +142,21 @@ describe("fundação PostgreSQL", () => {
             .select()
             .from(careerSaves)
             .where(eq(careerSaves.id, salvo.id));
-          expect(lido.state).toEqual(JSON.parse(JSON.stringify(state)));
+          expect(lido.state).toEqual(
+            JSON.parse(JSON.stringify(serializarCarreira(state))),
+          );
           expect(lido.gameDate).toBe("2026-06-01");
           const id = "f5ec7b7d-9e47-4f86-943a-78638a3f5210";
           const [explicito] = await tx
             .insert(careerSaves)
             .values({
               id,
-              saveVersion: state.versao,
+              saveVersion: 3,
               name: "UUID da aplicação",
               gameDate: state.dataAtual,
               currentClubId: state.clubeAtualId,
               currentLeagueId: state.liga.id,
-              state,
+              state: serializarCarreira(state),
             })
             .returning();
           expect(explicito.id).toBe(id);

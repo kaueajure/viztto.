@@ -8,6 +8,13 @@
       "when": 1789580130634,
       "tag": "0000_career_saves",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789583639327,
+      "tag": "0001_save_anonimo_revision",
+      "breakpoints": true
     }
   ]
 }

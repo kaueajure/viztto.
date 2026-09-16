@@ -19,6 +19,7 @@ import {
   X,
   LogOut,
 } from "lucide-react";
+import { EstadoPersistencia } from "./EstadoPersistencia";
 import { useJogoStore } from "@/estado/jogo-store";
 import { InicioCarreira } from "./InicioCarreira";
 import { PainelJogador } from "@/componentes/jogador/PainelJogador";
@@ -44,6 +45,10 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
   const {
       carreira: c,
       hidratado,
+      salvando,
+      alteracoesPendentes,
+      erroPersistencia,
+      operando,
       erro,
       avancar,
       proximaTemporada,
@@ -74,7 +79,8 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
       <main className="carregamento">
         <span className="marca">viztto.</span>
         <h1>SEU CAMINHO COMEÇA AQUI.</h1>
-        <p>{erro ?? "Nenhuma carreira salva neste navegador."}</p>
+        <p>{erro ?? "Nenhuma carreira encontrada."}</p>
+        <EstadoPersistencia />
         <Link className="botao principal" href="/nova-carreira">
           Nova carreira
         </Link>
@@ -192,6 +198,7 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
             </span>
           </div>
         )}
+        <EstadoPersistencia />
         {erro && (
           <p className="aviso erro" role="alert">
             {erro}
@@ -221,9 +228,13 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
         <footer className="rodape-jogo">
           <span>
             <span className="ponto" />{" "}
-            {erro
-              ? "VERIFIQUE O SALVAMENTO"
-              : "PROGRESSO SALVO NESTE NAVEGADOR"}
+            {erroPersistencia
+              ? "ALTERAÇÕES NÃO SALVAS"
+              : salvando
+                ? "SALVANDO NO SERVIDOR…"
+                : alteracoesPendentes
+                  ? "SALVAMENTO PENDENTE"
+                  : "PROGRESSO SALVO NO SERVIDOR"}
           </span>
           <span>VIZTTO / CARREIRA DE JOGADOR</span>
         </footer>
@@ -259,6 +270,7 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
             </div>
             {confirmacao ? (
               <>
+                <EstadoPersistencia />
                 <h3>
                   {confirmacao === "excluir"
                     ? "Excluir esta carreira?"
@@ -279,11 +291,12 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
                   </button>
                   <button
                     className="botao perigo"
-                    onClick={() => {
+                    disabled={operando}
+                    onClick={async () => {
                       if (confirmacao === "excluir") {
-                        excluir();
+                        if (!(await excluir())) return;
                         roteador.push("/");
-                      } else reiniciar();
+                      } else if (!(await reiniciar())) return;
                       definirConfiguracoes(false);
                       definirConfirmacao(null);
                     }}
@@ -295,7 +308,7 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
               </>
             ) : (
               <>
-                <p>Seu progresso fica salvo automaticamente neste navegador.</p>
+                <p>Seu progresso é salvo automaticamente no servidor.</p>
                 <div className="config-acoes">
                   <Link className="botao secundario" href="/nova-carreira">
                     Nova carreira

@@ -1,0 +1,97 @@
+import { describe, expect, it, vi } from "vitest";
+import { criarJogoStore } from "@/estado/jogo-store";
+import {
+  ErroApiCarreira,
+  type ClienteCarreira,
+} from "@/infraestrutura/persistencia/cliente-carreira";
+import { exemploCarreira } from "./auxiliar-carreira-persistida";
+function ambiente() {
+  const exemplo = exemploCarreira();
+  const api: ClienteCarreira = {
+    carregar: vi.fn(async () => ({ carreira: exemplo.carreira, revision: 0 })),
+    criar: vi.fn(async () => ({ carreira: exemplo.carreira, revision: 0 })),
+    salvar: vi.fn(async (_p, revision) => ({ revision: revision + 1 })),
+    excluir: vi.fn(async () => {}),
+  };
+  return { ...exemplo, api, store: criarJogoStore(api) };
+}
+function pendente<T>() {
+  let resolver!: (v: T) => void;
+  let rejeitar!: (e: Error) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolver = res;
+    rejeitar = rej;
+  });
+  return { promise, resolver, rejeitar };
+}
+
+describe("autosave em memória", () => {
+  it("uma gravação ativa, agrupa alterações e envia a revisão confirmada", async () => {
+    const { store, api } = ambiente();
+    await store.getState().carregar();
+    const primeira = pendente<{ revision: number }>();
+    vi.mocked(api.salvar).mockImplementationOnce(() => primeira.promise);
+    store.getState().escolherTreino("drible");
+    store.getState().escolherTreino("fisico");
+    store.getState().escolherTreino("defesa");
+    expect(api.salvar).toHaveBeenCalledTimes(1);
+    expect(store.getState().alteracoesPendentes).toBe(true);
+    primeira.resolver({ revision: 1 });
+    await store.getState().tentarSalvar();
+    expect(api.salvar).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(api.salvar).mock.calls[1][0].focoTreino).toBe("defesa");
+    expect(vi.mocked(api.salvar).mock.calls[1][1]).toBe(1);
+    expect(store.getState().revision).toBe(2);
+    expect(store.getState().alteracoesPendentes).toBe(false);
+  });
+  it("falha preserva memória e permite retry, conflito não sobrescreve servidor", async () => {
+    const { store, api } = ambiente();
+    await store.getState().carregar();
+    vi.mocked(api.salvar).mockRejectedValueOnce(new Error("offline"));
+    store.getState().escolherTreino("drible");
+    await store.getState().tentarSalvar();
+    expect(store.getState().carreira?.focoTreino).toBe("drible");
+    expect(store.getState().alteracoesPendentes).toBe(true);
+    expect(store.getState().erroPersistencia).toContain("não salvas");
+    await store.getState().tentarSalvar();
+    expect(store.getState().alteracoesPendentes).toBe(false);
+    vi.mocked(api.salvar).mockRejectedValueOnce(
+      new ErroApiCarreira(409, "Outra aba alterou"),
+    );
+    store.getState().escolherTreino("fisico");
+    await store.getState().tentarSalvar();
+    expect(store.getState().conflito).toBe(true);
+    const chamadas = vi.mocked(api.salvar).mock.calls.length;
+    await store.getState().tentarSalvar();
+    expect(api.salvar).toHaveBeenCalledTimes(chamadas);
+    expect(await store.getState().carregar()).toBe(false);
+    expect(await store.getState().carregar(true)).toBe(true);
+  });
+  it("criação e exclusão só alteram memória após confirmação, falhas preservam carreira", async () => {
+    const { store, api, entrada } = ambiente();
+    await store.getState().carregar();
+    const anterior = store.getState().carreira;
+    expect(await store.getState().iniciar(entrada)).toBe(false);
+    vi.mocked(api.criar).mockRejectedValueOnce(new Error("db indisponível"));
+    expect(await store.getState().iniciar(entrada, true)).toBe(false);
+    expect(store.getState().carreira).toBe(anterior);
+    vi.mocked(api.excluir).mockRejectedValueOnce(new Error("db indisponível"));
+    expect(await store.getState().excluir()).toBe(false);
+    expect(store.getState().carreira).toBe(anterior);
+    expect(await store.getState().excluir()).toBe(true);
+    expect(store.getState().carreira).toBeNull();
+  });
+  it("exclusão espera PUT ativo e não deixa estado antigo ressuscitar", async () => {
+    const { store, api } = ambiente();
+    await store.getState().carregar();
+    const primeira = pendente<{ revision: number }>();
+    vi.mocked(api.salvar).mockImplementationOnce(() => primeira.promise);
+    store.getState().escolherTreino("drible");
+    const exclusao = store.getState().excluir();
+    expect(api.excluir).not.toHaveBeenCalled();
+    primeira.resolver({ revision: 1 });
+    expect(await exclusao).toBe(true);
+    expect(api.excluir).toHaveBeenCalledWith(1);
+    expect(store.getState().carreira).toBeNull();
+  });
+});

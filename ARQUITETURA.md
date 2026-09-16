@@ -1,4 +1,4 @@
-# Arquitetura do viztto — fase 4
+# Arquitetura do viztto — fase 5
 
 ## Direção das dependências
 
@@ -7,13 +7,13 @@ A interface depende do estado e dos casos de uso. Os casos de uso coordenam o do
 ```text
 Componentes → Zustand → Casos de uso → Simulação → Domínio
                   ↓
-        Adaptador de persistência
+        Serialização → API de carreira → PostgreSQL
 
 CLI → Transfermarkt API local → staging → validação → snapshots versionados
 Criação → GET /api/futebol/ligas e /api/futebol → snapshots → save da carreira
 ```
 
-O save (versão 2) guarda o mundo vivo: ligas, clubes, `JogadorMundo`, temporada principal, temporadas externas, decisões, relacionamentos e transferências recentes.
+O runtime (versão 2) contém o mundo vivo: ligas, clubes, `JogadorMundo`, temporadas, decisões, relacionamentos e transferências. O formato persistido v3 guarda suas referências e partes dinâmicas.
 
 ## Determinismo e processamento
 
@@ -42,11 +42,13 @@ Necessidade por posição, reputação e orçamento. Janelas verão/inverno. Tra
 
 ## Persistência
 
-O jogo continua usando Zustand persist + localStorage, com validação Zod e migração v1→v2. A fundação PostgreSQL em `infraestrutura/banco/` está isolada e ainda não é chamada pelo estado, pelos casos de uso ou pelas rotas.
+PostgreSQL é a fonte de verdade. Zustand contém somente o `EstadoCarreira` runtime (v2), sem middleware de persistência. A API `/api/carreira` identifica o save por hash de um token aleatório em cookie HttpOnly, nunca por UUID enviado pelo cliente.
 
-`career_saves` guarda o `EstadoCarreira` completo em JSONB, com metadados tipados. O UUID do registro é independente do `id` do domínio (atualmente a seed). `game_date` é `date` mapeada como string `YYYY-MM-DD`. Não há autenticação, usuário fictício, API de saves ou sincronização automática.
+`serializarCarreira` produz `EstadoCarreiraPersistido` v3: IDs de ligas, clubes e NPCs, mais os deltas e todo o restante dinâmico do mundo. `hidratarCarreira` combina esses dados com o catálogo dos snapshots, resolve referências e valida o resultado. Elencos são reconstruídos na ordem do save, preservando transferências e aposentadorias. Entidades ausentes causam incompatibilidade explícita.
 
-Drizzle Kit gera SQL e metadados versionados em `drizzle/`. `npm run db:migrate` aplica somente migrations pendentes pelo migrador do Drizzle ORM, inclusive com dependências apenas de produção. Conexão lazy protegida por `server-only`, reutilizada por processo/hot reload. Build e jogo continuam funcionando sem PostgreSQL. Detalhes e deploy: [documentacao/POSTGRESQL.md](documentacao/POSTGRESQL.md).
+Autosave tem uma única escrita ativa por instância e agrupa alterações intermediárias. `revision` condiciona o UPDATE atômico no banco; conflitos entre abas não sobrescrevem progresso. Criação/substituição/exclusão aguardam confirmação do banco. Falhas mantêm alterações em memória com retry e aviso antes de sair. Não há fallback de armazenamento no navegador.
+
+Schema, migrations, classificação dos campos, cookie, testes e limites: [documentacao/POSTGRESQL.md](documentacao/POSTGRESQL.md).
 
 ## Publicação da base
 

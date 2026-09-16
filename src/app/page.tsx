@@ -3,10 +3,12 @@ import { formatarTemporada } from "@/dominio/constantes/temporadas-iniciais";
 import { useFocoModal } from "@/componentes/interface/useFocoModal";
 import Link from "next/link";
 import { ArrowUpRight, Play, ArrowRight, Trash2 } from "lucide-react";
+import { EstadoPersistencia } from "@/componentes/jogo/EstadoPersistencia";
 import { useJogoStore } from "@/estado/jogo-store";
 import { useState } from "react";
 export default function Inicio() {
-  const { carreira, hidratado, excluir, erro } = useJogoStore();
+  const { carreira, hidratado, excluir, erro, temSave, operando } =
+    useJogoStore();
   const [confirmar, definirConfirmar] = useState(false);
   useFocoModal(confirmar, () => definirConfirmar(false));
   return (
@@ -65,12 +67,13 @@ export default function Inicio() {
             <span> / </span> Rodada {carreira.temporada.rodadaAtual}
           </p>
         )}
+        <EstadoPersistencia />
         {erro && (
           <p role="alert" className="aviso erro">
             {erro}
           </p>
         )}
-        {hidratado && (carreira || erro) && (
+        {hidratado && temSave && (
           <button
             className="botao-texto excluir-inicio"
             onClick={() => definirConfirmar(true)}
@@ -92,7 +95,8 @@ export default function Inicio() {
             aria-labelledby="titulo-excluir"
           >
             <h2 id="titulo-excluir">Excluir carreira?</h2>
-            <p>Todo o progresso salvo neste navegador será apagado.</p>
+            <EstadoPersistencia />
+            <p>Todo o progresso desta carreira será apagado do servidor.</p>
             <div className="acoes">
               <button
                 className="botao secundario"
@@ -102,9 +106,9 @@ export default function Inicio() {
               </button>
               <button
                 className="botao perigo"
-                onClick={() => {
-                  excluir();
-                  definirConfirmar(false);
+                disabled={operando}
+                onClick={async () => {
+                  if (await excluir()) definirConfirmar(false);
                 }}
               >
                 Excluir carreira

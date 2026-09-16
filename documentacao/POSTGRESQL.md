@@ -1,108 +1,135 @@
-# Fundação PostgreSQL
+# Persistência de carreiras — fase 5
 
-## Escopo e arquitetura analisada
+## Fonte de verdade e fluxo
 
-Analisados `package.json`, o store Zustand, todos os módulos de `infraestrutura/persistencia/`, as entidades do domínio, ambas as rotas de futebol, `.env.example`, documentação de arquitetura e testes de persistência. Não há `.github/workflows/deploy.yml` nem outro workflow de deploy versionado neste checkout.
+PostgreSQL guarda o progresso. Zustand é apenas memória/UI; a carreira não usa `localStorage`, `sessionStorage`, IndexedDB nem `persist()` do Zustand. A mensagem antiga de limite de armazenamento foi removida. O adaptador `armazenamento.ts` foi removido.
 
-O Zustand mantém `persist()`, a chave `viztto-carreira`, a versão 2, a hidratação e o adaptador de localStorage. `validarSave` preserva a validação/migração existente. Snapshots de futebol continuam em JSON no disco, servidos pelas rotas de leitura. Nenhuma tela, criação de carreira, regra do simulador ou rota foi alterada por esta fundação.
+```text
+Ação → EstadoCarreira runtime v2 → serializarCarreira → EstadoCarreiraPersistido v3
+    → fila de autosave → PUT /api/carreira → career_saves (JSONB + metadados)
 
-Esta etapa não resolve o limite de armazenamento do navegador: não há transferência automática ou manual dos saves para PostgreSQL ainda.
-
-## Dependências
-
-- Produção: `drizzle-orm` 0.45.2 e `postgres` 3.4.9.
-- Desenvolvimento: `drizzle-kit` 0.31.10.
-- `server-only` já existia. Não foi adicionado Prisma, autenticação ou modelo de usuários.
-
-O lockfile fixa as versões instaladas. Há quatro avisos moderados na cadeia de desenvolvimento `drizzle-kit → @esbuild-kit/esm-loader → @esbuild-kit/core-utils → esbuild`; `npm audit --omit=dev` não encontrou vulnerabilidades. Não foi aplicado downgrade/`audit fix --force`.
-
-## Configuração e conexão
-
-`DATABASE_URL` vem do ambiente ou do `.env` da raiz. Variáveis exportadas têm precedência. Os comandos fora do Next carregam esse arquivo explicitamente; `.env.local` não é carregado por esses comandos. Não usar prefixo `NEXT_PUBLIC_`. Arquivos `.env*` reais continuam ignorados, com exceção de `.env.example`.
-
-Exemplo fictício:
-
-```dotenv
-DATABASE_URL=postgresql://viztto:senha@127.0.0.1:5432/viztto
+GET /api/carreira → JSONB + catálogo do deploy → hidratarCarreira
+    → validar referências/estado → EstadoCarreira runtime → Zustand
 ```
 
-Ausência, protocolo inválido ou URL sem host/banco geram mensagem clara. Nenhuma mensagem da CLI inclui a URL, senha, erro bruto do driver ou dados de SQL. TLS pode ser configurado na própria URL conforme o provedor; não desativamos validação de certificados.
+O motor e suas regras continuam independentes do banco. As versões do runtime e do formato persistido são deliberadamente distintas. O schema JSONB usa `EstadoCarreiraPersistido`; isso não muda a versão do simulador.
 
-`obterBanco()` é lazy: importar o módulo não exige a variável nem abre conexão. A conexão/ORM é guardada em `globalThis` por processo para sobreviver ao hot reload. O pool da aplicação tem limite de cinco conexões; os comandos CLI usam um cliente próprio limitado a uma conexão, encerrado em `finally`. Timeout de conexão: 10 segundos; consulta: 30 segundos; conexões ociosas: 20 segundos.
+## Classificação dos campos
 
-`conexao.ts` e `cliente.mjs` usam `server-only`. O schema é declarativo e não abre conexão, permitindo sua leitura pelo Kit. Tipos `CareerSave` e `NovoCareerSave` são inferidos do schema; `state` é tipado como `EstadoCarreira` por importação apenas de tipo. Essa tipagem não substitui a validação de payloads em uma futura integração.
+A classificação foi baseada em `EstadoCarreira`, geração de mundo, evolução, escalação, avanço de tempo, transição de temporada, decisões e mercado. Não se determina se um campo é estático apenas pelo objeto que o contém.
 
-Os comandos de migração/check são JavaScript ESM com checagem TypeScript via JSDoc: funcionam no Node 22.12+ sem `tsx`, TypeScript ou Drizzle Kit instalados em produção. A condição `react-server` habilita o uso legítimo de módulos `server-only` nesses processos Node.
+| Grupo | No PostgreSQL | Reconstruído / derivado |
+| --- | --- | --- |
+| Carreira | ID original, seed, estado aleatório, datas, identidade inicial, jogador do usuário completo, IDs de clube inicial/atual, IDs e ordem das ligas | Objetos `liga` e `ligas` vêm do catálogo |
+| Clubes | ID, formação, goleiro/titulares/banco, reputação, forças geral/ataque/meio/defesa, orçamento, forma/moral/fadiga, ordem do elenco e seus deltas | Nomes, códigos, IDs externos, escudo, país, estádio, capacidade, fundação, dados brutos, idade média, valor inicial do elenco, registro externo de transferências, qualidade da base, poder financeiro |
+| NPCs dos snapshots | ID, clube atual, idade da simulação, overall/potencial, forma/moral/condicionamento/fadiga, valor, salário, contrato, lesão, suspensão, papel e estatísticas acumuladas | Nome, foto, IDs externos, nacionalidade, nascimento original, posições, pé, altura, camisa e histórico cadastral original |
+| Treinador | Não muda no motor atual | Reconstruído pelo catálogo/preparação de mundo; personalidade e identidade não são duplicadas |
+| Temporadas | Calendários, partidas, placares, eventos, classificações, andamento, temporadas externas/arquivadas | Nenhuma rodada é simulada novamente ao carregar |
+| Mercado e história | Propostas, contrapropostas, observação, preferências, transferências, contratos, decisões, objetivos, notícias, eventos e registros | `nomeJogador` de transferência é resolvido pelo ID; textos históricos narrativos permanecem |
+| Outros | Janela, relações, foco de treino, última partida | `tamanhoElenco` é derivado do elenco atual |
 
-## Schema final
+As quatro forças dos clubes são persistidas mesmo sendo recalculáveis: o momento do recálculo faz parte da continuidade do motor. A ordem de clubes/ligas/NPCs é persistida porque interfere no consumo do gerador aleatório e em desempates. A busca no catálogo usa ID, nunca a posição do array do snapshot.
 
-| Coluna | Tipo PostgreSQL | Obrigatória | Default |
-| --- | --- | --- | --- |
-| id | uuid, primary key | Sim | gen_random_uuid() |
-| save_version | integer | Sim | — |
-| name | text | Sim | — |
-| current_club_id | text | Não | — |
-| current_league_id | text | Não | — |
-| game_date | date | Sim | — |
-| state | jsonb | Sim | — |
-| created_at | timestamptz | Sim | now() |
-| updated_at | timestamptz | Sim | now() |
+Não há geração de novos NPCs durante as semanas do motor atual; os NPCs de demonstração são fixtures reproduzíveis e não participam da criação pública. O formato já tem `jogadoresGerados`: identidades próprias de NPCs com prefixo reservado `gerado-`, combinadas com os mesmos deltas de elenco. Isso não implementa geração de jogadores. Fotos/IDs externos de gerados são vazios; um ID Transfermarkt ausente nunca é promovido silenciosamente a gerado.
 
-`dataAtual` é sempre uma string `YYYY-MM-DD` no domínio; `date({ mode: "string" })` mantém esse formato sem conversão de fuso. O UUID da tabela pode ser informado ou gerado pelo banco e é independente de `EstadoCarreira.id`, que atualmente é a seed e pode não ser UUID. O estado inteiro permanece no JSONB, incluindo seu identificador original.
+## Formato persistido
 
-`save_version` futuramente deverá refletir `state.versao`; `name` é o nome do save. A futura camada de aplicação deverá validar o estado e manter os metadados consistentes na mesma escrita. O default de `updated_at` vale na inserção: operações futuras de atualização devem defini-lo explicitamente. Não há trigger oculto ou hook de atualização apenas no ORM.
+```typescript
+{
+  versao: 3,
+  id, seed, estadoAleatorio, dataAtual, dataInicio,
+  identidadeInicial, jogador, clubeInicialId, clubeAtualId,
+  ligaId, ligasIds,
+  clubesDinamicos: [{
+    id, formacaoPreferida, goleiroTitularId, titularesIds, bancoIds,
+    reputacao, forcaGeral, forcaAtaque, forcaMeio, forcaDefesa,
+    orcamento, forma, moral, fadiga,
+    elenco: [{ id, clubeId, idade, overall, potencial, forma, moral,
+      condicionamento, fadiga, valorMercado, salario, contratoAte,
+      lesionado, lesao, suspensao, statusElenco, estatisticasCarreira }]
+  }],
+  jogadoresGerados: [],
+  temporada, temporadasExternas, mercado, propostas, transferenciasRecentes,
+  janelaTransferencias, relacionamentos, decisoes, noticias, eventos,
+  objetivos, registros, temporadasAnteriores, ultimaPartidaId, focoTreino, origem
+}
+```
 
-Somente o índice da chave primária foi criado: ainda não existem consultas de listagem/filtro que justifiquem índices adicionais ou GIN no JSONB. Não há normalização de clubes/ligas nem FKs para tabelas inexistentes. Uma migration futura poderá criar `users` e adicionar `user_id`, com estratégia explícita para saves anteriores.
+Campos administrativos `save_version`, `name`, `current_club_id`, `current_league_id`, `game_date`, `updated_at` e JSONB são escritos na mesma instrução SQL. O UUID da linha é independente do ID/seed do simulador.
 
-## Migration e comandos
+## Catálogo e compatibilidade
 
-Gerada pelo Drizzle Kit: `drizzle/0000_career_saves.sql`, acompanhada de `drizzle/meta/0000_snapshot.json` e `drizzle/meta/_journal.json`. O SQL cria somente a tabela acima. O migrador mantém também seu controle interno em `drizzle.__drizzle_migrations`.
+`src/dados/futebol/*.json` continua sendo conteúdo versionado do aplicativo, atualizado somente pela CLI de futebol. A persistência não escreve nesses arquivos nem consulta Transfermarkt. Cada operação lê o catálogo local e combina as identidades com os deltas.
+
+NPC transferido é buscado por ID em todo o catálogo e colocado no clube/posição de elenco que o save determina. Um NPC aposentado não é reinserido só porque ainda existe no snapshot. Se um clube/jogador/liga referenciado desaparecer, o servidor retorna incompatibilidade e preserva a linha no banco. Um clube que mude de liga e invalide o calendário também exige resolução explícita.
+
+Atualizações cadastrais dos snapshots refletem no runtime carregado. Mudanças estáticas que influenciam regras (posição, reputação de liga, capacidade financeira institucional etc.) podem influenciar a simulação futura; determinismo é garantido com a mesma base e motor. Não se guarda cópia do catálogo para congelar versões antigas. Antes de publicar uma base que remove IDs, é necessário planejar sua compatibilidade com saves existentes.
+
+## Cookie e segurança
+
+O servidor gera 32 bytes criptograficamente aleatórios. Só SHA-256 do token vai em `access_token_hash`; o token fica em cookie `viztto_carreira`, HttpOnly, SameSite=Lax, Path=/, Secure em produção, duração de 365 dias renovada ao carregar. O cookie não contém UUID do banco nem estado da carreira. JavaScript não lê o token.
+
+Rotas:
+
+- `GET /api/carreira`: 404 sem carreira; 200 com runtime/revision; 422 para incompatibilidade.
+- `POST`: INSERT ou substituição explicitamente confirmada, condicionada à revisão atual. A substituição faz UPDATE atômico na mesma linha.
+- `PUT`: gravação validada, sempre vinculada ao token, nunca a UUID arbitrário.
+- `DELETE`: exclusão vinculada a token/revisão; invalida cookie e só então o frontend limpa memória.
+
+Não há parâmetros de identificação por URL. Payloads usam Zod, limites de arrays/textos, datas válidas, enums críticos, IDs e integridade de referências. Chaves perigosas e campos inesperados são rejeitados. O limite de corpo é 16 MiB, contado durante a leitura mesmo sem Content-Length. Respostas são `private, no-store`; não há logs de token, credenciais ou estado. Falhas do banco não retornam stack trace.
+
+Operações mutáveis exigem Origin do mesmo host/protocolo e, quando presente, Sec-Fetch-Site same-origin. A configuração existente do proxy deve encaminhar Host/protocolo corretamente. Nginx/PM2/workflow não foram alterados.
+
+Sem login, o cookie é uma credencial de posse. Limpar cookies ou usar outro dispositivo perde o acesso automático; o registro permanece no PostgreSQL. Não há recuperação de conta nem listagem pública de saves. Futuramente, uma migration pode criar users e adicionar `user_id`; vincular o save exigirá provar posse do token e da conta, sem alterar o motor.
+
+## Autosave e concorrência
+
+Todas as ações do store que mudam a carreira passam por `aplicar`, incluindo notícias lidas. Uma requisição PUT fica ativa; alterações seguintes marcam a geração em memória e, ao confirmar, somente a versão mais recente é enviada. Não há polling ou fila em disco.
+
+O servidor executa UPDATE com condição `access_token_hash + revision` e incrementa revision na mesma operação. Uma atualização antiga recebe 409 e não sobrescreve a nova. Repetição idêntica do último PUT com ACK perdido pode retornar a revisão já confirmada sem gravar novamente. Diferentes abas são protegidas pela revisão, não por uma fila global.
+
+Falhas mantêm o runtime e as alterações pendentes. Há botão de retry, nova tentativa ao voltar online e aviso `beforeunload`. Conflitos bloqueiam novas alterações até carregar o servidor; descartar alterações locais exige confirmação explícita. Não há merge automático entre abas. Carregamento, criação e exclusão aguardam escrita ativa, evitando que um PUT antigo ressuscite uma carreira excluída.
+
+Criar/substituir espera o banco antes de navegar. Excluir espera o banco antes de limpar memória. Falhas preservam a carreira anterior. Uma falha após COMMIT mas antes da resposta pode requerer recarregar o servidor; nunca é resolvida forçando uma revisão nova. POST inicial cuja resposta/cookie se perca pode deixar uma linha órfã, sem expor acesso público.
+
+## Migrations e registros anteriores
+
+`0000_career_saves.sql` permanece intacta. `0001_save_anonimo_revision.sql`, gerada pelo Drizzle Kit, adiciona:
+
+- `access_token_hash text NULL` com unicidade (também fornece o índice de busca do token);
+- `revision integer NOT NULL DEFAULT 0`.
+
+Não há DROP, reset, push de schema ou recriação. Linhas antigas recebem revision 0, mantêm state/UUID/metadados e token nulo. Não são apagadas nem associadas automaticamente a qualquer navegador. Precisam de procedimento administrativo explícito de conversão/vinculação, fora desta etapa. Saves antigos no navegador também não são lidos/importados automaticamente: esta implementação não oferece fluxo híbrido.
 
 ```bash
-# Em desenvolvimento, após alterar schema.ts:
-npm run db:generate -- --name=descricao_da_alteracao
-
-# No servidor, com DATABASE_URL configurada:
+npm run db:generate -- --name=descricao
 npm run db:check
 npm run db:migrate
-
-# Inspeção local, com dependências de desenvolvimento:
 npm run db:studio
 ```
 
-A configuração exige `DATABASE_URL` também ao gerar migrations, mas `generate` não conecta ao banco: um endereço fictício serve para geração offline. Não há `push`, reset ou seed no fluxo. Revise e versione SQL, snapshot e journal juntos; não edite migrations já aplicadas.
+Não altere `.env`; DATABASE_URL real permanece ignorada. O ambiente de desenvolvimento autorizado usa `127.0.0.1:5433/viztto_dev` por túnel SSH. A migration foi aplicada somente nesse ambiente e em clusters temporários de teste. Produção recebe migrations pelo fluxo de deploy já existente; nenhum deploy foi executado nesta entrega.
 
-O comando `db:migrate` usa o [migrador oficial do Drizzle ORM](https://orm.drizzle.team/docs/drizzle-kit-generate), uma das formas suportadas de aplicar SQL gerado pelo Kit. Assim, não depende de `drizzle-kit` em produção. O [driver Postgres.js](https://github.com/porsager/postgres) é compartilhado com a infraestrutura da aplicação.
+O comando de migration usa Drizzle ORM/Postgres.js e funciona sem dependências de desenvolvimento. O banco deve ter armazenamento durável e sobreviver a reinício/deploy; a aplicação não o recria. Configuração de retenção e backups continua responsabilidade operacional.
 
-## Deploy
+## Como evoluir
 
-O PostgreSQL deve ser provisionado separadamente e sobreviver aos deploys. Nenhum comando cria/recria o banco ou remove dados. Nenhum script externo/root-owned da VM foi alterado.
+Para cada propriedade nova, rastreie quem a altera e quem a lê. Se vem exclusivamente do cadastro, resolva pelo catálogo. Se muda na simulação, defina schema do delta, serialização e hidratação. Se é derivável, comprove que recomputar não altera ordem/seed/comportamento. Adicione teste de round-trip e do próximo passo de simulação. Mudanças incompatíveis precisam de versão/conversor explícito; tipos TypeScript não substituem validação runtime.
 
-No futuro fluxo de release: disponibilizar a nova versão e suas dependências, fornecer `DATABASE_URL`, executar `npm run db:migrate` **uma única vez antes de reiniciar a aplicação**, e só prosseguir se o comando retornar zero. Serializar deploys para evitar migradores concorrentes. Não gerar migrations em produção.
+## Como testar
 
-Mesmo com `npm ci --omit=dev`, incluir no artefato `scripts/db.mjs`, `src/infraestrutura/banco/cliente.mjs`, `src/infraestrutura/banco/configuracao.mjs`, a pasta `drizzle/` completa e `package.json`/lockfile. Um artefato Next standalone isolado não inclui necessariamente esses arquivos: executar a migration na etapa de release com esses arquivos disponíveis.
+```bash
+npm run typecheck
+npm test
+npm run build
+```
 
-Não foi conectado o banco ao `build`, `start`, Zustand ou endpoints. Build e jogo permanecem independentes da disponibilidade do PostgreSQL.
+A suíte normal não usa o banco configurado do desenvolvedor. Para integrar PostgreSQL, aplique migrations em um banco exclusivamente de teste e execute `npm test` com `VIZTTO_TEST_DATABASE_URL` apontando para ele. Os testes usam rollback ou excluem apenas linhas dos tokens que criaram. Nunca aponte essa variável para produção.
 
-## Testes e verificação
+Há testes de serialização sem catálogo, round-trip determinístico, transferência/aposentadoria/evolução, referências ausentes, validação, acesso por token, cookie, same-origin, tamanho, revisões, substituição, exclusão, erros e reload com descarte completo do Zustand. O relatório da entrega registra a execução real e o tamanho medido.
 
-- `npm install`: concluído.
-- `npm run typecheck`: aprovado.
-- `npm test`: 97 aprovados, 1 integração omitida quando não há banco de teste.
-- Com `VIZTTO_TEST_DATABASE_URL` apontando para PostgreSQL 16 temporário: 98 testes aprovados em 9 arquivos.
-- `npm run build`: aprovado sem `DATABASE_URL`.
-- `db:check`: `SELECT 1` aprovado no banco temporário.
-- `db:migrate`: executado duas vezes; uma única migration registrada, sem recriar tabela.
-- Artefato temporário com `npm ci --omit=dev`: `db:check` e `db:migrate` aprovados, sem Drizzle Kit ou tsx instalados.
-- Drizzle Kit: regeneração sem diferenças, `check` aprovado e Studio iniciado em loopback e encerrado após o teste.
-- A `DATABASE_URL` local também respondeu ao `db:check` (somente leitura). Migrations foram aplicadas exclusivamente nos bancos temporários, não nesse banco configurado.
-- Round-trip de carreira completa: JSONB preservado, data sem deslocamento, UUID gerado e explícito, metadados nulos e timestamps com defaults. O teste usa rollback e deixa zero saves.
-- Testes sem rede: configuração inválida/ausente, import lazy, reutilização em hot reload, encerramento e barreira `server-only`.
+## Limites operacionais
 
-Para repetir a integração, use exclusivamente um banco de teste previamente migrado e configure `VIZTTO_TEST_DATABASE_URL` no ambiente antes de `npm test`. O teste não usa `DATABASE_URL` como fallback.
+A API aceita até 16 MiB por requisição. Um proxy externo pode ter limite menor e recusar o corpo antes de chegar ao Next; sua configuração não está neste escopo e não foi alterada. O save medido com todas as ligas locais tem cerca de 4,8 MB antes da evolução. História acumulada aumenta esse tamanho; ultrapassar o limite produz erro explícito, sem descartar campos.
 
-## Arquivos desta entrega
-
-Criados: `drizzle.config.ts`; os três arquivos de migration/metadados em `drizzle/`; `src/infraestrutura/banco/{configuracao.mjs,cliente.mjs,conexao.ts,schema.ts}`; `scripts/db.mjs`; `testes/banco.test.ts`; este documento.
-
-Alterados: `package.json`, `package-lock.json`, `.env.example`, `README.md`, `ARQUITETURA.md`. As alterações anteriores da fase 4 foram preservadas. Nenhum commit ou push foi feito.
+A fila existe somente em memória. Fechar à força, encerrar o processo ou perder energia antes da confirmação pode perder alterações ainda pendentes; o último save confirmado permanece íntegro. Navegadores podem limitar o aviso de saída, sobretudo no mobile. Não há fallback silencioso.
