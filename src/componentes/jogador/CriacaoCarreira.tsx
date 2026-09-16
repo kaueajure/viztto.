@@ -4,9 +4,16 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Check, RefreshCw } from "lucide-react";
-import type { Clube, IdentidadeJogador } from "@/dominio/entidades/modelos";
+import type {
+  Clube,
+  IdentidadeJogador,
+  Liga,
+} from "@/dominio/entidades/modelos";
 import { POSICOES, esquemaIdentidade } from "@/dominio/regras/jogador";
-import { LIGAS_CRIACAO, LIGAS_SUPORTADAS } from "@/dominio/constantes/ligas";
+import {
+  esquemaLigasDisponiveis,
+  type LigaDisponivel,
+} from "@/dominio/regras/liga";
 import { esquemaImportacao } from "@/infraestrutura/transfermarkt/esquemas";
 import { useJogoStore } from "@/estado/jogo-store";
 import { Escudo } from "@/componentes/clube/Escudo";
@@ -43,157 +50,86 @@ export function CriacaoCarreira() {
       peso: 70,
       arquetipo: "equilibrado",
     });
-  const [ligaId, definirLiga] = useState(LIGAS_CRIACAO[0].id),
+  const [ligas, definirLigas] = useState<LigaDisponivel[]>([]);
+  const [ligaId, definirLiga] = useState(""),
     [clubes, definirClubes] = useState<Clube[]>([]),
     [clubeId, definirClube] = useState(""),
-    [origem, definirOrigem] = useState<"api" | "demonstracao">("demonstracao"),
     [inicio, definirInicio] = useState(""),
     [aviso, definirAviso] = useState<string | null>(null),
-    [errosImportacao, definirErrosImportacao] = useState<
-      { clubeId: string; nome: string; motivo: string }[]
-    >([]),
     [erro, definirErro] = useState<string | null>(null),
     [carregando, definirCarregando] = useState(false),
-    [importando, definirImportando] = useState(false),
-    [precisaImportar, definirPrecisaImportar] = useState(false),
-    [progresso, definirProgresso] = useState<{
-      total: number;
-      importados: number;
-      falhas: number;
-      clubeAtual: string | null;
-    } | null>(null),
+    [carregandoLigas, definirCarregandoLigas] = useState(true),
+    [confirmando, definirConfirmando] = useState(false),
     [tentativa, definirTentativa] = useState(0),
     [substituir, definirSubstituir] = useState(false);
-  const liga = LIGAS_CRIACAO.find((l) => l.id === ligaId)!,
+  const liga = ligas.find((l) => l.id === ligaId),
     clube = clubes.find((c) => c.id === clubeId);
   const alterar = <Chave extends keyof IdentidadeJogador>(
     chave: Chave,
     valor: IdentidadeJogador[Chave],
   ) => definirIdentidade((atual) => ({ ...atual, [chave]: valor }));
-  async function carregarClubesLocais(
-    controle: AbortController,
-  ): Promise<"ok" | "precisa_importar"> {
-    const resposta = await fetch(`/api/futebol?liga=${ligaId}`, {
-      signal: controle.signal,
-    });
-    const bruto = await resposta.json();
-    if (resposta.status === 404 && bruto.precisaImportar) {
-      definirPrecisaImportar(true);
-      definirProgresso(bruto.progresso ?? null);
-      definirClubes([]);
-      definirErro(null);
-      return "precisa_importar";
-    }
-    if (!resposta.ok)
-      throw new Error(
-        typeof bruto.erro === "string"
-          ? bruto.erro
-          : "Não foi possível carregar esta liga.",
-      );
-    const dados = esquemaImportacao.parse(bruto);
-    definirPrecisaImportar(false);
-    definirClubes(dados.clubes as Clube[]);
-    definirOrigem(dados.origem);
-    definirInicio(dados.inicio);
-    definirAviso(dados.aviso);
-    definirErrosImportacao(dados.erros ?? []);
-    definirProgresso(dados.progresso ?? null);
-    return "ok";
-  }
-
-  async function aguardarImportacao(controle: AbortController) {
-    while (!controle.signal.aborted) {
-      const status = await fetch(`/api/futebol/importar?liga=${ligaId}`, {
-        signal: controle.signal,
-      });
-      if (!status.ok) break;
-      const dados = await status.json();
-      if (dados.progresso) definirProgresso(dados.progresso);
-      if (dados.status !== "em_andamento" && dados.status !== "nao_importada") {
-        break;
-      }
-      await new Promise((r) => setTimeout(r, 2000));
-    }
-  }
-
-  async function importarLigaSelecionada(
-    forcar: boolean,
-    controleExterno?: AbortController,
-  ) {
-    const controle = controleExterno ?? new AbortController();
-    definirImportando(true);
-    definirErro(null);
-    const intervalo = setInterval(async () => {
-      try {
-        const status = await fetch(`/api/futebol/importar?liga=${ligaId}`, {
-          signal: controle.signal,
-        });
-        if (status.ok) {
-          const dados = await status.json();
-          if (dados.progresso) definirProgresso(dados.progresso);
-        }
-      } catch {
-        /* polling interrompido */
-      }
-    }, 2000);
-    try {
-      const resposta = await fetch(
-        `/api/futebol/importar?liga=${ligaId}${forcar ? "&forcar=1" : ""}`,
-        { method: "POST", signal: controle.signal },
-      );
-      const bruto = await resposta.json();
-      if (resposta.status === 409) {
-        if (bruto.progresso) definirProgresso(bruto.progresso);
-        await aguardarImportacao(controle);
-      } else if (!resposta.ok && resposta.status !== 502) {
-        throw new Error(
-          typeof bruto.erro === "string"
-            ? bruto.erro
-            : "Não foi possível importar esta liga.",
-        );
-      } else {
-        if (bruto.progresso) definirProgresso(bruto.progresso);
-        if (bruto.aviso) definirAviso(bruto.aviso);
-        if (bruto.erros?.length) definirErrosImportacao(bruto.erros);
-      }
-      if (!controle.signal.aborted) {
-        const estado = await carregarClubesLocais(controle);
-        if (estado === "precisa_importar") {
-          definirErro(
-            "A importação não concluiu. Confira se a Transfermarkt API está no ar.",
-          );
-        }
-      }
-    } catch (falha) {
-      if (controle.signal.aborted) return;
-      definirErro(
-        falha instanceof Error ? falha.message : "Falha ao importar os clubes.",
-      );
-    } finally {
-      clearInterval(intervalo);
-      if (!controle.signal.aborted) definirImportando(false);
-    }
-  }
 
   useEffect(() => {
     const controle = new AbortController();
-    definirCarregando(true);
-    definirImportando(false);
-    definirClube("");
-    definirClubes([]);
-    definirErro(null);
-    definirAviso(null);
-    definirErrosImportacao([]);
-    definirPrecisaImportar(false);
-    definirProgresso(null);
     (async () => {
       try {
-        const estado = await carregarClubesLocais(controle);
-        if (controle.signal.aborted) return;
-        if (estado === "precisa_importar") {
-          definirCarregando(false);
-          await importarLigaSelecionada(false, controle);
+        const resposta = await fetch("/api/futebol/ligas", {
+          signal: controle.signal,
+        });
+        if (!resposta.ok)
+          throw new Error("Não foi possível carregar as ligas disponíveis.");
+        const dados = esquemaLigasDisponiveis.parse(await resposta.json());
+        if (!controle.signal.aborted) definirLigas(dados.ligas);
+      } catch (falha) {
+        if (!controle.signal.aborted)
+          definirErro(
+            falha instanceof Error
+              ? falha.message
+              : "Falha ao carregar as ligas.",
+          );
+      } finally {
+        if (!controle.signal.aborted) definirCarregandoLigas(false);
+      }
+    })();
+    return () => controle.abort();
+  }, []);
+
+  useEffect(() => {
+    const controle = new AbortController();
+    definirClube("");
+    definirClubes([]);
+    definirInicio("");
+    definirAviso(null);
+    if (!ligaId) {
+      definirCarregando(false);
+      return () => controle.abort();
+    }
+    definirCarregando(true);
+    definirErro(null);
+    (async () => {
+      try {
+        const resposta = await fetch(
+          `/api/futebol?liga=${encodeURIComponent(ligaId)}`,
+          { signal: controle.signal },
+        );
+        if (resposta.status === 404) {
+          if (!controle.signal.aborted) {
+            definirLigas((atuais) => atuais.filter((l) => l.id !== ligaId));
+            definirLiga("");
+            definirEtapa((atual) => (atual > 3 ? 3 : atual));
+            definirAviso(
+              "Esta liga não está mais disponível. Escolha outra opção.",
+            );
+          }
           return;
+        }
+        if (!resposta.ok)
+          throw new Error("Não foi possível carregar os clubes desta liga.");
+        const dados = esquemaImportacao.parse(await resposta.json());
+        if (!controle.signal.aborted) {
+          definirClubes(dados.clubes as Clube[]);
+          definirInicio(dados.inicio);
+          definirAviso(dados.aviso);
         }
       } catch (falha) {
         if (!controle.signal.aborted)
@@ -227,6 +163,7 @@ export function CriacaoCarreira() {
       );
       return;
     }
+    if (etapa === 3 && (!liga || carregando || clubes.length < 2)) return;
     if (etapa === 4 && !clube) {
       definirErro("Selecione seu clube inicial.");
       return;
@@ -234,36 +171,69 @@ export function CriacaoCarreira() {
     definirEtapa(etapa + 1);
   }
   async function confirmar() {
-    if (!clube || !inicio) return;
-    const ligasMundo: typeof LIGAS_SUPORTADAS = [];
-    const clubesMundo: typeof clubes = [];
-    for (const outra of LIGAS_SUPORTADAS) {
-      if (outra.id === liga.id) continue;
-      try {
-        const resposta = await fetch(`/api/futebol?liga=${outra.id}`);
-        if (!resposta.ok) continue;
-        const bruto = await resposta.json();
-        const dados = esquemaImportacao.safeParse(bruto);
-        if (!dados.success || dados.data.clubes.length < 2) continue;
-        ligasMundo.push(outra);
-        clubesMundo.push(...(dados.data.clubes as Clube[]));
-      } catch {
-        /* liga ainda não importada */
+    if (!liga || !clube || !inicio || confirmando || (existente && !substituir))
+      return;
+    definirConfirmando(true);
+    definirErro(null);
+    try {
+      const ligasMundo: Liga[] = [];
+      const clubesMundo: Clube[] = [];
+      // Revalida a seleção antes de criar o mundo; consulta somente ligas do catálogo local.
+      const resposta = await fetch(
+        `/api/futebol?liga=${encodeURIComponent(liga.id)}`,
+      );
+      if (resposta.status === 404) {
+        definirLigas((atuais) => atuais.filter((l) => l.id !== liga.id));
+        definirLiga("");
+        definirEtapa(3);
+        return;
       }
+      if (!resposta.ok)
+        throw new Error("Não foi possível confirmar a liga selecionada.");
+      const principal = esquemaImportacao.parse(await resposta.json());
+      if (!principal.clubes.some((c) => c.id === clubeId)) {
+        definirClubes(principal.clubes as Clube[]);
+        definirClube("");
+        definirEtapa(4);
+        return;
+      }
+      for (const outra of ligas) {
+        if (outra.id === liga.id) continue;
+        const resposta = await fetch(
+          `/api/futebol?liga=${encodeURIComponent(outra.id)}`,
+        );
+        if (resposta.status === 404) continue;
+        if (!resposta.ok)
+          throw new Error(
+            `Não foi possível carregar ${outra.nome}. Tente novamente.`,
+          );
+        const dados = esquemaImportacao.parse(await resposta.json());
+        ligasMundo.push(outra);
+        clubesMundo.push(...(dados.clubes as Clube[]));
+      }
+      iniciar({
+        identidade,
+        liga,
+        clubes: principal.clubes as Clube[],
+        clubeId,
+        origem: "api",
+        seed: crypto.randomUUID(),
+        dataInicio: principal.inicio,
+        ligasMundo,
+        clubesMundo,
+      });
+      const estado = useJogoStore.getState();
+      if (!estado.erro && estado.carreira) roteador.push("/carreira");
+      else definirErro(estado.erro);
+    } catch (falha) {
+      definirErro(
+        falha instanceof Error
+          ? falha.message
+          : "Não foi possível criar a carreira.",
+      );
+    } finally {
+      definirConfirmando(false);
     }
-    iniciar({
-      identidade,
-      liga,
-      clubes,
-      clubeId,
-      origem,
-      seed: crypto.randomUUID(),
-      dataInicio: inicio,
-      ligasMundo,
-      clubesMundo,
-    });
-    if (useJogoStore.getState().carreira) roteador.push("/carreira");
-    else definirErro(useJogoStore.getState().erro);
   }
   return (
     <main className="criacao">
@@ -312,7 +282,7 @@ export function CriacaoCarreira() {
                 "Todo jogador tem um começo. Este é o seu.",
                 "Defina o perfil do atleta que vai entrar em campo.",
                 "Seu estilo orienta os atributos iniciais. A carreira faz o resto.",
-                "Seis ligas. Diferentes caminhos para conquistar espaço.",
+                `${ligas.length} ligas disponíveis. Diferentes caminhos para conquistar espaço.`,
                 "Escolha onde você vai disputar sua primeira oportunidade.",
                 "Confira os detalhes antes de entrar no vestiário.",
               ][etapa]
@@ -463,7 +433,7 @@ export function CriacaoCarreira() {
           {etapa === 3 && (
             <>
               <div className="opcoes grade-dupla">
-                {LIGAS_CRIACAO.map((l) => (
+                {ligas.map((l) => (
                   <button
                     aria-pressed={ligaId === l.id}
                     key={l.id}
@@ -478,19 +448,31 @@ export function CriacaoCarreira() {
                     <div>
                       <strong>{l.nome}</strong>
                       <span>
-                        {l.pais} · {l.quantidadeClubes} clubes
+                        {l.pais} · {l.clubesDisponiveis} clubes
                       </span>
                     </div>
                   </button>
                 ))}
               </div>
-              {(importando || carregando) && (
+              {carregandoLigas && (
                 <p className="aviso" role="status">
-                  {importando
-                    ? progresso
-                      ? `Preparando ${liga.nome}: ${progresso.importados}/${progresso.total} clubes${progresso.clubeAtual ? ` · ${progresso.clubeAtual}` : ""}…`
-                      : `Preparando ${liga.nome} (clubes e elencos)…`
-                    : `Verificando dados de ${liga.nome}…`}
+                  Carregando ligas disponíveis…
+                </p>
+              )}
+              {!carregandoLigas && !ligas.length && (
+                <p className="estado-vazio" role="status">
+                  Nenhuma liga disponível nesta edição. Você pode voltar mais
+                  tarde.
+                </p>
+              )}
+              {carregando && (
+                <p className="aviso" role="status">
+                  Carregando clubes…
+                </p>
+              )}
+              {aviso && (
+                <p className="aviso" role="status">
+                  {aviso}
                 </p>
               )}
             </>
@@ -502,53 +484,19 @@ export function CriacaoCarreira() {
                   {aviso}
                 </p>
               )}
-              {errosImportacao.length > 0 && (
-                <details className="aviso">
-                  <summary>
-                    {errosImportacao.length} clube(s) sem elenco importado
-                  </summary>
-                  <ul>
-                    {errosImportacao.map((item) => (
-                      <li key={item.clubeId}>
-                        <strong>{item.nome}:</strong> {item.motivo}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
               <div className="linha-titulo">
-                <span className="rotulo">{liga.nome}</span>
+                <span className="rotulo">{liga?.nome}</span>
                 <button
                   className="botao-texto"
-                  disabled={carregando || importando}
+                  disabled={carregando}
                   onClick={() => definirTentativa((t) => t + 1)}
                 >
                   <RefreshCw size={14} /> Recarregar
                 </button>
               </div>
-              {progresso && (importando || progresso.importados < progresso.total) && (
-                <p className="aviso" role="status">
-                  {progresso.importados}/{progresso.total} clubes importados
-                  {progresso.clubeAtual
-                    ? ` · processando ${progresso.clubeAtual}`
-                    : ""}
-                  {progresso.falhas > 0 ? ` · ${progresso.falhas} falha(s)` : ""}
-                </p>
-              )}
-              {!precisaImportar && clubes.length > 0 && (
-                <button
-                  className="botao-texto campo-inteiro"
-                  disabled={importando || carregando}
-                  onClick={() => void importarLigaSelecionada(true)}
-                >
-                  <RefreshCw size={14} /> Atualizar dados da liga
-                </button>
-              )}
-              {carregando || importando ? (
+              {carregando ? (
                 <p className="estado-vazio" role="status">
-                  {importando
-                    ? "Baixando clubes e elencos desta liga pela primeira vez… isso pode levar alguns minutos."
-                    : "Carregando clubes…"}
+                  Carregando clubes…
                 </p>
               ) : (
                 <div className="selecao-clubes">
@@ -598,23 +546,22 @@ export function CriacaoCarreira() {
                 <div>
                   <dt>Competição</dt>
                   <dd>
-                    {liga.nome}
+                    {liga?.nome}
                     {identidade.idade < 17 ? " · Base" : ""}
                   </dd>
                 </div>
                 <div>
                   <dt>Temporada inicial</dt>
                   <dd>
-                    {formatarTemporada(liga.id, Number(inicio.slice(0, 4)))}
+                    {formatarTemporada(
+                      liga?.id ?? "",
+                      Number(inicio.slice(0, 4)),
+                    )}
                   </dd>
                 </div>
                 <div>
                   <dt>Mundo inicial</dt>
-                  <dd>
-                    {origem === "api"
-                      ? "Clubes reais · Transfermarkt API (importação local)"
-                      : "Demonstração · clubes fictícios"}
-                  </dd>
+                  <dd>Clubes reais · Base local Transfermarkt</dd>
                 </div>
               </dl>
               {existente && (
@@ -637,7 +584,7 @@ export function CriacaoCarreira() {
           <footer className="navegacao-formulario">
             <button
               className="botao-texto"
-              disabled={etapa === 0}
+              disabled={etapa === 0 || confirmando}
               onClick={() => {
                 definirEtapa(etapa - 1);
                 definirErro(null);
@@ -648,7 +595,10 @@ export function CriacaoCarreira() {
             {etapa < 5 ? (
               <button
                 className="botao principal"
-                disabled={etapa === 4 && (!clube || carregando)}
+                disabled={
+                  (etapa === 3 && (!liga || carregando || clubes.length < 2)) ||
+                  (etapa === 4 && (!clube || carregando))
+                }
                 onClick={avancar}
               >
                 Continuar <ArrowRight size={18} />
@@ -656,10 +606,13 @@ export function CriacaoCarreira() {
             ) : (
               <button
                 className="botao principal"
-                disabled={!!existente && !substituir}
+                disabled={
+                  confirmando || !liga || !clube || (!!existente && !substituir)
+                }
                 onClick={confirmar}
               >
-                Iniciar carreira <ArrowRight size={18} />
+                {confirmando ? "Criando carreira…" : "Iniciar carreira"}{" "}
+                <ArrowRight size={18} />
               </button>
             )}
           </footer>

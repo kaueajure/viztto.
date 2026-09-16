@@ -37,7 +37,7 @@ export function mockTransfermarktBrasil() {
       return respostaJson({
         id: "BRA1",
         name: "Campeonato Brasileiro Série A",
-        seasonId: "2026",
+        seasonId: "2025",
         clubs: [
           { id: "614", name: "CR Flamengo" },
           { id: "1023", name: "SE Palmeiras" },

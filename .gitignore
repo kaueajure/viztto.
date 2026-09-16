@@ -7,7 +7,8 @@ coverage/
 test-results/
 
 .cache/
-src/dados/futebol/*.json
+src/dados/futebol/.staging/
+src/dados/futebol/*.tmp
 API/.venv/
 API/__pycache__/
 API/**/__pycache__/

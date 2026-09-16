@@ -12,25 +12,36 @@ cp .env.example .env
 npm run dev
 ```
 
-Abra [localhost:3000](http://localhost:3000). O comando sobe também a Transfermarkt API em [localhost:8000](http://localhost:8000).
+Abra [localhost:3000](http://localhost:3000). O Next.js lê os snapshots já existentes; não inicia a API nem scraping.
 
-### Transfermarkt API local (sem chave)
+## Atualizando a base de futebol
 
-`npm run dev` sobe a Transfermarkt API (`API/`) e o Next juntos. Configure só:
+A Transfermarkt API local (`API/`, felipeall/transfermarkt-api) precisa conseguir acessar o Transfermarkt no ambiente do desenvolvedor. Requer Python 3 com venv, curl e util-linux (`setsid`/`flock`), além do Node.js. Configure `TRANSFERMARKT_API_URL=http://127.0.0.1:8000` ou `http://localhost:8000` no `.env` da raiz.
 
 ```bash
-cp .env.example .env   # TRANSFERMARKT_API_URL=http://localhost:8000
-npm run dev
+npm run atualizar-dados-futebol
 ```
 
-Na criação de carreira, ao escolher a liga, o jogo importa clubes e elencos automaticamente (salva em `src/dados/futebol/`). Ligas: Brasileirão, Premier League, La Liga, Serie A, Bundesliga e Ligue 1.
+Esse é o único fluxo oficial de atualização. O comando carrega o `.env`, reutiliza a API local ou inicia `API/iniciar.sh`, sem subir Next.js. Ao terminar ou receber SIGINT/SIGTERM, encerra apenas os processos que iniciou. Atualiza as 13 ligas **sequencialmente**, usando o importador e os normalizadores existentes.
 
-Docs da API: http://localhost:8000/docs — para subir só a API: `npm run api`.
+Os resultados são escritos primeiro em `src/dados/futebol/.staging/`. Cada liga só substitui o JSON oficial após validar schema, edição e pelo menos dois clubes válidos. Falhas totais preservam o snapshot anterior, com aviso explícito; resultados parciais publicam somente clubes atualizados e válidos. O comando continua após falhas e retorna código 1 se houver problemas. Staging com falhas permanece disponível para diagnóstico; não entra no Git.
+
+Revise o resumo e os JSONs em `src/dados/futebol/`. Depois, execute manualmente:
+
+```bash
+git add src/dados/futebol
+git commit -m "data: atualizar base de futebol"
+git push origin main
+```
+
+**Produção não faz scraping em tempo real.** Instalação, build, inicialização e requests públicos apenas consomem os arquivos recebidos pelo Git. O endpoint de importação foi removido. `GET /api/futebol/ligas` lista snapshots utilizáveis; `GET /api/futebol?liga=<id>` lê os clubes ou retorna 404. Sem dados, a opção não aparece.
+
+O catálogo e os códigos verificados estão em [documentacao/BASE-FUTEBOL.md](documentacao/BASE-FUTEBOL.md). Não há manifesto obrigatório: os próprios JSONs são a fonte única de disponibilidade. `npm run api` continua disponível apenas para diagnóstico da API local.
 
 ## O que está implementado
 
 - Criação em seis etapas: identidade, jogador, estilo, liga, clube e confirmação.
-- Seis ligas configuradas centralmente e importação de identidade, escudo e estádio dos clubes.
+- 13 ligas configuradas centralmente, incluindo divisões secundárias; seleção condicionada aos snapshots disponíveis.
 - Base aos 15/16 anos, profissional aos 17+, promoção por avaliação e encerramento do ciclo da base aos 20.
 - Calendários separados para base e profissional, turno e returno e suporte a quantidade ímpar de clubes.
 - Simulação de todos os jogos da liga, tabela e resultados por rodada.
@@ -45,7 +56,7 @@ Docs da API: http://localhost:8000/docs — para subir só a API: `npm run api`.
 ## Como jogar
 
 1. Abra **Nova carreira**, preencha o atleta e escolha a liga.
-2. Aguarde a importação dos clubes. Se a API falhar, a origem dos dados será informada.
+2. Escolha uma liga disponível na base local e veja os clubes com elencos válidos.
 3. Selecione o clube e confirme. Uma carreira existente só é substituída após marcar a confirmação.
 4. Em **Treinamento**, escolha o foco. Alterar o foco não executa treinos: eles ocorrem ao avançar a semana.
 5. Em **Início**, clique em **Avançar semana**. Confira o resumo e acompanhe os outros resultados em **Competição**.
@@ -53,19 +64,22 @@ Docs da API: http://localhost:8000/docs — para subir só a API: `npm run api`.
 7. Ao acabar a liga, clique em **Próxima temporada**.
 8. As configurações da carreira permitem reiniciar ou excluir com confirmação.
 
-O progresso pertence ao navegador e à origem do site (domínio/porta). Limpar os dados do navegador apaga a carreira. Não há conta, banco de dados ou sincronização entre dispositivos.
+O progresso pertence ao navegador e à origem do site (domínio/porta). Limpar os dados do navegador apaga a carreira. Não há conta ou sincronização entre dispositivos. A fundação PostgreSQL já existe, mas ainda não recebe saves do jogo; o salvamento continua exclusivamente no localStorage.
 
-## Transfermarkt (bootstrap)
+## Fundação PostgreSQL
 
-Fonte de clubes e elencos reais via Transfermarkt API local (`API/`):
+Configure `DATABASE_URL` no ambiente do servidor ou no `.env` da raiz. O exemplo em `.env.example` é fictício. Com um banco PostgreSQL já provisionado:
 
-- `npm run dev` sobe a API e o Next juntos (`TRANSFERMARKT_API_URL`).
-- Ao escolher a liga na criação, a importação grava JSON em `src/dados/futebol/`.
-- Edições: Brasileirão 2026 / Europa 2026-27.
-- Depois que a carreira começa, o universo é um snapshot do viztto — não sincroniza de novo com a API.
-- Overall e potencial dos NPCs são gerados pelo jogo (não vêm da API).
+```bash
+npm run db:check
+npm run db:migrate
+```
 
-Sem chave. Docs da API local: http://localhost:8000/docs
+Migrations são geradas em desenvolvimento com `npm run db:generate -- --name=nome_da_alteracao`. `npm run db:studio` abre a ferramenta de inspeção apenas em loopback. Nenhum desses comandos é executado automaticamente pelo jogo, build ou inicialização. Consulte [documentacao/POSTGRESQL.md](documentacao/POSTGRESQL.md) para schema, deploy e validação.
+
+## Base inicial e simulação
+
+Os snapshots definem os clubes e elencos no início da carreira: Brasil 2026 e Europa 2026/27. A edição brasileira usa `seasonId=2025` internamente no Transfermarkt; o ano exibido no jogo continua 2026. Depois da criação, o universo evolui no save e não volta a sincronizar com a API. Overall e potencial são gerados pelo jogo.
 
 ## Comandos de verificação
 
@@ -84,13 +98,14 @@ Next.js App Router, React, TypeScript strict, Tailwind CSS 4, Zustand persist, Z
 
 ```text
 src/
-  app/                        Rotas, layout e endpoint de importação
+  app/                        Rotas, layout e endpoints de leitura local
   componentes/                Interface e interação do jogo
   dominio/                    Entidades, JogadorMundo, formação, ligas
   aplicacao/casos-de-uso/      Criação, avanço e transição de temporadas
   simulacao/                  Partidas, elenco, mundo, mercado, decisões
   infraestrutura/transfermarkt/ Cliente, importação e normalização
   infraestrutura/persistencia/ Adaptador local e validação do save (v2)
+  infraestrutura/banco/       Fundação PostgreSQL server-only, ainda sem integração ao jogo
   estado/                     Zustand e ponte para casos de uso
   dados/                      Demonstração e JSON importados
   utilitarios/                Seed, datas e formatação
@@ -100,7 +115,7 @@ Leia [ARQUITETURA.md](ARQUITETURA.md) para decisões e limites.
 
 ## Limites deliberados (fase 2)
 
-O mundo pode carregar várias ligas importadas em paralelo (liga do jogador detalhada; demais intermediárias). Há Série B no catálogo para promoção/rebaixamento futuro. Mercado NPC↔NPC e propostas ao usuário usam necessidade/orçamento/reputação; janelas verão/inverno. Treinador e agente existem com decisões condicionais — ainda sem troca completa de técnico nem geração mundial de jovens.
+O mundo pode carregar várias ligas importadas em paralelo (liga do jogador detalhada; demais intermediárias). As divisões secundárias disponíveis também participam do mundo, sem promoção/rebaixamento nesta fase. Mercado NPC↔NPC e propostas ao usuário usam necessidade/orçamento/reputação; janelas verão/inverno. Treinador e agente existem com decisões condicionais — ainda sem troca completa de técnico nem geração mundial de jovens.
 
 Não há Champions/Libertadores/seleção/vida pessoal nesta etapa.
 

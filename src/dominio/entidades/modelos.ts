@@ -24,6 +24,7 @@ export type Categoria = "base" | "profissional";
 import type { Formacao, GrupoPosicao } from "@/dominio/formacao";
 
 export interface Liga {
+  divisao: number;
   id: string;
   idTransfermarkt: string;
   termoBusca: string;

@@ -1,3 +1,4 @@
+import { esquemaLiga } from "@/dominio/regras/liga";
 import { esquemaMercado, camposProposta } from "./esquema-mercado";
 import { z } from "zod";
 import type { EstadoCarreira } from "@/dominio/entidades/modelos";
@@ -103,22 +104,6 @@ const partidas = z.array(
     participacao: participacao.nullable(),
   }),
 );
-const esquemaLiga = z.object({
-  id: texto,
-  idTransfermarkt: texto,
-  termoBusca: texto,
-  nome: texto,
-  pais: texto,
-  bandeira: texto,
-  reputacao: numero,
-  forcaMedia: numero,
-  quantidadeClubes: numero,
-  regras: z.object({
-    pontosVitoria: numero,
-    pontosEmpate: numero,
-    amarelosSuspensao: numero,
-  }),
-});
 const esquemaTemporada = z.object({
   ano: numero,
   rodadaAtual: numero,

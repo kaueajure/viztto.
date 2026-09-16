@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { LIGAS_SUPORTADAS } from "@/dominio/constantes/ligas";
-import {
-  clubesProntosParaJogo,
-  lerDadosLiga,
-} from "@/infraestrutura/persistencia/importacao-futebol";
+import { obterDadosLigaDisponivel } from "@/infraestrutura/persistencia/base-futebol";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET(requisicao: NextRequest) {
   const liga = LIGAS_SUPORTADAS.find(
@@ -11,46 +11,20 @@ export async function GET(requisicao: NextRequest) {
   );
   if (!liga)
     return NextResponse.json({ erro: "Liga inválida." }, { status: 400 });
-
-  const dados = await lerDadosLiga(liga.id);
-  const clubes = dados ? clubesProntosParaJogo(dados) : [];
-
-  if (!dados || clubes.length < 2) {
-    const retomavel =
-      dados?.status === "em_andamento" || dados?.status === "interrompido";
-    const erro = retomavel
-      ? `Importação da ${liga.nome} em andamento ou interrompida (${dados?.progresso.importados ?? 0}/${dados?.progresso.total ?? "?"} clubes).`
-      : `A liga ${liga.nome} ainda não foi importada.`;
+  const dados = await obterDadosLigaDisponivel(liga);
+  if (!dados)
     return NextResponse.json(
-      {
-        erro,
-        clubes: [],
-        erros: dados?.erros ?? [],
-        temporada: dados?.temporada ?? null,
-        inicio: dados?.inicio ?? null,
-        origem: null,
-        aviso: null,
-        precisaImportar: true,
-        progresso: dados?.progresso ?? null,
-      },
+      { erro: "Liga não disponível na base local." },
       { status: 404 },
     );
-  }
-
-  const aviso =
-    dados.erros.length > 0
-      ? `${dados.erros.length} clube(s) não puderam ser importados. ${clubes.length} clube(s) disponível(is).`
-      : dados.status === "parcial"
-        ? `Importação parcial: ${clubes.length}/${dados.progresso.total} clubes.`
-        : null;
-
   return NextResponse.json({
-    clubes,
-    erros: dados.erros,
+    clubes: dados.clubes,
     temporada: dados.temporada,
     inicio: dados.inicio,
-    origem: "api" as const,
-    aviso,
-    progresso: dados.progresso,
+    origem: "api",
+    aviso:
+      dados.status === "parcial"
+        ? `${dados.clubes.length} clubes disponíveis nesta edição.`
+        : null,
   });
 }

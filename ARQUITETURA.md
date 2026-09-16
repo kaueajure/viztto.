@@ -1,4 +1,4 @@
-# Arquitetura do viztto — fase 2
+# Arquitetura do viztto — fase 4
 
 ## Direção das dependências
 
@@ -9,8 +9,8 @@ Componentes → Zustand → Casos de uso → Simulação → Domínio
                   ↓
         Adaptador de persistência
 
-Criação → GET/POST /api/futebol → Transfermarkt API local (bootstrap)
-         → snapshot em src/dados/futebol + save da carreira
+CLI → Transfermarkt API local → staging → validação → snapshots versionados
+Criação → GET /api/futebol/ligas e /api/futebol → snapshots → save da carreira
 ```
 
 O save (versão 2) guarda o mundo vivo: ligas, clubes, `JogadorMundo`, temporada principal, temporadas externas, decisões, relacionamentos e transferências recentes.
@@ -34,7 +34,7 @@ O save (versão 2) guarda o mundo vivo: ligas, clubes, `JogadorMundo`, temporada
 
 ## Mundo multi-liga
 
-`EstadoCarreira.ligas` + `temporadasExternas`. Ligas já importadas entram no início da carreira. Série B (`brasileirao-b`) está no catálogo para promoção/rebaixamento futuro.
+`EstadoCarreira.ligas` + `temporadasExternas`. Ligas já importadas entram no início da carreira. O catálogo contempla 13 divisões de seis países. `divisao` preserva a hierarquia; não há promoção/rebaixamento. A disponibilidade é centralizada em `base-futebol.ts`.
 
 ## Mercado e decisões
 
@@ -42,4 +42,14 @@ Necessidade por posição, reputação e orçamento. Janelas verão/inverno. Tra
 
 ## Persistência
 
-Zustand persist + validação Zod com migração v1→v2. Não há banco de dados.
+O jogo continua usando Zustand persist + localStorage, com validação Zod e migração v1→v2. A fundação PostgreSQL em `infraestrutura/banco/` está isolada e ainda não é chamada pelo estado, pelos casos de uso ou pelas rotas.
+
+`career_saves` guarda o `EstadoCarreira` completo em JSONB, com metadados tipados. O UUID do registro é independente do `id` do domínio (atualmente a seed). `game_date` é `date` mapeada como string `YYYY-MM-DD`. Não há autenticação, usuário fictício, API de saves ou sincronização automática.
+
+Drizzle Kit gera SQL e metadados versionados em `drizzle/`. `npm run db:migrate` aplica somente migrations pendentes pelo migrador do Drizzle ORM, inclusive com dependências apenas de produção. Conexão lazy protegida por `server-only`, reutilizada por processo/hot reload. Build e jogo continuam funcionando sem PostgreSQL. Detalhes e deploy: [documentacao/POSTGRESQL.md](documentacao/POSTGRESQL.md).
+
+## Publicação da base
+
+`atualizar-base.ts` coordena ligas sequencialmente, reaproveitando `importarLiga` com diretório de staging explícito. `salvarDadosLiga` valida e publica por rename atômico. A CLI não altera o diretório global usado pelas rotas. Falhas preservam o snapshot oficial anterior e ficam explícitas no resumo; publicação parcial exclui clubes falhos e placeholders.
+
+`obterLigasDisponiveis` e `obterDadosLigaDisponivel` usam a mesma política de schema, calendário, edição e elenco. As rotas públicas não importam o cliente Transfermarkt. O browser não tem caminho para iniciar scraping.

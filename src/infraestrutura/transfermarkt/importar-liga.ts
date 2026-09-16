@@ -19,7 +19,6 @@ import {
   esquemaClubPlayers,
   esquemaClubProfile,
   esquemaCompetitionClubs,
-  esquemaCompetitionSearch,
 } from "./esquemas";
 import { normalizarClube, normalizarJogadores } from "./normalizacao";
 
@@ -35,6 +34,7 @@ export interface ResultadoImportacaoLiga {
   clubes: Clube[];
   erros: ErroImportacaoClube[];
   temporada: number;
+  temporadaTransfermarkt: string;
   inicio: string;
   status: StatusImportacaoLiga;
   progresso: ProgressoImportacao;
@@ -42,6 +42,7 @@ export interface ResultadoImportacaoLiga {
 }
 
 export interface OpcoesImportacao {
+  diretorio?: string;
   esperar?: (ms: number) => Promise<void>;
   forcar?: boolean;
   aoProgresso?: (progresso: ProgressoImportacao) => void | Promise<void>;
@@ -75,38 +76,11 @@ function statusFinal(
   return "parcial";
 }
 
-async function resolverCompeticao(
-  cliente: ClienteTransfermarkt,
-  liga: Liga,
-): Promise<string> {
-  // Preferência: IDs Transfermarkt conhecidos (BRA1, GB1, ES1, IT1, L1, FR1).
+function resolverCompeticao(liga: Liga): string {
   if (liga.idTransfermarkt) return liga.idTransfermarkt;
-  const bruto = await cliente.consultar(
-    `/competitions/search/${encodeURIComponent(liga.termoBusca)}`,
-  );
-  const busca = esquemaCompetitionSearch.parse(bruto);
-  const porPais = busca.results.find((r) =>
-    r.country.toLowerCase().includes(
-      liga.pais === "Brasil"
-        ? "brazil"
-        : liga.pais === "Inglaterra"
-          ? "england"
-          : liga.pais === "Espanha"
-            ? "spain"
-            : liga.pais === "Itália"
-              ? "italy"
-              : liga.pais === "Alemanha"
-                ? "germany"
-                : liga.pais === "França"
-                  ? "france"
-                  : liga.pais.toLowerCase(),
-    ),
-  );
-  if (porPais) return porPais.id;
-  if (busca.results[0]) return busca.results[0].id;
   throw new ErroTransfermarkt(
-    "nao_encontrado",
-    `Competição não encontrada para a liga ${liga.nome}.`,
+    "configuracao",
+    `A liga ${liga.nome} não possui código Transfermarkt configurado.`,
   );
 }
 
@@ -118,8 +92,11 @@ export async function importarLiga(
     opcoes?.esperar ??
     ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
   const agora = () => new Date().toISOString();
-  const existente = await lerDadosLiga(liga.id);
-  const temporadaApi = opcoes?.temporadaApi ?? TEMPORADA_TRANSFERMARKT;
+  const existente = await lerDadosLiga(liga.id, opcoes?.diretorio);
+  const temporadaApi =
+    opcoes?.temporadaApi ??
+    TEMPORADAS_INICIAIS[liga.id]?.temporadaTransfermarkt ??
+    TEMPORADA_TRANSFERMARKT;
   const calendario = TEMPORADAS_INICIAIS[liga.id] ?? {
     ano: Number(temporadaApi),
     inicio: `${temporadaApi}-01-01`,
@@ -133,7 +110,7 @@ export async function importarLiga(
     );
 
   const cliente = new ClienteTransfermarkt(baseUrl, esperar);
-  const competitionId = await resolverCompeticao(cliente, liga);
+  const competitionId = resolverCompeticao(liga);
   const clubsBruto = await cliente.consultar(
     `/competitions/${encodeURIComponent(competitionId)}/clubs?season_id=${encodeURIComponent(temporadaApi)}`,
   );
@@ -142,14 +119,29 @@ export async function importarLiga(
     throw new Error(
       "A Transfermarkt API não retornou clubes suficientes para esta liga.",
     );
-  const seasonId = clubsResp.seasonId || temporadaApi;
+  if (clubsResp.id !== competitionId || clubsResp.seasonId !== temporadaApi)
+    throw new Error(
+      `A API retornou competição/edição incompatível: ${clubsResp.id}/${clubsResp.seasonId}; esperado ${competitionId}/${temporadaApi}.`,
+    );
+  if (new Set(clubsResp.clubs.map((c) => c.id)).size !== clubsResp.clubs.length)
+    throw new Error("A API retornou clubes duplicados na competição.");
+  const seasonId = clubsResp.seasonId;
 
   const clubes = new Map<string, Clube>();
   const erros = new Map<string, ErroImportacaoClube>();
 
-  if (existente && !opcoes?.forcar) {
+  if (
+    existente &&
+    existente.temporada === calendario.ano &&
+    existente.inicio === calendario.inicio &&
+    !opcoes?.forcar
+  ) {
     for (const clube of existente.clubes) {
-      if (clubeComElencoCompleto(clube)) clubes.set(clube.id, clube);
+      if (
+        clubeComElencoCompleto(clube) &&
+        clubsResp.clubs.some((ref) => `tm-${ref.id}` === clube.id)
+      )
+        clubes.set(clube.id, clube);
     }
     for (const erro of existente.erros) {
       if (!clubes.has(erro.clubeId)) erros.set(erro.clubeId, erro);
@@ -173,6 +165,7 @@ export async function importarLiga(
     const dados: DadosLigaImportados = {
       ligaId: liga.id,
       temporada: calendario.ano,
+      temporadaTransfermarkt: seasonId,
       inicio: calendario.inicio,
       importadoEm: existente?.importadoEm ?? agora(),
       atualizadoEm: agora(),
@@ -181,7 +174,14 @@ export async function importarLiga(
       clubes: placeholders.map((base) => {
         const pronto = clubes.get(base.id);
         if (pronto) return pronto;
-        const parcial = existente?.clubes.find((c) => c.id === base.id);
+        const parcial = !opcoes?.forcar
+          ? existente?.clubes.find(
+              (c) =>
+                c.id === base.id &&
+                existente.temporada === calendario.ano &&
+                existente.inicio === calendario.inicio,
+            )
+          : undefined;
         return (
           parcial ?? {
             id: base.id,
@@ -234,7 +234,7 @@ export async function importarLiga(
       erros: [...erros.values()],
       motivoInterrupcao,
     };
-    await salvarDadosLiga(dados);
+    await salvarDadosLiga(dados, opcoes?.diretorio);
     await opcoes?.aoProgresso?.(progresso);
   };
 
@@ -260,6 +260,8 @@ export async function importarLiga(
         `/clubs/${encodeURIComponent(ref.id)}/players?season_id=${encodeURIComponent(seasonId)}`,
       );
       const elencoApi = esquemaClubPlayers.parse(elencoBruto);
+      if (perfil.id !== ref.id || elencoApi.id !== ref.id)
+        throw new Error("A API retornou dados de outro clube.");
       const elenco = normalizarJogadores(elencoApi);
       if (!elenco.length)
         throw new Error("A API não retornou jogadores para este clube.");
@@ -269,12 +271,16 @@ export async function importarLiga(
       });
       clubes.set(clube.id, clube);
       erros.delete(clube.id);
-      await persistir(null, "em_andamento");
-      if (i < pendentes.length - 1) await esperar(INTERVALO_CLUBE_MS);
     } catch (erro) {
       if (erro instanceof ErroTransfermarkt && erro.codigo === "limite") {
         motivoInterrupcao = erro.message;
         interrompido = true;
+        for (const restante of pendentes.slice(i))
+          erros.set(`tm-${restante.id}`, {
+            clubeId: `tm-${restante.id}`,
+            nome: restante.name,
+            motivo: erro.message,
+          });
         await persistir(null, "interrompido");
         break;
       }
@@ -286,8 +292,9 @@ export async function importarLiga(
             ? erro.message
             : "Falha ao importar este clube.",
       });
-      await persistir(null, "em_andamento");
     }
+    await persistir(null, "em_andamento");
+    if (i < pendentes.length - 1) await esperar(INTERVALO_CLUBE_MS);
   }
 
   const progresso = montarProgresso(total, clubes, erros, null);
@@ -310,6 +317,7 @@ export async function importarLiga(
     clubes: [...clubes.values()],
     erros: [...erros.values()],
     temporada: calendario.ano,
+    temporadaTransfermarkt: seasonId,
     inicio: calendario.inicio,
     status,
     progresso,

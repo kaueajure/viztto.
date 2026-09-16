@@ -11,11 +11,18 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "formatar": "prettier --write \"src/**/*.{ts,tsx,css}\" \"testes/**/*.ts\""
+    "formatar": "prettier --write \"src/**/*.{ts,tsx,css}\" \"testes/**/*.ts\"",
+    "atualizar-dados-futebol": "bash scripts/atualizar-dados-futebol.sh",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node --env-file-if-exists=.env --conditions=react-server scripts/db.mjs migrate",
+    "db:studio": "drizzle-kit studio --host=127.0.0.1",
+    "db:check": "node --env-file-if-exists=.env --conditions=react-server scripts/db.mjs check"
   },
   "dependencies": {
+    "drizzle-orm": "^0.45.2",
     "lucide-react": "^0.468.0",
     "next": "^16.0.0",
+    "postgres": "^3.4.9",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "server-only": "^0.0.1",
@@ -27,8 +34,10 @@
     "@types/node": "22.20.3",
     "@types/react": "19.3.0",
     "@types/react-dom": "^19.0.0",
+    "drizzle-kit": "^0.31.10",
     "prettier": "^3.9.6",
     "tailwindcss": "^4.0.0",
+    "tsx": "^4.23.13",
     "typescript": "5.9.3",
     "vitest": "^4.1.11"
   },

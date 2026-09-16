@@ -176,72 +176,20 @@ describe("importação Transfermarkt", () => {
 });
 
 describe("endpoints públicos", () => {
-  afterEach(() => vi.unstubAllEnvs());
-
-  it("informa quando a liga ainda não foi importada", async () => {
+  it("retorna 404 sem sugerir importação e não consulta a API externa", async () => {
     const diretorio = await ambienteImportacao();
+    const consulta = vi.fn();
+    vi.stubGlobal("fetch", consulta);
     const { GET } = await import("@/app/api/futebol/route");
     const { NextRequest } = await import("next/server");
     const resposta = await GET(
       new NextRequest("http://localhost/api/futebol?liga=brasileirao"),
     );
     expect(resposta.status).toBe(404);
-    const dados = await resposta.json();
-    expect(dados.precisaImportar).toBe(true);
-    await rm(diretorio, { recursive: true, force: true });
-  });
-
-  it("lê dados locais após POST de importação", async () => {
-    const diretorio = await ambienteImportacao();
-    vi.resetModules();
-    const { definirDiretorioImportacao: definirDir } = await import(
-      "@/infraestrutura/persistencia/importacao-futebol"
-    );
-    definirDir(diretorio);
-    vi.stubEnv("TRANSFERMARKT_API_URL", "https://tm.test");
-    const consulta = mockTransfermarktBrasil();
-    vi.stubGlobal("fetch", consulta);
-    vi.doMock("@/infraestrutura/transfermarkt/importar-liga", async () => {
-      const original = await vi.importActual<
-        typeof import("@/infraestrutura/transfermarkt/importar-liga")
-      >("@/infraestrutura/transfermarkt/importar-liga");
-      return {
-        ...original,
-        importarLiga: (
-          liga: Parameters<typeof original.importarLiga>[0],
-          opcoes?: Parameters<typeof original.importarLiga>[1],
-        ) =>
-          original.importarLiga(liga, {
-            ...opcoes,
-            baseUrl: "https://tm.test",
-            esperar: async () => {},
-          }),
-      };
+    expect(await resposta.json()).toEqual({
+      erro: "Liga não disponível na base local.",
     });
-    const { POST } = await import("@/app/api/futebol/importar/route");
-    const { GET } = await import("@/app/api/futebol/route");
-    const { NextRequest } = await import("next/server");
-    const importacao = await POST(
-      new NextRequest("http://localhost/api/futebol/importar?liga=brasileirao"),
-    );
-    expect(importacao.status).toBe(200);
-    const resposta = await GET(
-      new NextRequest("http://localhost/api/futebol?liga=brasileirao"),
-    );
-    const dados = await resposta.json();
-    expect(resposta.status).toBe(200);
-    expect(dados.clubes).toHaveLength(3);
-    expect(dados.origem).toBe("api");
+    expect(consulta).not.toHaveBeenCalled();
     await rm(diretorio, { recursive: true, force: true });
-  });
-
-  it("exige TRANSFERMARKT_API_URL no POST", async () => {
-    vi.stubEnv("TRANSFERMARKT_API_URL", "");
-    const { POST } = await import("@/app/api/futebol/importar/route");
-    const { NextRequest } = await import("next/server");
-    const resposta = await POST(
-      new NextRequest("http://localhost/api/futebol/importar?liga=brasileirao"),
-    );
-    expect(resposta.status).toBe(503);
   });
 });
