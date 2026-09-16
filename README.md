@@ -107,3 +107,17 @@ Não há Champions/Libertadores/seleção/vida pessoal nesta etapa.
 ### Edição inicial da carreira
 
 Novas carreiras começam na data de início da edição: Brasileirão 2026 ou Europa 2026/27. Após isso, calendários, resultados e anos seguintes são simulados.
+
+## Mercado e agente (fase 3)
+
+A tela **Mercado** reúne **Interesses**, **Propostas**, **Meu Agente** e **Histórico**. O agente pode contatar um clube escolhido, buscar opções conforme suas preferências ou receber um pedido privado de saída. Tornar esse pedido público afeta a relação com a diretoria e o treinador.
+
+Propostas ao jogador não dependem de sorteio semanal. O motor considera necessidade por posição, concorrência, lesões longas, minutos, desempenho, reputação, potencial percebido e finanças. A observação evolui semanalmente até sondagem, negociação entre clubes e oferta contratual. Jogadores já conhecidos podem entrar com relatórios anteriores; não existe bloqueio artificial do primeiro mês. Más atuações ou lesões podem esfriar o interesse.
+
+É possível negociar salário, duração, papel e cláusula. O clube responde na semana seguinte, podendo aceitar os termos, contrapropor ou abandonar. Há no máximo três rodadas; aceitar os termos conclui a assinatura. O papel prometido gera expectativas de minutos, sem garantir escalação.
+
+O jogo mantém suas janelas simplificadas (janeiro–fevereiro e junho–agosto). Fora delas, observação e sondagem continuam. Pré-contratos internacionais podem ser negociados nos últimos 180 dias de vínculo, com chegada após seu término. A resposta “apenas empréstimo” é uma indicação de interesse limitado; esta fase não executa empréstimos. O mercado entre NPCs mantém o motor existente.
+
+Observação, preferências, ofertas, contrapropostas e diário são persistidos. Saves v2 anteriores recebem os campos novos ao carregar. Isso não reconstrói calendários que já estivessem inconsistentes antes das correções de temporada.
+
+Os cenários de regressão estão em `testes/fase-03.test.ts`, além dos testes de temporadas e transferências entre ligas.

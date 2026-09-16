@@ -1,3 +1,4 @@
+import { criarMercado } from "@/dominio/mercado";
 import type {
   Clube,
   EstadoCarreira,
@@ -144,6 +145,7 @@ export function criarCarreira(entrada: EntradaCarreira): EstadoCarreira {
       entrada.dataInicio,
     ),
     focoTreino: "equilibrado",
+    mercado: criarMercado(),
     propostas: [],
     transferenciasRecentes: [],
     janelaTransferencias: resolverJanela(entrada.dataInicio),

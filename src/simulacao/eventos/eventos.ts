@@ -2,6 +2,27 @@ import type {
   EstadoCarreira,
   EventoCarreira,
 } from "@/dominio/entidades/modelos";
+
+function idDisponivel(base: string, usados: Set<string>): string {
+  let id = base;
+  let sufixo = 1;
+  while (usados.has(id)) id = `${base}-${sufixo++}`;
+  return id;
+}
+
+/** Preserva as notícias de saves antigos, inclusive as que tinham IDs iguais. */
+export function normalizarIdsEventos(eventos: EventoCarreira[]): void {
+  const usados = new Set(eventos.map((evento) => evento.id));
+  const vistos = new Set<string>();
+  for (const evento of eventos) {
+    if (vistos.has(evento.id)) {
+      evento.id = idDisponivel(evento.id, usados);
+      usados.add(evento.id);
+    }
+    vistos.add(evento.id);
+  }
+}
+
 export function registrarEvento(
   carreira: EstadoCarreira,
   tipo: string,
@@ -11,7 +32,10 @@ export function registrarEvento(
   permanente = true,
 ): void {
   const evento: EventoCarreira = {
-    id: `${carreira.dataAtual}-${carreira.eventos.length}-${carreira.noticias.length}-${tipo}`,
+    id: idDisponivel(
+      `${carreira.dataAtual}-${carreira.eventos.length}-${carreira.noticias.length}-${tipo}`,
+      new Set([...carreira.eventos, ...carreira.noticias].map((e) => e.id)),
+    ),
     data: carreira.dataAtual,
     tipo,
     titulo,

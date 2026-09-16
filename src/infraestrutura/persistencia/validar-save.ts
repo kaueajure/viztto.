@@ -1,3 +1,4 @@
+import { esquemaMercado, camposProposta } from "./esquema-mercado";
 import { z } from "zod";
 import type { EstadoCarreira } from "@/dominio/entidades/modelos";
 import { NOMES_ATRIBUTOS } from "@/dominio/entidades/modelos";
@@ -5,6 +6,7 @@ import { esquemaIdentidade } from "@/dominio/regras/jogador";
 import { esquemaClube } from "@/infraestrutura/transfermarkt/esquemas";
 import { prepararClubesParaMundo } from "@/dominio/mundo-futebol";
 import { criarTreinador } from "@/dominio/mundo-futebol";
+import { normalizarIdsEventos } from "@/simulacao/eventos/eventos";
 
 const numero = z.number().finite(),
   data = z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -16,6 +18,8 @@ const atributos = z.object(
 );
 const categoria = z.enum(["base", "profissional"]);
 const contrato = z.object({
+  clausulaRescisao: z.number().finite().nonnegative().optional(),
+  luvas: z.number().finite().nonnegative().optional(),
   clubeId: texto,
   salario: numero,
   dataInicio: data,
@@ -191,8 +195,10 @@ const esquemaCarreira = z.object({
     "defesa",
     "recuperacao",
   ]),
+  mercado: esquemaMercado,
   propostas: z.array(
     z.object({
+      ...camposProposta,
       id: texto,
       clubeId: texto,
       tipo: z.enum(["transferencia", "renovacao"]),
@@ -333,6 +339,8 @@ export function validarSave(valor: unknown): EstadoCarreira {
     throw new Error("Os clubes do save são inválidos.");
 
   const carreira = c as unknown as EstadoCarreira;
+  normalizarIdsEventos(carreira.noticias);
+  normalizarIdsEventos(carreira.eventos);
   // Só hidrata elencos legados (pré–JogadorMundo); saves v2 já vivos não são reprocessados.
   carreira.clubes = carreira.clubes.map((clube) => {
     const precisaHidratacao = clube.elenco.some(

@@ -1,3 +1,4 @@
+import type { MercadoCarreira, TermosContrato } from "../mercado";
 export type Posicao =
   "GOL" | "LD" | "ZAG" | "LE" | "VOL" | "MC" | "MEI" | "PD" | "PE" | "CA";
 export type FocoTreino =
@@ -103,11 +104,7 @@ export interface JogadorMundo {
   statusElenco: StatusElenco;
   estatisticasCarreira: EstatisticasJogador;
 }
-export type EstiloTatico =
-  | "posse"
-  | "direto"
-  | "equilibrado"
-  | "contra-ataque";
+export type EstiloTatico = "posse" | "direto" | "equilibrado" | "contra-ataque";
 export interface Treinador {
   id: string;
   nome: string;
@@ -261,6 +258,8 @@ export interface Contrato {
   papelEsperado: StatusElenco;
   tipo: "base" | "profissional";
   bonusGol: number;
+  clausulaRescisao?: number;
+  luvas?: number;
 }
 export interface IdentidadeJogador {
   nome: string;
@@ -381,6 +380,17 @@ export interface Temporada {
   encerrada: boolean;
 }
 export interface PropostaTransferencia {
+  valorTransferencia?: number;
+  clubeOrigemId?: string;
+  rodadasNegociacao?: number;
+  ofertaInicial?: TermosContrato;
+  contrapropostaPendente?: TermosContrato;
+  responderEm?: string;
+  clausulaRescisao?: number;
+  bonusGol?: number;
+  luvas?: number;
+  preContrato?: boolean;
+  efetivarEm?: string;
   id: string;
   clubeId: string;
   tipo: "transferencia" | "renovacao";
@@ -438,6 +448,7 @@ export interface EstadoCarreira {
   /** Temporadas de ligas externas (simulação intermediária). */
   temporadasExternas: Record<string, Temporada>;
   focoTreino: FocoTreino;
+  mercado: MercadoCarreira;
   propostas: PropostaTransferencia[];
   transferenciasRecentes: TransferenciaMundial[];
   janelaTransferencias: JanelaTransferencias;

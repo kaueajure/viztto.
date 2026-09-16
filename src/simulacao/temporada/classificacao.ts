@@ -25,8 +25,12 @@ export function calcularClassificacao(
   for (const partida of partidas) {
     if (partida.golsMandante === null || partida.golsVisitante === null)
       continue;
-    const mandante = linhas.get(partida.mandanteId)!,
-      visitante = linhas.get(partida.visitanteId)!;
+    const mandante = linhas.get(partida.mandanteId),
+      visitante = linhas.get(partida.visitanteId);
+    if (!mandante || !visitante)
+      throw new Error(
+        "O calendário contém clubes de outra liga. A temporada do save está inconsistente.",
+      );
     for (const [linha, gols, sofridos] of [
       [mandante, partida.golsMandante, partida.golsVisitante],
       [visitante, partida.golsVisitante, partida.golsMandante],

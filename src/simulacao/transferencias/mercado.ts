@@ -1,3 +1,11 @@
+import {
+  avancarInteresses,
+  processarContrapropostas,
+  avaliarPapelPrometido,
+  registrarNegociacao,
+  tetoSalario,
+} from "./mercado-progressivo";
+import { criarMercado } from "@/dominio/mercado";
 import type {
   EstadoCarreira,
   Jogador,
@@ -69,7 +77,8 @@ function transferirNpc(
   de.orcamento += Math.round(valor * 0.9);
   jogador.clubeId = para.id;
   jogador.salario = Math.round(
-    Math.max(jogador.salario, valor * 0.0012) * (1 + para.poderFinanceiro / 200),
+    Math.max(jogador.salario, valor * 0.0012) *
+      (1 + para.poderFinanceiro / 200),
   );
   jogador.statusElenco = papelPrometidoPara(para, jogador.overall);
   para.elenco.push(jogador);
@@ -122,9 +131,7 @@ function processarMercadoNpc(
       const ligaVend = ligaDoClube(carreira, vendedor.id);
       for (const j of vendedor.elenco) {
         if (j.lesionado) continue;
-        if (
-          !reputacaoCompativel(j.overall, j.potencial, j.idade, comprador)
-        )
+        if (!reputacaoCompativel(j.overall, j.potencial, j.idade, comprador))
           continue;
         const score = interesseEmJogador(
           comprador,
@@ -147,7 +154,9 @@ function processarMercadoNpc(
       }
     }
     if (!melhor) continue;
-    const valor = Math.round(melhor.jogador.valorMercado * (0.9 + aleatorio.proximo() * 0.35));
+    const valor = Math.round(
+      melhor.jogador.valorMercado * (0.9 + aleatorio.proximo() * 0.35),
+    );
     if (!clubePodePagar(comprador, valor)) continue;
     const reg = transferirNpc(
       carreira,
@@ -173,6 +182,7 @@ export function avaliarMercado(
   carreira: EstadoCarreira,
   aleatorio: GeradorAleatorio,
 ): void {
+  carreira.mercado ??= criarMercado();
   carreira.janelaTransferencias = resolverJanela(carreira.dataAtual);
   const j = carreira.jogador;
   for (const proposta of carreira.propostas)
@@ -190,6 +200,10 @@ export function avaliarMercado(
     .filter((p) => p.tipo === "renovacao")
     .at(-1);
   if (
+    !carreira.mercado.pediuSaida &&
+    !carreira.propostas.some(
+      (p) => p.status === "aceita" && p.etapa === "acordo",
+    ) &&
     j.contrato.dataTermino < somarDias(carreira.dataAtual, 365) &&
     !pendentes.some((p) => p.tipo === "renovacao") &&
     (!ultimaRenovacao ||
@@ -216,74 +230,9 @@ export function avaliarMercado(
     );
   }
 
-  // sondagens fora da janela; propostas firmes na janela
-  const naJanela = carreira.janelaTransferencias !== "fechada";
-  if (pendentes.filter((p) => p.tipo === "transferencia").length >= 2) return;
-  const desempenho = carreira.registros
-    .filter((r) => r.ano === carreira.temporada.ano)
-    .reduce((s, r) => s + r.estatisticas.gols + r.estatisticas.assistencias, 0);
-  const interesseBase = limitar(
-    0.012 +
-      j.forma * 0.00025 +
-      j.reputacao * 0.00025 +
-      desempenho * 0.001 +
-      (j.personalidade.ambicao - 50) * 0.0001 +
-      (naJanela ? 0.04 : 0.008),
-    0.01,
-    0.16,
-  );
-  if (!aleatorio.chance(interesseBase)) return;
-
-  const ligaJogador = carreira.liga;
-  const candidatos = carreira.clubes.filter((c) => {
-    if (c.id === carreira.clubeAtualId) return false;
-    if (pendentes.some((p) => p.clubeId === c.id)) return false;
-    if (!reputacaoCompativel(j.overall, j.potencialInterno, j.idade, c))
-      return false;
-    const liga = ligaDoClube(carreira, c.id);
-    const score = interesseEmJogador(
-      c,
-      {
-        posicaoPrincipal: j.posicao,
-        overall: j.overall,
-        potencial: j.potencialInterno,
-        idade: j.idade,
-        forma: j.forma,
-        valorMercado: j.valorMercado,
-        salario: j.contrato.salario,
-      },
-      ligaJogador.reputacao,
-      liga.reputacao,
-    );
-    return score >= 12 && clubePodePagar(c, j.valorMercado * 0.7);
-  });
-  if (!candidatos.length) return;
-  const clube = aleatorio.escolher(candidatos);
-  const papel = papelPrometidoPara(clube, j.overall);
-  carreira.propostas.push({
-    id: `transferencia-${carreira.dataAtual}-${clube.id}`,
-    clubeId: clube.id,
-    tipo: "transferencia",
-    salario: Math.round(
-      Math.max(500, j.valorMercado * 0.0015) *
-        (1 + clube.poderFinanceiro / 100),
-    ),
-    duracaoAnos: aleatorio.inteiro(2, 5),
-    papelPrometido: papel,
-    etapa: naJanela ? "proposta_jogador" : "sondagem",
-    data: carreira.dataAtual,
-    validade: somarDias(carreira.dataAtual, naJanela ? 21 : 14),
-    status: "pendente",
-  });
-  registrarEvento(
-    carreira,
-    "interesse",
-    `${clube.nome} demonstra interesse em ${j.nome}`,
-    naJanela
-      ? `Proposta formal: ${papel}. Consulte salário e duração.`
-      : "Sondagem fora da janela. Seu agente acompanha o caso.",
-    "Agente",
-  );
+  processarContrapropostas(carreira);
+  avancarInteresses(carreira);
+  avaliarPapelPrometido(carreira);
 }
 
 export function responderProposta(
@@ -299,9 +248,95 @@ export function responderProposta(
     proposta.validade < carreira.dataAtual
   )
     throw new Error("Esta proposta não está mais disponível.");
+  carreira.mercado ??= criarMercado();
+  if (
+    aceitar &&
+    (proposta.contrapropostaPendente ||
+      !["proposta_jogador", "negociacao"].includes(proposta.etapa))
+  )
+    throw new Error("Aguarde uma oferta contratual formal antes de aceitar.");
+  if (
+    aceitar &&
+    proposta.tipo === "transferencia" &&
+    !proposta.preContrato &&
+    resolverJanela(carreira.dataAtual) === "fechada"
+  )
+    throw new Error(
+      "A janela está fechada. Uma transferência normal só pode ser concluída durante a janela.",
+    );
+  if (
+    aceitar &&
+    carreira.propostas.some(
+      (p) =>
+        p.id !== proposta.id && p.status === "aceita" && p.etapa === "acordo",
+    )
+  )
+    throw new Error("Você já assinou um pré-contrato e deve cumprir o acordo.");
+  if (
+    aceitar &&
+    proposta.preContrato &&
+    (!proposta.efetivarEm ||
+      proposta.valorTransferencia !== 0 ||
+      proposta.efetivarEm <= carreira.jogador.contrato.dataTermino ||
+      (Date.parse(carreira.jogador.contrato.dataTermino) -
+        Date.parse(carreira.dataAtual)) /
+        86400000 >
+        180 ||
+      carreira.clubes.find((cl) => cl.id === proposta.clubeId)?.ligaId ===
+        carreira.liga.id)
+  )
+    throw new Error(
+      "Este pré-contrato não atende às condições de contratação internacional ao fim do vínculo.",
+    );
+  if (
+    aceitar &&
+    proposta.preContrato &&
+    proposta.efetivarEm &&
+    proposta.efetivarEm > carreira.dataAtual
+  ) {
+    if (
+      carreira.propostas.some(
+        (p) => p.status === "aceita" && p.etapa === "acordo",
+      )
+    )
+      throw new Error("Você já assinou um pré-contrato.");
+    const contratante = carreira.clubes.find(
+      (cl) => cl.id === proposta.clubeId,
+    );
+    if (
+      !contratante ||
+      proposta.salario > tetoSalario(contratante) ||
+      proposta.salario * 52 + (proposta.luvas ?? 0) > contratante.orcamento
+    )
+      throw new Error("O pré-contrato não cabe no orçamento do clube.");
+    proposta.status = "aceita";
+    proposta.etapa = "acordo";
+    registrarNegociacao(
+      carreira,
+      proposta.clubeId,
+      `Pré-contrato assinado. A chegada está prevista para ${proposta.efetivarEm}.`,
+      proposta.id,
+      proposta,
+    );
+    return carreira;
+  }
   proposta.status = aceitar ? "aceita" : "rejeitada";
   proposta.etapa = aceitar ? "aceite" : "rejeicao";
   if (!aceitar) {
+    const interesse = carreira.mercado.interesses.find(
+      (i) => i.clubeId === proposta.clubeId,
+    );
+    if (interesse) {
+      interesse.status = "encerrado";
+      interesse.nivelInteresse = Math.max(0, interesse.nivelInteresse - 30);
+      interesse.reabrirEm = somarDias(carreira.dataAtual, 84);
+    }
+    registrarNegociacao(
+      carreira,
+      proposta.clubeId,
+      "Você rejeitou a proposta.",
+      proposta.id,
+    );
     carreira.jogador.moral = limitar(
       carreira.jogador.moral +
         (carreira.jogador.personalidade.lealdade - 50) / 30,
@@ -313,12 +348,20 @@ export function responderProposta(
   }
   const j = carreira.jogador;
   if (proposta.tipo === "renovacao") {
+    const atual = carreira.clubes.find(
+      (cl) => cl.id === carreira.clubeAtualId,
+    )!;
+    if (proposta.clubeId !== atual.id || proposta.salario > tetoSalario(atual))
+      throw new Error("A renovação não cabe na folha do clube atual.");
     j.contrato = {
       ...j.contrato,
       salario: proposta.salario,
       dataInicio: carreira.dataAtual,
       dataTermino: somarDias(carreira.dataAtual, proposta.duracaoAnos * 365),
       papelEsperado: proposta.papelPrometido ?? j.status,
+      clausulaRescisao: proposta.clausulaRescisao,
+      bonusGol: proposta.bonusGol ?? j.contrato.bonusGol,
+      luvas: proposta.luvas,
     };
     carreira.relacionamentos.diretoria = limitar(
       carreira.relacionamentos.diretoria + 5,
@@ -330,13 +373,45 @@ export function responderProposta(
       `Novo vínculo até ${j.contrato.dataTermino}.`,
       "Diretoria",
     );
+    registrarNegociacao(
+      carreira,
+      proposta.clubeId,
+      "Novo contrato assinado.",
+      proposta.id,
+      proposta,
+    );
     return carreira;
   }
   const destino = carreira.clubes.find((c) => c.id === proposta.clubeId);
   if (!destino) throw new Error("Clube da proposta não encontrado.");
+  if (
+    proposta.clubeOrigemId &&
+    proposta.clubeOrigemId !== carreira.clubeAtualId
+  )
+    throw new Error("Esta negociação pertence ao seu clube anterior.");
+  const valor = proposta.valorTransferencia ?? Math.round(j.valorMercado * 0.5);
+  if (
+    valor + proposta.salario * 52 + (proposta.luvas ?? 0) > destino.orcamento ||
+    proposta.salario > tetoSalario(destino)
+  )
+    throw new Error(
+      "O clube não possui orçamento e folha disponíveis para estes termos.",
+    );
+  destino.orcamento -= valor + (proposta.luvas ?? 0);
+  if (destino.ligaId !== carreira.liga.id) {
+    const ligaDestino = carreira.ligas.find((l) => l.id === destino.ligaId);
+    const temporadaDestino = carreira.temporadasExternas[destino.ligaId];
+    if (!ligaDestino || !temporadaDestino)
+      throw new Error("A liga de destino não possui uma temporada disponível.");
+    carreira.temporadasExternas[carreira.liga.id] = carreira.temporada;
+    carreira.temporada = temporadaDestino;
+    delete carreira.temporadasExternas[destino.ligaId];
+    carreira.liga = ligaDestino;
+    carreira.ultimaPartidaId = null;
+  }
   const origem = carreira.clubes.find((c) => c.id === carreira.clubeAtualId);
   if (origem) {
-    origem.orcamento += Math.round(j.valorMercado * 0.5);
+    origem.orcamento += valor;
     reescalarClube(origem);
     sincronizarForcaClube(origem);
   }
@@ -348,7 +423,9 @@ export function responderProposta(
     dataTermino: somarDias(carreira.dataAtual, proposta.duracaoAnos * 365),
     papelEsperado: proposta.papelPrometido ?? "rotacao",
     tipo: "profissional",
-    bonusGol: j.contrato.bonusGol,
+    bonusGol: proposta.bonusGol ?? 0,
+    clausulaRescisao: proposta.clausulaRescisao,
+    luvas: proposta.luvas,
   };
   j.status = proposta.papelPrometido ?? "rotacao";
   j.confianca = 55;
@@ -361,7 +438,7 @@ export function responderProposta(
     nomeJogador: `${j.nome} ${j.sobrenome}`,
     deClubeId: origem?.id ?? carreira.clubeInicialId,
     paraClubeId: destino.id,
-    valor: j.valorMercado,
+    valor,
     salario: proposta.salario,
     duracaoAnos: proposta.duracaoAnos,
     papelPrometido: proposta.papelPrometido,
@@ -369,6 +446,27 @@ export function responderProposta(
     data: carreira.dataAtual,
     aoUsuario: true,
   });
+  proposta.etapa = "concluida";
+  for (const outra of carreira.propostas)
+    if (
+      outra.id !== proposta.id &&
+      (outra.status === "pendente" ||
+        (outra.status === "aceita" && outra.etapa === "acordo"))
+    ) {
+      outra.status = "expirada";
+    }
+  for (const interesse of carreira.mercado.interesses)
+    interesse.status = "encerrado";
+  carreira.mercado.pediuSaida = false;
+  carreira.mercado.pedidoPublico = false;
+  carreira.mercado.ultimaCobrancaPapel = undefined;
+  registrarNegociacao(
+    carreira,
+    destino.id,
+    "Transferência concluída. Contrato assinado.",
+    proposta.id,
+    proposta,
+  );
   registrarEvento(
     carreira,
     "transferencia",
@@ -380,3 +478,33 @@ export function responderProposta(
 }
 
 export type { StatusElenco };
+
+export function efetivarPreContratos(estado: EstadoCarreira): EstadoCarreira {
+  let c = estado;
+  for (const p of estado.propostas.filter(
+    (p) =>
+      p.status === "aceita" &&
+      p.etapa === "acordo" &&
+      p.efetivarEm &&
+      p.efetivarEm <= estado.dataAtual,
+  )) {
+    const copia = structuredClone(c);
+    const oferta = copia.propostas.find((x) => x.id === p.id)!;
+    oferta.status = "pendente";
+    oferta.etapa = "proposta_jogador";
+    oferta.validade = copia.dataAtual;
+    try {
+      c = responderProposta(copia, p.id, true);
+    } catch {
+      c = structuredClone(c);
+      c.propostas.find((x) => x.id === p.id)!.status = "expirada";
+      registrarNegociacao(
+        c,
+        p.clubeId,
+        "O pré-contrato não pôde ser efetivado: vínculo ou condições financeiras mudaram.",
+        p.id,
+      );
+    }
+  }
+  return c;
+}

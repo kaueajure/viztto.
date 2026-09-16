@@ -27,21 +27,22 @@ export function avancarLigasExternas(
 
     const rodada = ++temporada.rodadaAtual;
     const mapa = new Map(clubesLiga.map((c) => [c.id, c]));
-    temporada.partidas = temporada.partidas.map((partida) => {
-      if (partida.rodada !== rodada) return partida;
-      return simularPartida(
-        partida,
-        mapa.get(partida.mandanteId)!,
-        mapa.get(partida.visitanteId)!,
-        aleatorio,
-      );
-    });
+    for (const chave of ["partidas", "partidasBase"] as const) {
+      temporada[chave] = temporada[chave].map((partida) => {
+        if (partida.rodada !== rodada) return partida;
+        return simularPartida(
+          partida,
+          mapa.get(partida.mandanteId)!,
+          mapa.get(partida.visitanteId)!,
+          aleatorio,
+        );
+      });
+    }
 
     for (const c of clubesLiga) {
       const partida = temporada.partidas.find(
         (p) =>
-          p.rodada === rodada &&
-          [p.mandanteId, p.visitanteId].includes(c.id),
+          p.rodada === rodada && [p.mandanteId, p.visitanteId].includes(c.id),
       );
       if (partida?.golsMandante != null) {
         const saldo =
@@ -65,6 +66,12 @@ export function avancarLigasExternas(
       liga.regras.pontosVitoria,
       liga.regras.pontosEmpate,
     );
+    temporada.classificacaoBase = calcularClassificacao(
+      clubesLiga.map((c) => c.id),
+      temporada.partidasBase,
+      liga.regras.pontosVitoria,
+      liga.regras.pontosEmpate,
+    );
 
     if (rodada >= temporada.totalRodadas) {
       temporada.encerrada = true;
@@ -72,10 +79,10 @@ export function avancarLigasExternas(
       carreira.temporadasAnteriores.push({
         ano: temporada.ano,
         campeaoId: campeao,
-        campeaoBaseId: campeao,
+        campeaoBaseId: temporada.classificacaoBase[0]!.clubeId,
         ligaId: liga.id,
         classificacao: temporada.classificacao,
-        classificacaoBase: [],
+        classificacaoBase: temporada.classificacaoBase,
       });
     }
     carreira.temporadasExternas[liga.id] = temporada;

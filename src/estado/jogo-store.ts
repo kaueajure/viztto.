@@ -16,7 +16,22 @@ import { iniciarProximaTemporada } from "@/aplicacao/casos-de-uso/temporada";
 import { validarSave } from "@/infraestrutura/persistencia/validar-save";
 import { responderProposta } from "@/simulacao/transferencias/mercado";
 import { responderDecisao } from "@/simulacao/decisoes/decisoes";
+import {
+  conversarAgente,
+  definirPreferencias,
+  contrapropor,
+} from "@/simulacao/transferencias/mercado-progressivo";
+import type { PreferenciasCarreira, TermosContrato } from "@/dominio/mercado";
 interface JogoStore {
+  conversarAgente: (
+    acao: "contatar" | "buscar" | "sair" | "publicar" | "permanecer",
+    clubeId?: string,
+  ) => void;
+  definirPreferencias: (
+    preferencias: PreferenciasCarreira,
+    clubes: string[],
+  ) => void;
+  contrapropor: (id: string, termos: TermosContrato) => void;
   carreira: EstadoCarreira | null;
   hidratado: boolean;
   erro: string | null;
@@ -51,6 +66,12 @@ export const useJogoStore = create<JogoStore>()(
         }
       };
       return {
+        conversarAgente: (acao, clubeId) =>
+          aplicar((c) => conversarAgente(c, acao, clubeId)),
+        definirPreferencias: (preferencias, clubes) =>
+          aplicar((c) => definirPreferencias(c, preferencias, clubes)),
+        contrapropor: (id, termos) =>
+          aplicar((c) => contrapropor(c, id, termos)),
         carreira: null,
         hidratado: false,
         erro: null,

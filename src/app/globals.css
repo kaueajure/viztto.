@@ -2918,3 +2918,113 @@ details[open] summary {
 .lista-concorrencia li.voce strong {
   color: var(--destaque, #c4f542);
 }
+
+/* Mercado: caderno do agente e mesa de negociação. */
+.mercado-vinculo {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 24px 0;
+  padding: 20px 0;
+  border-block: 1px solid var(--linha);
+}
+.mercado-vinculo p {
+  margin: 4px 0 0;
+  color: var(--suave);
+}
+.mercado-vinculo .rotulo {
+  margin-left: auto;
+}
+.mercado-secoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.mercado-secoes button {
+  min-height: 44px;
+}
+.mercado-secoes button[aria-pressed="true"] {
+  color: var(--fundo);
+  background: var(--verde);
+}
+.mercado-interesse {
+  padding: 20px 0;
+  border-bottom: 1px solid var(--linha);
+}
+.mercado-progresso {
+  display: grid;
+  gap: 8px;
+  color: var(--suave);
+}
+.mercado-progresso progress {
+  width: min(100%, 360px);
+  accent-color: var(--verde);
+}
+.mercado-preferencias {
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid var(--linha);
+  display: grid;
+  gap: 12px;
+}
+.mercado-preferencias label {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-height: 44px;
+}
+.mercado-preferencias input {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  accent-color: var(--verde);
+}
+.mercado-clubes {
+  max-height: 320px;
+  overflow-y: auto;
+}
+.mercado-campos {
+  padding: 16px;
+  border: 1px solid var(--linha);
+  margin-bottom: 16px;
+}
+.mercado-campos input,
+.mercado-campos select {
+  min-width: 0;
+  width: 100%;
+}
+.negociar-oferta {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+.negociar-oferta summary {
+  min-height: 44px;
+  padding: 12px 0;
+  cursor: pointer;
+  color: var(--verde);
+}
+.mercado-diario {
+  list-style: none;
+  margin: 20px 0;
+  padding-left: 20px;
+  border-left: 2px solid var(--verde);
+}
+.mercado-diario li {
+  padding: 0 0 24px 12px;
+  overflow-wrap: anywhere;
+}
+.mercado-diario time {
+  color: var(--suave);
+}
+@media (max-width: 640px) {
+  .mercado-secoes button {
+    flex: 1 1 45%;
+  }
+  .mercado-campos {
+    grid-template-columns: 1fr;
+  }
+  .mercado-vinculo .rotulo {
+    margin-left: 0;
+  }
+}

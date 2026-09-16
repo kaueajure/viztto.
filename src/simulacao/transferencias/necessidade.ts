@@ -13,6 +13,7 @@ export type NecessidadePosicao = {
   melhorOverall: number;
   mediaOverall: number;
   idadeMedia: number;
+  desfalquesLongos: number;
   nivel: "baixa" | "media" | "alta" | "critica";
 };
 
@@ -36,7 +37,11 @@ export function avaliarNecessidadeElenco(clube: Clube): NecessidadePosicao[] {
         j.posicaoPrincipal === posicao ||
         j.posicoesSecundarias.includes(posicao),
     );
-    const overalls = grupo.map((j) => j.overall).sort((a, b) => b - a);
+    const disponiveis = grupo.filter(
+      (j) => !j.lesionado || (j.lesao?.diasRecuperacao ?? 0) < 60,
+    );
+    const desfalquesLongos = grupo.length - disponiveis.length;
+    const overalls = disponiveis.map((j) => j.overall).sort((a, b) => b - a);
     const melhorOverall = overalls[0] ?? 0;
     const mediaOverall =
       overalls.length > 0
@@ -48,12 +53,22 @@ export function avaliarNecessidadeElenco(clube: Clube): NecessidadePosicao[] {
         : 30;
     const gap = clube.forcaGeral - melhorOverall;
     let nivel: NecessidadePosicao["nivel"] = "baixa";
-    if (grupo.length === 0 || gap >= 12) nivel = "critica";
-    else if (gap >= 7 || (grupo.length <= 1 && melhorOverall < clube.forcaGeral - 3))
+    if (disponiveis.length === 0 || gap >= 12) nivel = "critica";
+    else if (
+      gap >= 7 ||
+      (grupo.length <= 1 && melhorOverall < clube.forcaGeral - 3)
+    )
       nivel = "alta";
-    else if (gap >= 3 || idadeMedia >= 31) nivel = "media";
+    else if (
+      gap >= 3 ||
+      idadeMedia >= 31 ||
+      desfalquesLongos > 0 ||
+      (grupo.length < 3 && grupo.some((j) => j.idade >= 31))
+    )
+      nivel = "media";
     return {
       posicao,
+      desfalquesLongos,
       quantidade: grupo.length,
       melhorOverall,
       mediaOverall,
@@ -90,7 +105,9 @@ export function interesseEmJogador(
           : 2;
   const gapOverall = jogador.overall - clube.forcaGeral;
   const potencialBonus =
-    jogador.idade <= 22 ? Math.max(0, jogador.potencial - jogador.overall) * 0.8 : 0;
+    jogador.idade <= 22
+      ? Math.max(0, jogador.potencial - jogador.overall) * 0.8
+      : 0;
   const reputacaoOk =
     jogador.overall + potencialBonus >= clube.reputacao - 18 ||
     (jogador.idade <= 20 && jogador.potencial >= clube.reputacao + 5);
@@ -128,7 +145,7 @@ export function resolverJanela(data: string): "fechada" | "verao" | "inverno" {
 }
 
 export function clubePodePagar(clube: Clube, valor: number): boolean {
-  return orcamentoAproximado(clube) >= valor * 0.85;
+  return Number.isFinite(valor) && valor >= 0 && clube.orcamento >= valor;
 }
 
 export function reputacaoCompativel(

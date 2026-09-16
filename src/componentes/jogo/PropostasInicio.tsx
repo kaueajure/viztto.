@@ -1,4 +1,6 @@
 "use client";
+import { Contraproposta } from "./Contraproposta";
+import { resolverJanela } from "@/simulacao/transferencias/necessidade";
 import { useEffect, useRef, useState } from "react";
 import type { EstadoCarreira } from "@/dominio/entidades/modelos";
 import { useJogoStore } from "@/estado/jogo-store";
@@ -35,6 +37,12 @@ export function PropostasInicio({ carreira }: { carreira: EstadoCarreira }) {
       </div>
       {propostas.map((proposta) => {
         const clube = carreira.clubes.find((c) => c.id === proposta.clubeId)!;
+        const podeAceitar =
+          !proposta.contrapropostaPendente &&
+          ["proposta_jogador", "negociacao"].includes(proposta.etapa) &&
+          (proposta.tipo === "renovacao" ||
+            proposta.preContrato ||
+            resolverJanela(carreira.dataAtual) !== "fechada");
         return (
           <article className="oferta-inicio" key={proposta.id}>
             <div className="nome-clube">
@@ -61,6 +69,26 @@ export function PropostasInicio({ carreira }: { carreira: EstadoCarreira }) {
               {proposta.etapa === "sondagem" && (
                 <span>Sondagem (fora da janela formal)</span>
               )}
+              {proposta.preContrato && (
+                <span>
+                  Pré-contrato · chegada após o vínculo atual:{" "}
+                  {formatarData(proposta.efetivarEm!)}
+                </span>
+              )}
+              {proposta.clausulaRescisao && (
+                <span>Cláusula: {dinheiro(proposta.clausulaRescisao)}</span>
+              )}
+              {!!proposta.bonusGol && (
+                <span>Bônus por gol: {dinheiro(proposta.bonusGol)}</span>
+              )}
+              {!!proposta.luvas && (
+                <span>Luvas: {dinheiro(proposta.luvas)}</span>
+              )}
+              {!podeAceitar && !proposta.contrapropostaPendente && (
+                <span>
+                  Aguarde a janela aberta e uma oferta contratual formal.
+                </span>
+              )}
               <span>Responder até {formatarData(proposta.validade)}</span>
             </div>
             <div className="acoes-oferta">
@@ -74,6 +102,7 @@ export function PropostasInicio({ carreira }: { carreira: EstadoCarreira }) {
                   <div className="acoes">
                     <button
                       className="botao principal"
+                      disabled={!podeAceitar}
                       onClick={() => {
                         responder(proposta.id, true);
                         definirConfirmacao(null);
@@ -93,6 +122,7 @@ export function PropostasInicio({ carreira }: { carreira: EstadoCarreira }) {
                 <div className="acoes">
                   <button
                     className="botao principal"
+                    disabled={!podeAceitar}
                     onClick={() => definirConfirmacao(proposta.id)}
                   >
                     Aceitar proposta
@@ -106,6 +136,11 @@ export function PropostasInicio({ carreira }: { carreira: EstadoCarreira }) {
                 </div>
               )}
             </div>
+            <Contraproposta
+              key={`${proposta.id}-${proposta.rodadasNegociacao ?? 0}`}
+              proposta={proposta}
+              clube={clube.nome}
+            />
           </article>
         );
       })}

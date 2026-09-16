@@ -17,6 +17,7 @@ import {
 } from "@/simulacao/evolucao/evolucao";
 import {
   avaliarMercado,
+  efetivarPreContratos,
   calcularValorMercado,
 } from "@/simulacao/transferencias/mercado";
 import {
@@ -193,10 +194,7 @@ function prepararClubesRodada(
       c.treinador,
     );
     aplicarEscalacaoAoClube(c, resultado);
-    sincronizarForcaClube(
-      c,
-      c.id === carreira.clubeAtualId ? j : undefined,
-    );
+    sincronizarForcaClube(c, c.id === carreira.clubeAtualId ? j : undefined);
     if (c.id !== carreira.clubeAtualId) {
       evoluirJogadoresMundo(c.elenco, aleatorio, true);
       c.elenco = c.elenco.filter((jog) => !podeAposentar(jog, aleatorio));
@@ -269,7 +267,9 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
       return resultado;
     });
   }
-  for (const c of carreira.clubes.filter((x) => x.ligaId === carreira.liga.id)) {
+  for (const c of carreira.clubes.filter(
+    (x) => x.ligaId === carreira.liga.id,
+  )) {
     const partida = carreira.temporada.partidas.find(
       (p) =>
         p.rodada === rodada && [p.mandanteId, p.visitanteId].includes(c.id),
@@ -361,7 +361,12 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
   j.valorMercado = calcularValorMercado(j, carreira.liga, carreira.dataAtual);
   avaliarMercado(carreira, aleatorio);
   gerarDecisoesSemana(carreira, aleatorio);
-  if (j.contrato.dataTermino < carreira.dataAtual) {
+  if (
+    j.contrato.dataTermino < carreira.dataAtual &&
+    !carreira.propostas.some(
+      (p) => p.status === "aceita" && p.etapa === "acordo",
+    )
+  ) {
     j.contrato.dataTermino = somarDias(carreira.dataAtual, 90);
     j.contrato.salario = Math.round(j.contrato.salario * 0.9);
     registrarEvento(
@@ -373,7 +378,9 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
     );
   }
   carreira.estadoAleatorio = aleatorio.estado;
-  return rodada >= carreira.temporada.totalRodadas
-    ? finalizarTemporada(carreira)
-    : carreira;
+  return efetivarPreContratos(
+    rodada >= carreira.temporada.totalRodadas
+      ? finalizarTemporada(carreira)
+      : carreira,
+  );
 }

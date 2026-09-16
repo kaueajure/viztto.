@@ -1,7 +1,13 @@
+import { efetivarPreContratos } from "@/simulacao/transferencias/mercado";
 import { formatarTemporada } from "@/dominio/constantes/temporadas-iniciais";
 import type { EstadoCarreira } from "@/dominio/entidades/modelos";
 import { criarTemporada } from "@/simulacao/temporada/gerador-calendario";
 import { registrarEvento } from "@/simulacao/eventos/eventos";
+import {
+  avancarLigasExternas,
+  criarTemporadasExternas,
+} from "@/simulacao/mundo/avancar-ligas";
+import { GeradorAleatorio } from "@/utilitarios/aleatorio";
 export function finalizarTemporada(estado: EstadoCarreira): EstadoCarreira {
   if (estado.temporada.encerrada) return estado;
   if (estado.temporada.rodadaAtual < estado.temporada.totalRodadas)
@@ -13,6 +19,7 @@ export function finalizarTemporada(estado: EstadoCarreira): EstadoCarreira {
     campeaoBase = t.classificacaoBase[0].clubeId;
   carreira.temporadasAnteriores.push({
     ano: t.ano,
+    ligaId: carreira.liga.id,
     campeaoId: campeao,
     campeaoBaseId: campeaoBase,
     classificacao: structuredClone(t.classificacao),
@@ -67,7 +74,29 @@ export function iniciarProximaTemporada(
   carreira.jogador.condicionamento = 95;
   carreira.jogador.amarelosAcumulados = 0;
   carreira.jogador.notasRecentes = [];
-  carreira.temporada = criarTemporada(carreira.clubes, ano, inicio);
+  // Ligas maiores podem ainda ter rodadas quando a liga do usuário termina.
+  const aleatorio = new GeradorAleatorio(carreira.estadoAleatorio);
+  const rodadasRestantes = Math.max(
+    0,
+    ...Object.values(carreira.temporadasExternas).map((t) =>
+      t.encerrada ? 0 : t.totalRodadas - t.rodadaAtual,
+    ),
+  );
+  for (let i = 0; i < rodadasRestantes; i++)
+    avancarLigasExternas(carreira, aleatorio);
+  carreira.estadoAleatorio = aleatorio.estado;
+  carreira.temporada = criarTemporada(
+    carreira.clubes.filter((c) => c.ligaId === carreira.liga.id),
+    ano,
+    inicio,
+  );
+  carreira.temporadasExternas = criarTemporadasExternas(
+    carreira.ligas,
+    carreira.liga.id,
+    carreira.clubes,
+    ano,
+    inicio,
+  );
   carreira.ultimaPartidaId = null;
   for (const proposta of carreira.propostas)
     if (proposta.status === "pendente" && proposta.validade < inicio)
@@ -79,5 +108,5 @@ export function iniciarProximaTemporada(
     "Calendário renovado. Novas oportunidades para escrever sua história.",
     "Diretoria",
   );
-  return carreira;
+  return efetivarPreContratos(carreira);
 }

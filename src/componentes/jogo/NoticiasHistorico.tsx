@@ -143,10 +143,19 @@ export function NoticiasHistorico({
             )}
           </section>
           {c.temporadasAnteriores.map((t) => (
-            <details className="painel espaco" key={t.ano}>
+            <details
+              className="painel espaco"
+              key={`${t.ano}-${t.ligaId ?? t.campeaoId}`}
+            >
               <summary>
-                Temporada {formatarTemporada(c.liga.id, t.ano)} · Campeão:{" "}
-                {c.clubes.find((cl) => cl.id === t.campeaoId)?.nome}
+                Temporada{" "}
+                {formatarTemporada(
+                  t.ligaId ??
+                    c.clubes.find((cl) => cl.id === t.campeaoId)?.ligaId ??
+                    c.liga.id,
+                  t.ano,
+                )}{" "}
+                · Campeão: {c.clubes.find((cl) => cl.id === t.campeaoId)?.nome}
               </summary>
               <TabelaLiga
                 linhas={t.classificacao}
