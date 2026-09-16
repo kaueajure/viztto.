@@ -1,0 +1,106 @@
+"use client";
+import { useEffect, useRef, useState } from "react";
+import type { EstadoCarreira } from "@/dominio/entidades/modelos";
+import { useJogoStore } from "@/estado/jogo-store";
+import { Escudo } from "@/componentes/clube/Escudo";
+import { dinheiro, formatarData } from "@/utilitarios/formatacao";
+export function PropostasInicio({ carreira }: { carreira: EstadoCarreira }) {
+  const responder = useJogoStore((s) => s.responder);
+  const [confirmacao, definirConfirmacao] = useState<string | null>(null);
+  const painel = useRef<HTMLElement>(null);
+  const anteriores = useRef(new Set<string>());
+  const propostas = carreira.propostas.filter(
+    (p) => p.status === "pendente" && p.validade >= carreira.dataAtual,
+  );
+  const ids = propostas.map((p) => p.id).join("|");
+  useEffect(() => {
+    const atuais = ids ? ids.split("|") : [];
+    if (atuais.some((id) => !anteriores.current.has(id)))
+      painel.current?.scrollIntoView({ block: "start", behavior: "instant" });
+    anteriores.current = new Set(atuais);
+  }, [ids]);
+  if (!propostas.length) return null;
+  return (
+    <section
+      ref={painel}
+      className="propostas-inicio"
+      aria-label="Propostas pendentes"
+    >
+      <div className="linha-titulo">
+        <h2>SEU AGENTE TEM NOVIDADES</h2>
+        <span role="status">
+          {propostas.length} proposta{propostas.length > 1 ? "s" : ""}{" "}
+          aguardando resposta
+        </span>
+      </div>
+      {propostas.map((proposta) => {
+        const clube = carreira.clubes.find((c) => c.id === proposta.clubeId)!;
+        return (
+          <article className="oferta-inicio" key={proposta.id}>
+            <div className="nome-clube">
+              <Escudo clube={clube} tamanho={42} />
+              <div>
+                <span className="sobretitulo">
+                  {proposta.tipo === "renovacao"
+                    ? "RENOVAÇÃO DE CONTRATO"
+                    : "PROPOSTA DE TRANSFERÊNCIA"}
+                </span>
+                <h3>{clube.nome}</h3>
+              </div>
+            </div>
+            <div className="condicoes-oferta">
+              <b>{dinheiro(proposta.salario)} / semana</b>
+              <span>
+                {proposta.duracaoAnos} anos · Elenco {clube.forcaGeral}
+              </span>
+              <span>Responder até {formatarData(proposta.validade)}</span>
+            </div>
+            <div className="acoes-oferta">
+              {confirmacao === proposta.id ? (
+                <>
+                  <p>
+                    {proposta.tipo === "renovacao"
+                      ? "Confirmar o novo contrato?"
+                      : `Confirmar sua transferência para ${clube.nome}?`}
+                  </p>
+                  <div className="acoes">
+                    <button
+                      className="botao principal"
+                      onClick={() => {
+                        responder(proposta.id, true);
+                        definirConfirmacao(null);
+                      }}
+                    >
+                      Confirmar aceite
+                    </button>
+                    <button
+                      className="botao secundario"
+                      onClick={() => definirConfirmacao(null)}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="acoes">
+                  <button
+                    className="botao principal"
+                    onClick={() => definirConfirmacao(proposta.id)}
+                  >
+                    Aceitar proposta
+                  </button>
+                  <button
+                    className="botao secundario"
+                    onClick={() => responder(proposta.id, false)}
+                  >
+                    Rejeitar
+                  </button>
+                </div>
+              )}
+            </div>
+          </article>
+        );
+      })}
+    </section>
+  );
+}
