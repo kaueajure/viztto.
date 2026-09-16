@@ -1,8 +1,12 @@
 import type { Liga } from "../entidades/modelos";
+
+export const TEMPORADA_TRANSFERMARKT = "2026";
+
 export const LIGAS_SUPORTADAS: Liga[] = [
   {
     id: "brasileirao",
-    idExterno: 71,
+    idTransfermarkt: "BRA1",
+    termoBusca: "Brasileirão",
     nome: "Brasileirão Série A",
     pais: "Brasil",
     bandeira: "BR",
@@ -12,7 +16,8 @@ export const LIGAS_SUPORTADAS: Liga[] = [
   },
   {
     id: "premier-league",
-    idExterno: 39,
+    idTransfermarkt: "GB1",
+    termoBusca: "Premier League",
     nome: "Premier League",
     pais: "Inglaterra",
     bandeira: "GB",
@@ -22,7 +27,8 @@ export const LIGAS_SUPORTADAS: Liga[] = [
   },
   {
     id: "la-liga",
-    idExterno: 140,
+    idTransfermarkt: "ES1",
+    termoBusca: "LaLiga",
     nome: "La Liga",
     pais: "Espanha",
     bandeira: "ES",
@@ -32,7 +38,8 @@ export const LIGAS_SUPORTADAS: Liga[] = [
   },
   {
     id: "serie-a",
-    idExterno: 135,
+    idTransfermarkt: "IT1",
+    termoBusca: "Serie A",
     nome: "Serie A",
     pais: "Itália",
     bandeira: "IT",
@@ -42,7 +49,8 @@ export const LIGAS_SUPORTADAS: Liga[] = [
   },
   {
     id: "bundesliga",
-    idExterno: 78,
+    idTransfermarkt: "L1",
+    termoBusca: "Bundesliga",
     nome: "Bundesliga",
     pais: "Alemanha",
     bandeira: "DE",
@@ -52,7 +60,8 @@ export const LIGAS_SUPORTADAS: Liga[] = [
   },
   {
     id: "ligue-1",
-    idExterno: 61,
+    idTransfermarkt: "FR1",
+    termoBusca: "Ligue 1",
     nome: "Ligue 1",
     pais: "França",
     bandeira: "FR",
@@ -63,4 +72,4 @@ export const LIGAS_SUPORTADAS: Liga[] = [
 ].map((liga) => ({
   ...liga,
   regras: { pontosVitoria: 3, pontosEmpate: 1, amarelosSuspensao: 3 },
-}));
+})) as Liga[];

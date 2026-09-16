@@ -2758,3 +2758,143 @@ details[open] summary {
     font-size: 23px;
   }
 }
+
+/* ——— Equipe / Clube ——— */
+.equipe-clube {
+  margin-top: 8px;
+}
+.equipe-cabecalho {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+.equipe-cabecalho h2 {
+  margin: 4px 0 6px;
+  font-size: 28px;
+  letter-spacing: 0.02em;
+}
+.abas-equipe {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--linha);
+}
+.abas-equipe button {
+  background: transparent;
+  border: 0;
+  color: var(--suave);
+  padding: 12px 16px;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.abas-equipe button.ativa {
+  color: var(--texto);
+  border-bottom-color: var(--verde);
+}
+.elenco-grupo {
+  margin-bottom: 22px;
+}
+.elenco-grupo h3 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--suave);
+}
+.tabela-elenco {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.tabela-elenco th,
+.tabela-elenco td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--linha);
+  white-space: nowrap;
+}
+.tabela-elenco th {
+  color: var(--suave);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.tabela-elenco td:nth-child(2) {
+  white-space: normal;
+  min-width: 140px;
+}
+.tabela-elenco strong {
+  font-weight: 600;
+}
+.campo-formacao {
+  margin-top: 16px;
+  padding: 22px 14px 18px;
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(34, 92, 54, 0.55), rgba(18, 48, 30, 0.92)),
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 48px,
+      rgba(255, 255, 255, 0.04) 48px,
+      rgba(255, 255, 255, 0.04) 49px
+    );
+  border: 1px solid rgba(120, 180, 130, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 420px;
+}
+.linha-campo {
+  display: flex;
+  justify-content: space-evenly;
+  gap: 10px;
+}
+.slot-campo {
+  min-width: 72px;
+  max-width: 110px;
+  text-align: center;
+  background: rgba(8, 16, 12, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 8px 6px;
+}
+.slot-campo .slot-pos {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: #9fd0a8;
+  margin-bottom: 4px;
+}
+.slot-campo strong {
+  display: block;
+  font-size: 12px;
+  line-height: 1.2;
+}
+.slot-campo .slot-meta {
+  display: block;
+  font-size: 10px;
+  color: #a8b8b0;
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 700px) {
+  .tabela-elenco th:nth-child(5),
+  .tabela-elenco td:nth-child(5),
+  .tabela-elenco th:nth-child(7),
+  .tabela-elenco td:nth-child(7) {
+    display: none;
+  }
+  .slot-campo {
+    min-width: 56px;
+    padding: 6px 4px;
+  }
+}

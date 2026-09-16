@@ -7,7 +7,7 @@ import { ArrowLeft, ArrowRight, Check, RefreshCw } from "lucide-react";
 import type { Clube, IdentidadeJogador } from "@/dominio/entidades/modelos";
 import { POSICOES, esquemaIdentidade } from "@/dominio/regras/jogador";
 import { LIGAS_SUPORTADAS } from "@/dominio/constantes/ligas";
-import { esquemaImportacao } from "@/infraestrutura/api-futebol/esquemas";
+import { esquemaImportacao } from "@/infraestrutura/transfermarkt/esquemas";
 import { useJogoStore } from "@/estado/jogo-store";
 import { Escudo } from "@/componentes/clube/Escudo";
 const ETAPAS = [
@@ -49,8 +49,19 @@ export function CriacaoCarreira() {
     [origem, definirOrigem] = useState<"api" | "demonstracao">("demonstracao"),
     [inicio, definirInicio] = useState(""),
     [aviso, definirAviso] = useState<string | null>(null),
+    [errosImportacao, definirErrosImportacao] = useState<
+      { clubeId: string; nome: string; motivo: string }[]
+    >([]),
     [erro, definirErro] = useState<string | null>(null),
     [carregando, definirCarregando] = useState(false),
+    [importando, definirImportando] = useState(false),
+    [precisaImportar, definirPrecisaImportar] = useState(false),
+    [progresso, definirProgresso] = useState<{
+      total: number;
+      importados: number;
+      falhas: number;
+      clubeAtual: string | null;
+    } | null>(null),
     [tentativa, definirTentativa] = useState(0),
     [substituir, definirSubstituir] = useState(false);
   const liga = LIGAS_SUPORTADAS.find((l) => l.id === ligaId)!,
@@ -59,35 +70,142 @@ export function CriacaoCarreira() {
     chave: Chave,
     valor: IdentidadeJogador[Chave],
   ) => definirIdentidade((atual) => ({ ...atual, [chave]: valor }));
+  async function carregarClubesLocais(
+    controle: AbortController,
+  ): Promise<"ok" | "precisa_importar"> {
+    const resposta = await fetch(`/api/futebol?liga=${ligaId}`, {
+      signal: controle.signal,
+    });
+    const bruto = await resposta.json();
+    if (resposta.status === 404 && bruto.precisaImportar) {
+      definirPrecisaImportar(true);
+      definirProgresso(bruto.progresso ?? null);
+      definirClubes([]);
+      definirErro(null);
+      return "precisa_importar";
+    }
+    if (!resposta.ok)
+      throw new Error(
+        typeof bruto.erro === "string"
+          ? bruto.erro
+          : "Não foi possível carregar esta liga.",
+      );
+    const dados = esquemaImportacao.parse(bruto);
+    definirPrecisaImportar(false);
+    definirClubes(dados.clubes);
+    definirOrigem(dados.origem);
+    definirInicio(dados.inicio);
+    definirAviso(dados.aviso);
+    definirErrosImportacao(dados.erros ?? []);
+    definirProgresso(dados.progresso ?? null);
+    return "ok";
+  }
+
+  async function aguardarImportacao(controle: AbortController) {
+    while (!controle.signal.aborted) {
+      const status = await fetch(`/api/futebol/importar?liga=${ligaId}`, {
+        signal: controle.signal,
+      });
+      if (!status.ok) break;
+      const dados = await status.json();
+      if (dados.progresso) definirProgresso(dados.progresso);
+      if (dados.status !== "em_andamento" && dados.status !== "nao_importada") {
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+
+  async function importarLigaSelecionada(
+    forcar: boolean,
+    controleExterno?: AbortController,
+  ) {
+    const controle = controleExterno ?? new AbortController();
+    definirImportando(true);
+    definirErro(null);
+    const intervalo = setInterval(async () => {
+      try {
+        const status = await fetch(`/api/futebol/importar?liga=${ligaId}`, {
+          signal: controle.signal,
+        });
+        if (status.ok) {
+          const dados = await status.json();
+          if (dados.progresso) definirProgresso(dados.progresso);
+        }
+      } catch {
+        /* polling interrompido */
+      }
+    }, 2000);
+    try {
+      const resposta = await fetch(
+        `/api/futebol/importar?liga=${ligaId}${forcar ? "&forcar=1" : ""}`,
+        { method: "POST", signal: controle.signal },
+      );
+      const bruto = await resposta.json();
+      if (resposta.status === 409) {
+        if (bruto.progresso) definirProgresso(bruto.progresso);
+        await aguardarImportacao(controle);
+      } else if (!resposta.ok && resposta.status !== 502) {
+        throw new Error(
+          typeof bruto.erro === "string"
+            ? bruto.erro
+            : "Não foi possível importar esta liga.",
+        );
+      } else {
+        if (bruto.progresso) definirProgresso(bruto.progresso);
+        if (bruto.aviso) definirAviso(bruto.aviso);
+        if (bruto.erros?.length) definirErrosImportacao(bruto.erros);
+      }
+      if (!controle.signal.aborted) {
+        const estado = await carregarClubesLocais(controle);
+        if (estado === "precisa_importar") {
+          definirErro(
+            "A importação não concluiu. Confira se a Transfermarkt API está no ar.",
+          );
+        }
+      }
+    } catch (falha) {
+      if (controle.signal.aborted) return;
+      definirErro(
+        falha instanceof Error ? falha.message : "Falha ao importar os clubes.",
+      );
+    } finally {
+      clearInterval(intervalo);
+      if (!controle.signal.aborted) definirImportando(false);
+    }
+  }
+
   useEffect(() => {
     const controle = new AbortController();
     definirCarregando(true);
+    definirImportando(false);
     definirClube("");
     definirClubes([]);
     definirErro(null);
-    fetch(`/api/futebol?liga=${ligaId}`, { signal: controle.signal })
-      .then(async (resposta) => {
-        if (!resposta.ok)
-          throw new Error("Não foi possível carregar esta liga.");
-        return esquemaImportacao.parse(await resposta.json());
-      })
-      .then((dados) => {
-        definirClubes(dados.clubes);
-        definirOrigem(dados.origem);
-        definirInicio(dados.inicio);
-        definirAviso(dados.aviso);
-      })
-      .catch((falha) => {
+    definirAviso(null);
+    definirErrosImportacao([]);
+    definirPrecisaImportar(false);
+    definirProgresso(null);
+    (async () => {
+      try {
+        const estado = await carregarClubesLocais(controle);
+        if (controle.signal.aborted) return;
+        if (estado === "precisa_importar") {
+          definirCarregando(false);
+          await importarLigaSelecionada(false, controle);
+          return;
+        }
+      } catch (falha) {
         if (!controle.signal.aborted)
           definirErro(
             falha instanceof Error
               ? falha.message
               : "Falha ao carregar os clubes.",
           );
-      })
-      .finally(() => {
+      } finally {
         if (!controle.signal.aborted) definirCarregando(false);
-      });
+      }
+    })();
     return () => controle.abort();
   }, [ligaId, tentativa]);
   function avancar() {
@@ -325,28 +443,39 @@ export function CriacaoCarreira() {
             </div>
           )}
           {etapa === 3 && (
-            <div className="opcoes grade-dupla">
-              {LIGAS_SUPORTADAS.map((l) => (
-                <button
-                  aria-pressed={ligaId === l.id}
-                  key={l.id}
-                  className={`opcao opcao-liga ${ligaId === l.id ? "selecionada" : ""}`}
-                  onClick={() => definirLiga(l.id)}
-                >
-                  <span
-                    className={`bandeira bandeira-${l.bandeira.toLowerCase()}`}
+            <>
+              <div className="opcoes grade-dupla">
+                {LIGAS_SUPORTADAS.map((l) => (
+                  <button
+                    aria-pressed={ligaId === l.id}
+                    key={l.id}
+                    className={`opcao opcao-liga ${ligaId === l.id ? "selecionada" : ""}`}
+                    onClick={() => definirLiga(l.id)}
                   >
-                    {l.bandeira}
-                  </span>
-                  <div>
-                    <strong>{l.nome}</strong>
-                    <span>
-                      {l.pais} · {l.quantidadeClubes} clubes
+                    <span
+                      className={`bandeira bandeira-${l.bandeira.toLowerCase()}`}
+                    >
+                      {l.bandeira}
                     </span>
-                  </div>
-                </button>
-              ))}
-            </div>
+                    <div>
+                      <strong>{l.nome}</strong>
+                      <span>
+                        {l.pais} · {l.quantidadeClubes} clubes
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              {(importando || carregando) && (
+                <p className="aviso" role="status">
+                  {importando
+                    ? progresso
+                      ? `Preparando ${liga.nome}: ${progresso.importados}/${progresso.total} clubes${progresso.clubeAtual ? ` · ${progresso.clubeAtual}` : ""}…`
+                      : `Preparando ${liga.nome} (clubes e elencos)…`
+                    : `Verificando dados de ${liga.nome}…`}
+                </p>
+              )}
+            </>
           )}
           {etapa === 4 && (
             <>
@@ -355,19 +484,53 @@ export function CriacaoCarreira() {
                   {aviso}
                 </p>
               )}
+              {errosImportacao.length > 0 && (
+                <details className="aviso">
+                  <summary>
+                    {errosImportacao.length} clube(s) sem elenco importado
+                  </summary>
+                  <ul>
+                    {errosImportacao.map((item) => (
+                      <li key={item.clubeId}>
+                        <strong>{item.nome}:</strong> {item.motivo}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
               <div className="linha-titulo">
                 <span className="rotulo">{liga.nome}</span>
                 <button
                   className="botao-texto"
-                  disabled={carregando}
+                  disabled={carregando || importando}
                   onClick={() => definirTentativa((t) => t + 1)}
                 >
-                  <RefreshCw size={14} /> Atualizar clubes
+                  <RefreshCw size={14} /> Recarregar
                 </button>
               </div>
-              {carregando ? (
+              {progresso && (importando || progresso.importados < progresso.total) && (
+                <p className="aviso" role="status">
+                  {progresso.importados}/{progresso.total} clubes importados
+                  {progresso.clubeAtual
+                    ? ` · processando ${progresso.clubeAtual}`
+                    : ""}
+                  {progresso.falhas > 0 ? ` · ${progresso.falhas} falha(s)` : ""}
+                </p>
+              )}
+              {!precisaImportar && clubes.length > 0 && (
+                <button
+                  className="botao-texto campo-inteiro"
+                  disabled={importando || carregando}
+                  onClick={() => void importarLigaSelecionada(true)}
+                >
+                  <RefreshCw size={14} /> Atualizar dados da liga
+                </button>
+              )}
+              {carregando || importando ? (
                 <p className="estado-vazio" role="status">
-                  Importando clubes da liga…
+                  {importando
+                    ? "Baixando clubes e elencos desta liga pela primeira vez… isso pode levar alguns minutos."
+                    : "Carregando clubes…"}
                 </p>
               ) : (
                 <div className="selecao-clubes">
@@ -381,7 +544,12 @@ export function CriacaoCarreira() {
                       <Escudo clube={c} tamanho={36} />
                       <div>
                         <strong>{c.nome}</strong>
-                        <span>{c.estadio}</span>
+                        <span>
+                          {c.estadio}
+                          {c.elenco.length > 0
+                            ? ` · ${c.elenco.length} jogadores`
+                            : ""}
+                        </span>
                       </div>
                       <b className="forca-clube">{c.forcaGeral}</b>
                     </button>
@@ -426,7 +594,7 @@ export function CriacaoCarreira() {
                   <dt>Mundo inicial</dt>
                   <dd>
                     {origem === "api"
-                      ? "Clubes reais · API-Football"
+                      ? "Clubes reais · Transfermarkt API (importação local)"
                       : "Demonstração · clubes fictícios"}
                   </dd>
                 </div>

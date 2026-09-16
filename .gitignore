@@ -7,3 +7,8 @@ coverage/
 test-results/
 
 .cache/
+src/dados/futebol/*.json
+API/.venv/
+API/__pycache__/
+API/**/__pycache__/
+API/.pytest_cache/

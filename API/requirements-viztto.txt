@@ -1,0 +1,11 @@
+# Dependências compatíveis com Python 3.14+ para a Transfermarkt API local do viztto.
+# O requirements.txt original do upstream usa pins antigos sem wheels para 3.14.
+fastapi>=0.115
+uvicorn[standard]>=0.34
+beautifulsoup4>=4.12
+requests>=2.32
+slowapi>=0.1.9
+pydantic-settings>=2.7
+pydantic>=2.10
+python-dateutil>=2.9
+lxml>=5.4

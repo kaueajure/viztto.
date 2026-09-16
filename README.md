@@ -8,17 +8,24 @@ Requer Node.js 22.12 ou superior e npm.
 
 ```bash
 npm install
-cp .env.example .env.local
+cp .env.example .env
 npm run dev
 ```
 
-Abra [localhost:3000](http://localhost:3000). Sem chave, o jogo funciona em **demonstração**, com oito clubes fictícios por liga e um aviso visível. Para jogar com clubes reais, configure a chave antes de criar a carreira.
+Abra [localhost:3000](http://localhost:3000). O comando sobe também a Transfermarkt API em [localhost:8000](http://localhost:8000).
 
-```env
-API_FOOTBALL_CHAVE=sua_chave_api_sports
+### Transfermarkt API local (sem chave)
+
+`npm run dev` sobe a Transfermarkt API (`API/`) e o Next juntos. Configure só:
+
+```bash
+cp .env.example .env   # TRANSFERMARKT_API_URL=http://localhost:8000
+npm run dev
 ```
 
-A variável fica exclusivamente no servidor. Não use o prefixo `NEXT_PUBLIC_`. `.env.local` não deve ser versionado.
+Na criação de carreira, ao escolher a liga, o jogo importa clubes e elencos automaticamente (salva em `src/dados/futebol/`). Ligas: Brasileirão, Premier League, La Liga, Serie A, Bundesliga e Ligue 1.
+
+Docs da API: http://localhost:8000/docs — para subir só a API: `npm run api`.
 
 ## O que está implementado
 
@@ -89,7 +96,7 @@ src/
   dominio/                    Entidades, configuração de ligas e regras
   aplicacao/casos-de-uso/      Criação, avanço e transição de temporadas
   simulacao/                  Partidas, evolução, treinos, mercado e eventos
-  infraestrutura/api-futebol/ Provedor substituível e validação externa
+  infraestrutura/transfermarkt/ Cliente, importação e normalização Transfermarkt
   infraestrutura/persistencia/ Adaptador local e validação do save
   estado/                     Zustand e ponte para casos de uso
   dados/                      Clubes fictícios de demonstração

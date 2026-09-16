@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { EstadoCarreira } from "@/dominio/entidades/modelos";
 import { NOMES_ATRIBUTOS } from "@/dominio/entidades/modelos";
 import { esquemaIdentidade } from "@/dominio/regras/jogador";
-import { esquemaClube } from "@/infraestrutura/api-futebol/esquemas";
+import { esquemaClube } from "@/infraestrutura/transfermarkt/esquemas";
 const numero = z.number().finite(),
   data = z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   texto = z.string();
@@ -110,7 +110,8 @@ const esquemaCarreira = z.object({
   clubes: z.array(esquemaClube).min(2),
   liga: z.object({
     id: texto,
-    idExterno: numero,
+    idTransfermarkt: texto,
+    termoBusca: texto,
     nome: texto,
     pais: texto,
     bandeira: texto,

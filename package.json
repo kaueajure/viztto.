@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --hostname 0.0.0.0",
+    "dev": "bash scripts/dev.sh",
+    "dev:web": "next dev --hostname 0.0.0.0",
+    "api": "bash API/iniciar.sh",
     "build": "next build",
     "start": "next start --hostname 0.0.0.0",
     "test": "vitest run",

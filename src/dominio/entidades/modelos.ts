@@ -20,9 +20,12 @@ export type StatusElenco =
 export type Escalacao =
   "titular" | "banco" | "nao relacionado" | "lesionado" | "suspenso";
 export type Categoria = "base" | "profissional";
+import type { Formacao, GrupoPosicao } from "@/dominio/formacao";
+
 export interface Liga {
   id: string;
-  idExterno: number;
+  idTransfermarkt: string;
+  termoBusca: string;
   nome: string;
   pais: string;
   bandeira: string;
@@ -35,16 +38,46 @@ export interface Liga {
     amarelosSuspensao: number;
   };
 }
+export interface JogadorExterno {
+  id: string;
+  idExterno: number;
+  idTransfermarkt: string;
+  nome: string;
+  idade: number | null;
+  numero: number | null;
+  posicao: string;
+  grupoPosicao: GrupoPosicao;
+  nacionalidade: string[];
+  altura: number | null;
+  peDominante: string | null;
+  valorMercado: number | null;
+  dataNascimento: string | null;
+  contratoAte: string | null;
+  joinedOn: string | null;
+  signedFrom: string | null;
+  foto: string;
+}
 export interface Clube {
   id: string;
   idExterno: number;
+  idTransfermarkt: string;
   ligaId: string;
   nome: string;
+  nomeCurto: string;
+  nomeOficial: string | null;
   codigo: string;
   pais: string;
   fundacao: number | null;
   escudo: string;
   estadio: string;
+  capacidadeEstadio: number | null;
+  tamanhoElenco: number | null;
+  idadeMedia: number | null;
+  valorElenco: number | null;
+  registroTransferencias: number | null;
+  formacaoPreferida: Formacao;
+  goleiroTitularId: string | null;
+  titularesIds: string[];
   reputacao: number;
   forcaGeral: number;
   forcaAtaque: number;
@@ -55,6 +88,9 @@ export interface Clube {
   forma: number;
   moral: number;
   fadiga: number;
+  elenco: JogadorExterno[];
+  /** Snapshot útil para expansões futuras (PostgreSQL / detalhes). */
+  dadosBrutos: Record<string, unknown> | null;
 }
 export const NOMES_ATRIBUTOS = {
   finalizacao: "Finalização",

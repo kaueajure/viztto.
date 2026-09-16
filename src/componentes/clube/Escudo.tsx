@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { Shield } from "lucide-react";
 import type { Clube } from "@/dominio/entidades/modelos";
+
 export function Escudo({
   clube,
   tamanho = 48,
@@ -9,10 +10,7 @@ export function Escudo({
   clube: Clube;
   tamanho?: number;
 }) {
-  const origem =
-    clube.idExterno > 0 && clube.escudo
-      ? `/api/futebol/escudos/${clube.idExterno}`
-      : "";
+  const origem = clube.escudo.startsWith("http") ? clube.escudo : "";
   const [origemFalha, definirOrigemFalha] = useState<string | null>(null);
   return origem && origemFalha !== origem ? (
     <img

@@ -1,5 +1,6 @@
 import type { Clube, Liga } from "@/dominio/entidades/modelos";
 import { gerarSeedNumerica, GeradorAleatorio } from "@/utilitarios/aleatorio";
+
 export function gerarClubesDemonstracao(liga: Liga): Clube[] {
   return [
     "Atlético Aurora",
@@ -18,8 +19,11 @@ export function gerarClubesDemonstracao(liga: Liga): Clube[] {
     return {
       id: `demo-${liga.id}-${indice}`,
       idExterno: -(indice + 1),
+      idTransfermarkt: `demo-${indice}`,
       ligaId: liga.id,
       nome,
+      nomeCurto: nome.split(" ").slice(-1)[0] ?? nome,
+      nomeOficial: nome,
       codigo: nome
         .split(" ")
         .map((p) => p[0])
@@ -29,6 +33,14 @@ export function gerarClubesDemonstracao(liga: Liga): Clube[] {
       fundacao: 1920 + indice * 7,
       escudo: "",
       estadio: `Estádio ${nome.replace(/^(Clube|Atlético|Esportivo) /, "")}`,
+      capacidadeEstadio: 20000 + indice * 3000,
+      tamanhoElenco: 0,
+      idadeMedia: null,
+      valorElenco: null,
+      registroTransferencias: null,
+      formacaoPreferida: "4-3-3" as const,
+      goleiroTitularId: null,
+      titularesIds: [],
       reputacao: forca,
       forcaGeral: forca,
       forcaAtaque: forca + aleatorio.inteiro(-4, 4),
@@ -39,6 +51,8 @@ export function gerarClubesDemonstracao(liga: Liga): Clube[] {
       forma: 50,
       moral: 60,
       fadiga: 10,
+      elenco: [],
+      dadosBrutos: null,
     };
   });
 }
