@@ -24,9 +24,89 @@ import {
   interesseEmJogador,
   ligaDoClube,
   papelPrometidoPara,
+  proximaAberturaJanela,
   reputacaoCompativel,
   resolverJanela,
 } from "./necessidade";
+
+function temAcordoAgendado(carreira: EstadoCarreira, excetoId?: string) {
+  return carreira.propostas.some(
+    (p) =>
+      p.id !== excetoId &&
+      p.status === "aceita" &&
+      (p.etapa === "acordo" || p.etapa === "acordo_futuro"),
+  );
+}
+
+function encerrarNegociacoesIncompativeis(
+  carreira: EstadoCarreira,
+  manterClubeId: string,
+  manterPropostaId: string,
+) {
+  for (const outra of carreira.propostas) {
+    if (
+      outra.id !== manterPropostaId &&
+      outra.tipo !== "renovacao" &&
+      (outra.status === "pendente" ||
+        (outra.status === "aceita" &&
+          (outra.etapa === "acordo" || outra.etapa === "acordo_futuro")))
+    ) {
+      outra.status = "expirada";
+      outra.etapa = "cancelada";
+    }
+  }
+  for (const interesse of carreira.mercado.interesses) {
+    if (interesse.clubeId !== manterClubeId) interesse.status = "encerrado";
+  }
+}
+
+function sincronizarLigaAoClube(carreira: EstadoCarreira, destinoId: string) {
+  const destino = carreira.clubes.find((c) => c.id === destinoId);
+  if (!destino) return;
+  if (destino.ligaId !== carreira.liga.id) {
+    const ligaDestino = carreira.ligas.find((l) => l.id === destino.ligaId);
+    const temporadaDestino = carreira.temporadasExternas[destino.ligaId];
+    if (!ligaDestino || !temporadaDestino)
+      throw new Error("A liga de destino não possui uma temporada disponível.");
+    carreira.temporadasExternas[carreira.liga.id] = carreira.temporada;
+    carreira.temporada = temporadaDestino;
+    delete carreira.temporadasExternas[destino.ligaId];
+    carreira.liga = ligaDestino;
+    carreira.ultimaPartidaId = null;
+  } else {
+    carreira.liga =
+      carreira.ligas.find((l) => l.id === destino.ligaId) ?? carreira.liga;
+  }
+}
+
+export function processarRetornoEmprestimo(carreira: EstadoCarreira): void {
+  const emp = carreira.mercado?.emprestimo;
+  if (!emp || emp.retornoEm > carreira.dataAtual) return;
+  const origem = carreira.clubes.find((c) => c.id === emp.clubeOrigemId);
+  if (!origem) {
+    delete carreira.mercado.emprestimo;
+    return;
+  }
+  const deId = carreira.clubeAtualId;
+  sincronizarLigaAoClube(carreira, origem.id);
+  carreira.clubeAtualId = origem.id;
+  delete carreira.mercado.emprestimo;
+  carreira.mercado.disponivelParaEmprestimo = false;
+  carreira.mercado.pediuEmprestimo = false;
+  carreira.mercado.respostaDiretoriaEmprestimo = undefined;
+  registrarNegociacao(
+    carreira,
+    origem.id,
+    `Empréstimo encerrado. Você retornou ao ${origem.nome}.`,
+  );
+  registrarEvento(
+    carreira,
+    "retorno-emprestimo",
+    `Retorno ao ${origem.nome}`,
+    `O período de empréstimo em ${carreira.clubes.find((c) => c.id === deId)?.nome ?? "outro clube"} terminou.`,
+    "Agente",
+  );
+}
 
 export function calcularValorMercado(
   jogador: Jogador,
@@ -184,6 +264,8 @@ export function avaliarMercado(
 ): void {
   carreira.mercado ??= criarMercado();
   carreira.janelaTransferencias = resolverJanela(carreira.dataAtual);
+  if (carreira.aposentado) return;
+  processarRetornoEmprestimo(carreira);
   const j = carreira.jogador;
   for (const proposta of carreira.propostas)
     if (
@@ -201,9 +283,7 @@ export function avaliarMercado(
     .at(-1);
   if (
     !carreira.mercado.pediuSaida &&
-    !carreira.propostas.some(
-      (p) => p.status === "aceita" && p.etapa === "acordo",
-    ) &&
+    !temAcordoAgendado(carreira) &&
     j.contrato.dataTermino < somarDias(carreira.dataAtual, 365) &&
     !pendentes.some((p) => p.tipo === "renovacao") &&
     (!ultimaRenovacao ||
@@ -249,29 +329,18 @@ export function responderProposta(
   )
     throw new Error("Esta proposta não está mais disponível.");
   carreira.mercado ??= criarMercado();
+  if (carreira.aposentado)
+    throw new Error("Sua carreira profissional já foi encerrada.");
   if (
     aceitar &&
     (proposta.contrapropostaPendente ||
       !["proposta_jogador", "negociacao"].includes(proposta.etapa))
   )
     throw new Error("Aguarde uma oferta contratual formal antes de aceitar.");
-  if (
-    aceitar &&
-    proposta.tipo === "transferencia" &&
-    !proposta.preContrato &&
-    resolverJanela(carreira.dataAtual) === "fechada"
-  )
+  if (aceitar && temAcordoAgendado(carreira, proposta.id))
     throw new Error(
-      "A janela está fechada. Uma transferência normal só pode ser concluída durante a janela.",
+      "Você já possui um acordo definitivo e deve cumprir o compromisso.",
     );
-  if (
-    aceitar &&
-    carreira.propostas.some(
-      (p) =>
-        p.id !== proposta.id && p.status === "aceita" && p.etapa === "acordo",
-    )
-  )
-    throw new Error("Você já assinou um pré-contrato e deve cumprir o acordo.");
   if (
     aceitar &&
     proposta.preContrato &&
@@ -294,12 +363,6 @@ export function responderProposta(
     proposta.efetivarEm &&
     proposta.efetivarEm > carreira.dataAtual
   ) {
-    if (
-      carreira.propostas.some(
-        (p) => p.status === "aceita" && p.etapa === "acordo",
-      )
-    )
-      throw new Error("Você já assinou um pré-contrato.");
     const contratante = carreira.clubes.find(
       (cl) => cl.id === proposta.clubeId,
     );
@@ -311,6 +374,7 @@ export function responderProposta(
       throw new Error("O pré-contrato não cabe no orçamento do clube.");
     proposta.status = "aceita";
     proposta.etapa = "acordo";
+    encerrarNegociacoesIncompativeis(carreira, proposta.clubeId, proposta.id);
     registrarNegociacao(
       carreira,
       proposta.clubeId,
@@ -320,9 +384,9 @@ export function responderProposta(
     );
     return carreira;
   }
-  proposta.status = aceitar ? "aceita" : "rejeitada";
-  proposta.etapa = aceitar ? "aceite" : "rejeicao";
   if (!aceitar) {
+    proposta.status = "rejeitada";
+    proposta.etapa = "rejeicao";
     const interesse = carreira.mercado.interesses.find(
       (i) => i.clubeId === proposta.clubeId,
     );
@@ -348,6 +412,8 @@ export function responderProposta(
   }
   const j = carreira.jogador;
   if (proposta.tipo === "renovacao") {
+    proposta.status = "aceita";
+    proposta.etapa = "aceite";
     const atual = carreira.clubes.find(
       (cl) => cl.id === carreira.clubeAtualId,
     )!;
@@ -386,9 +452,45 @@ export function responderProposta(
   if (!destino) throw new Error("Clube da proposta não encontrado.");
   if (
     proposta.clubeOrigemId &&
-    proposta.clubeOrigemId !== carreira.clubeAtualId
+    proposta.clubeOrigemId !== carreira.clubeAtualId &&
+    !carreira.mercado.emprestimo
   )
     throw new Error("Esta negociação pertence ao seu clube anterior.");
+
+  const janelaFechada = resolverJanela(carreira.dataAtual) === "fechada";
+  const agendar =
+    janelaFechada &&
+    !proposta.preContrato &&
+    (proposta.tipo === "transferencia" || proposta.tipo === "emprestimo");
+
+  if (proposta.tipo === "emprestimo") {
+    if (carreira.mercado.emprestimo)
+      throw new Error("Você já está em um período de empréstimo.");
+    const percentual = proposta.percentualSalario ?? 0.5;
+    const custo =
+      proposta.salario * percentual * 52 + (proposta.luvas ?? 0);
+    if (custo > destino.orcamento || proposta.salario * percentual > tetoSalario(destino))
+      throw new Error(
+        "O clube não possui orçamento e folha disponíveis para o empréstimo.",
+      );
+    if (agendar) {
+      proposta.status = "aceita";
+      proposta.etapa = "acordo_futuro";
+      proposta.acordoFuturo = true;
+      proposta.efetivarEm = proximaAberturaJanela(carreira.dataAtual);
+      encerrarNegociacoesIncompativeis(carreira, proposta.clubeId, proposta.id);
+      registrarNegociacao(
+        carreira,
+        destino.id,
+        `Empréstimo acertado com o ${destino.nome}. Apresentação prevista para ${formatarDataCurta(proposta.efetivarEm)}.`,
+        proposta.id,
+        proposta,
+      );
+      return carreira;
+    }
+    return efetivarEmprestimoUsuario(carreira, proposta, destino);
+  }
+
   const valor = proposta.valorTransferencia ?? Math.round(j.valorMercado * 0.5);
   if (
     valor + proposta.salario * 52 + (proposta.luvas ?? 0) > destino.orcamento ||
@@ -397,18 +499,34 @@ export function responderProposta(
     throw new Error(
       "O clube não possui orçamento e folha disponíveis para estes termos.",
     );
-  destino.orcamento -= valor + (proposta.luvas ?? 0);
-  if (destino.ligaId !== carreira.liga.id) {
-    const ligaDestino = carreira.ligas.find((l) => l.id === destino.ligaId);
-    const temporadaDestino = carreira.temporadasExternas[destino.ligaId];
-    if (!ligaDestino || !temporadaDestino)
-      throw new Error("A liga de destino não possui uma temporada disponível.");
-    carreira.temporadasExternas[carreira.liga.id] = carreira.temporada;
-    carreira.temporada = temporadaDestino;
-    delete carreira.temporadasExternas[destino.ligaId];
-    carreira.liga = ligaDestino;
-    carreira.ultimaPartidaId = null;
+
+  if (agendar) {
+    proposta.status = "aceita";
+    proposta.etapa = "acordo_futuro";
+    proposta.acordoFuturo = true;
+    proposta.efetivarEm = proximaAberturaJanela(carreira.dataAtual);
+    encerrarNegociacoesIncompativeis(carreira, proposta.clubeId, proposta.id);
+    registrarNegociacao(
+      carreira,
+      destino.id,
+      `Transferência acertada para o ${destino.nome}. Apresentação prevista para ${formatarDataCurta(proposta.efetivarEm)}.`,
+      proposta.id,
+      proposta,
+    );
+    registrarEvento(
+      carreira,
+      "acordo-futuro",
+      `Acordo com o ${destino.nome}`,
+      `Você permanece no clube atual até ${formatarDataCurta(proposta.efetivarEm)}.`,
+      "Agente",
+    );
+    return carreira;
   }
+
+  proposta.status = "aceita";
+  proposta.etapa = "aceite";
+  destino.orcamento -= valor + (proposta.luvas ?? 0);
+  sincronizarLigaAoClube(carreira, destino.id);
   const origem = carreira.clubes.find((c) => c.id === carreira.clubeAtualId);
   if (origem) {
     origem.orcamento += valor;
@@ -430,8 +548,6 @@ export function responderProposta(
   j.status = proposta.papelPrometido ?? "rotacao";
   j.confianca = 55;
   carreira.relacionamentos.treinador = 50;
-  carreira.liga =
-    carreira.ligas.find((l) => l.id === destino.ligaId) ?? carreira.liga;
   carreira.transferenciasRecentes.unshift({
     id: `user-${proposta.id}`,
     jogadorId: "usuario",
@@ -447,19 +563,14 @@ export function responderProposta(
     aoUsuario: true,
   });
   proposta.etapa = "concluida";
-  for (const outra of carreira.propostas)
-    if (
-      outra.id !== proposta.id &&
-      (outra.status === "pendente" ||
-        (outra.status === "aceita" && outra.etapa === "acordo"))
-    ) {
-      outra.status = "expirada";
-    }
-  for (const interesse of carreira.mercado.interesses)
-    interesse.status = "encerrado";
+  proposta.acordoFuturo = false;
+  encerrarNegociacoesIncompativeis(carreira, destino.id, proposta.id);
   carreira.mercado.pediuSaida = false;
   carreira.mercado.pedidoPublico = false;
+  carreira.mercado.pediuEmprestimo = false;
+  carreira.mercado.disponivelParaEmprestimo = false;
   carreira.mercado.ultimaCobrancaPapel = undefined;
+  delete carreira.mercado.emprestimo;
   registrarNegociacao(
     carreira,
     destino.id,
@@ -477,6 +588,73 @@ export function responderProposta(
   return carreira;
 }
 
+function formatarDataCurta(data: string) {
+  const [ano, mes, dia] = data.split("-");
+  return `${dia}/${mes}/${ano}`;
+}
+
+function efetivarEmprestimoUsuario(
+  carreira: EstadoCarreira,
+  proposta: NonNullable<EstadoCarreira["propostas"][number]>,
+  destino: NonNullable<EstadoCarreira["clubes"][number]>,
+): EstadoCarreira {
+  const origemId = carreira.clubeAtualId;
+  const percentual = proposta.percentualSalario ?? 0.5;
+  const retornoEm =
+    proposta.efetivarEm && proposta.acordoFuturo
+      ? somarDias(carreira.dataAtual, Math.max(180, proposta.duracaoAnos * 365))
+      : somarDias(carreira.dataAtual, Math.max(180, proposta.duracaoAnos * 365));
+  destino.orcamento = Math.max(
+    0,
+    destino.orcamento - Math.round(proposta.salario * percentual * 26),
+  );
+  sincronizarLigaAoClube(carreira, destino.id);
+  carreira.clubeAtualId = destino.id;
+  carreira.jogador.status = proposta.papelPrometido ?? "rotacao";
+  carreira.jogador.confianca = 55;
+  carreira.relacionamentos.treinador = 50;
+  carreira.mercado.emprestimo = {
+    clubeOrigemId: origemId,
+    retornoEm,
+    percentualSalario: percentual,
+  };
+  carreira.mercado.disponivelParaEmprestimo = false;
+  carreira.mercado.pediuEmprestimo = false;
+  proposta.status = "aceita";
+  proposta.etapa = "concluida";
+  proposta.acordoFuturo = false;
+  encerrarNegociacoesIncompativeis(carreira, destino.id, proposta.id);
+  carreira.transferenciasRecentes.unshift({
+    id: `loan-${proposta.id}`,
+    jogadorId: "usuario",
+    nomeJogador: `${carreira.jogador.nome} ${carreira.jogador.sobrenome}`,
+    deClubeId: origemId,
+    paraClubeId: destino.id,
+    valor: 0,
+    salario: proposta.salario,
+    duracaoAnos: proposta.duracaoAnos,
+    papelPrometido: proposta.papelPrometido,
+    etapa: "concluida",
+    data: carreira.dataAtual,
+    aoUsuario: true,
+  });
+  registrarNegociacao(
+    carreira,
+    destino.id,
+    `Empréstimo concluído até ${formatarDataCurta(retornoEm)}. O contrato original permanece com o clube de origem.`,
+    proposta.id,
+    proposta,
+  );
+  registrarEvento(
+    carreira,
+    "emprestimo",
+    `${carreira.jogador.nome} é emprestado ao ${destino.nome}`,
+    `Retorno previsto para ${formatarDataCurta(retornoEm)}.`,
+    "Agente",
+  );
+  return carreira;
+}
+
 export type { StatusElenco };
 
 export function efetivarPreContratos(estado: EstadoCarreira): EstadoCarreira {
@@ -484,7 +662,7 @@ export function efetivarPreContratos(estado: EstadoCarreira): EstadoCarreira {
   for (const p of estado.propostas.filter(
     (p) =>
       p.status === "aceita" &&
-      p.etapa === "acordo" &&
+      (p.etapa === "acordo" || p.etapa === "acordo_futuro") &&
       p.efetivarEm &&
       p.efetivarEm <= estado.dataAtual,
   )) {
@@ -493,6 +671,8 @@ export function efetivarPreContratos(estado: EstadoCarreira): EstadoCarreira {
     oferta.status = "pendente";
     oferta.etapa = "proposta_jogador";
     oferta.validade = copia.dataAtual;
+    oferta.acordoFuturo = false;
+    if (!oferta.preContrato) delete oferta.efetivarEm;
     try {
       c = responderProposta(copia, p.id, true);
     } catch {
@@ -501,10 +681,41 @@ export function efetivarPreContratos(estado: EstadoCarreira): EstadoCarreira {
       registrarNegociacao(
         c,
         p.clubeId,
-        "O pré-contrato não pôde ser efetivado: vínculo ou condições financeiras mudaram.",
+        "O acordo não pôde ser efetivado: vínculo ou condições financeiras mudaram.",
         p.id,
       );
     }
   }
   return c;
+}
+
+export function aposentarJogador(estado: EstadoCarreira): EstadoCarreira {
+  if (estado.aposentado)
+    throw new Error("Esta carreira já está encerrada.");
+  const carreira = structuredClone(estado);
+  carreira.mercado ??= criarMercado();
+  carreira.aposentado = true;
+  carreira.dataAposentadoria = carreira.dataAtual;
+  carreira.idadeAposentadoria = carreira.jogador.idade;
+  carreira.clubeFinalId = carreira.clubeAtualId;
+  for (const p of carreira.propostas) {
+    if (p.status === "pendente") {
+      p.status = "expirada";
+      p.etapa = "cancelada";
+    }
+  }
+  for (const i of carreira.mercado.interesses) i.status = "encerrado";
+  registrarNegociacao(
+    carreira,
+    carreira.clubeAtualId,
+    "Você confirmou a aposentadoria. Sua carreira profissional foi encerrada.",
+  );
+  registrarEvento(
+    carreira,
+    "aposentadoria",
+    `${carreira.jogador.nome} se aposenta`,
+    `Aos ${carreira.jogador.idade} anos, no ${carreira.clubes.find((c) => c.id === carreira.clubeAtualId)?.nome ?? "clube"}. O histórico permanece disponível.`,
+    "Agente",
+  );
+  return carreira;
 }

@@ -205,6 +205,10 @@ function prepararClubesRodada(
 }
 
 export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
+  if (estado.aposentado)
+    throw new Error(
+      "Esta carreira está aposentada. Você pode consultar o histórico, mas não avançar como jogador ativo.",
+    );
   if (estado.temporada.encerrada) return estado;
   const carreira = structuredClone(estado),
     aleatorio = new GeradorAleatorio(carreira.estadoAleatorio),

@@ -7,12 +7,13 @@ import {
 } from "@/aplicacao/casos-de-uso/criar-carreira";
 import { avancarSemana } from "@/aplicacao/casos-de-uso/avancar-tempo";
 import { iniciarProximaTemporada } from "@/aplicacao/casos-de-uso/temporada";
-import { responderProposta } from "@/simulacao/transferencias/mercado";
+import { responderProposta, aposentarJogador } from "@/simulacao/transferencias/mercado";
 import { responderDecisao } from "@/simulacao/decisoes/decisoes";
 import {
   conversarAgente,
   definirPreferencias,
   contrapropor,
+  type AcaoAgente,
 } from "@/simulacao/transferencias/mercado-progressivo";
 import type { PreferenciasCarreira, TermosContrato } from "@/dominio/mercado";
 import { serializarCarreira } from "@/infraestrutura/persistencia/carreira-persistida";
@@ -44,9 +45,19 @@ interface JogoStore {
   responder: (id: string, aceitar: boolean) => void;
   responderDecisao: (id: string, opcaoId: string) => void;
   conversarAgente: (
-    acao: "contatar" | "buscar" | "sair" | "publicar" | "permanecer",
+    acao:
+      | "contatar"
+      | "buscar"
+      | "sair"
+      | "publicar"
+      | "permanecer"
+      | "bloquear"
+      | "desbloquear"
+      | "emprestar"
+      | "cancelar-emprestimo",
     clubeId?: string,
   ) => void;
+  aposentar: () => void;
   definirPreferencias: (
     preferencias: PreferenciasCarreira,
     clubes: string[],
@@ -268,8 +279,9 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
         aplicar((c) => responderProposta(c, id, aceitar)),
       responderDecisao: (id, opcaoId) =>
         aplicar((c) => responderDecisao(c, id, opcaoId)),
-      conversarAgente: (acao, clubeId) =>
+      conversarAgente: (acao: AcaoAgente, clubeId) =>
         aplicar((c) => conversarAgente(c, acao, clubeId)),
+      aposentar: () => aplicar((c) => aposentarJogador(c)),
       definirPreferencias: (p, clubes) =>
         aplicar((c) => definirPreferencias(c, p, clubes)),
       contrapropor: (id, termos) => aplicar((c) => contrapropor(c, id, termos)),

@@ -51,7 +51,7 @@ function nova() {
     clubeId: clubes[0]!.id,
     origem: "demonstracao",
     seed: "fase-03",
-    dataInicio: "2026-06-01",
+    dataInicio: "2026-07-01",
     ligasMundo: [externa],
     clubesMundo: gerarClubesDemonstracao(externa).slice(0, 4),
   });
@@ -388,14 +388,18 @@ describe("Fase 3: negociação", () => {
     expect(depois.jogador.contrato.papelEsperado).toBe("titular");
     expect(depois.jogador.contrato.clausulaRescisao).toBe(3_000_000);
   });
-  it("bloqueia assinatura normal fora da janela e sondagem não pode ser aceita", () => {
+  it("agenda transferência fora da janela e sondagem não pode ser aceita", () => {
     const c = nova();
     const p = oferta(c);
     c.dataAtual = "2026-09-01";
     p.validade = "2026-10-01";
-    expect(() => responderProposta(c, p.id, true)).toThrow("janela");
+    const depois = responderProposta(c, p.id, true);
+    expect(depois.clubeAtualId).toBe(c.clubeAtualId);
+    expect(depois.propostas[0]!.etapa).toBe("acordo_futuro");
+    expect(depois.propostas[0]!.efetivarEm).toBe("2027-01-01");
     c.dataAtual = "2026-08-01";
     p.etapa = "sondagem";
+    p.status = "pendente";
     expect(() => responderProposta(c, p.id, true)).toThrow("formal");
   });
   it("pré-contrato internacional aguarda fim do vínculo e mantém a liga consistente", () => {

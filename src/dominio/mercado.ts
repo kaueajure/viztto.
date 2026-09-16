@@ -54,12 +54,23 @@ export interface HistoricoNegociacao {
   propostaId?: string;
   termos?: TermosContrato;
 }
+export interface EmprestimoAtivo {
+  clubeOrigemId: string;
+  retornoEm: string;
+  percentualSalario: number;
+}
 export interface MercadoCarreira {
   interesses: InteresseClube[];
   clubesDesejados: string[];
   preferencias: PreferenciasCarreira;
   pediuSaida: boolean;
   pedidoPublico: boolean;
+  bloquearPropostas: boolean;
+  pediuEmprestimo: boolean;
+  disponivelParaEmprestimo: boolean;
+  respostaDiretoriaSaida?: string;
+  respostaDiretoriaEmprestimo?: string;
+  emprestimo?: EmprestimoAtivo;
   historico: HistoricoNegociacao[];
   ultimaCobrancaPapel?: string;
 }
@@ -78,6 +89,9 @@ export function criarMercado(): MercadoCarreira {
     },
     pediuSaida: false,
     pedidoPublico: false,
+    bloquearPropostas: false,
+    pediuEmprestimo: false,
+    disponivelParaEmprestimo: false,
     historico: [],
   };
 }

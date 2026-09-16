@@ -186,7 +186,7 @@ export const esquemaCarreira = z.object({
       ...camposProposta,
       id: texto,
       clubeId: texto,
-      tipo: z.enum(["transferencia", "renovacao"]),
+      tipo: z.enum(["transferencia", "renovacao", "emprestimo"]),
       salario: numero,
       duracaoAnos: numero,
       papelPrometido: texto.default("rotacao"),
@@ -270,6 +270,10 @@ export const esquemaCarreira = z.object({
     }),
   ),
   ultimaPartidaId: texto.nullable(),
+  aposentado: z.boolean().optional(),
+  dataAposentadoria: data.optional(),
+  idadeAposentadoria: numero.optional(),
+  clubeFinalId: texto.optional(),
 });
 
 function migrarParaV2(valor: unknown): unknown {

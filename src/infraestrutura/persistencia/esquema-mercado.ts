@@ -28,7 +28,9 @@ export const camposProposta = {
   bonusGol: numero.optional(),
   luvas: numero.optional(),
   preContrato: z.boolean().optional(),
+  acordoFuturo: z.boolean().optional(),
   efetivarEm: data.optional(),
+  percentualSalario: numero.max(1).optional(),
 };
 export const esquemaMercado = z
   .object({
@@ -74,6 +76,18 @@ export const esquemaMercado = z
     }),
     pediuSaida: z.boolean(),
     pedidoPublico: z.boolean(),
+    bloquearPropostas: z.boolean().default(false),
+    pediuEmprestimo: z.boolean().default(false),
+    disponivelParaEmprestimo: z.boolean().default(false),
+    respostaDiretoriaSaida: z.string().optional(),
+    respostaDiretoriaEmprestimo: z.string().optional(),
+    emprestimo: z
+      .object({
+        clubeOrigemId: z.string(),
+        retornoEm: data,
+        percentualSalario: numero.max(1),
+      })
+      .optional(),
     ultimaCobrancaPapel: data.optional(),
     historico: z.array(
       z.object({

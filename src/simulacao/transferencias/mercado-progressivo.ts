@@ -17,6 +17,7 @@ import { somarEstatisticas } from "../temporada/estatisticas";
 import {
   avaliarNecessidadeElenco,
   ligaDoClube,
+  pesoFrequenciaPropostas,
   resolverJanela,
 } from "./necessidade";
 
@@ -25,6 +26,121 @@ const diasContrato = (c: EstadoCarreira) =>
     (Date.parse(c.jogador.contrato.dataTermino) - Date.parse(c.dataAtual)) /
       86400000,
   );
+
+function temAcordoAtivo(c: EstadoCarreira) {
+  return c.propostas.some(
+    (p) =>
+      p.status === "aceita" &&
+      (p.etapa === "acordo" || p.etapa === "acordo_futuro"),
+  );
+}
+
+export function avaliarPedidoSaidaDiretoria(c: EstadoCarreira): {
+  aceitaNegociar: boolean;
+  resposta: string;
+} {
+  const j = c.jogador;
+  const clube = c.clubes.find((cl) => cl.id === c.clubeAtualId)!;
+  const importancia = PAPEIS_MERCADO.indexOf(j.status);
+  const nec = avaliarNecessidadeElenco(clube).find(
+    (n) => n.posicao === j.posicao,
+  );
+  const dias = diasContrato(c);
+  if (
+    importancia >= 4 &&
+    dias > 500 &&
+    c.relacionamentos.diretoria >= 45 &&
+    (nec?.nivel === "alta" ||
+      nec?.nivel === "critica" ||
+      (nec?.quantidade ?? 0) <= 2)
+  ) {
+    return {
+      aceitaNegociar: false,
+      resposta:
+        "A diretoria recusou o pedido. Considera você peça importante do elenco e quer mantê-lo até o fim do contrato.",
+    };
+  }
+  if (importancia >= 3 && dias > 700 && c.relacionamentos.diretoria > 55) {
+    return {
+      aceitaNegociar: true,
+      resposta:
+        "A diretoria aceita apenas no fim da temporada ou se chegar uma proposta muito acima do valor de mercado.",
+    };
+  }
+  if (c.relacionamentos.diretoria < 30 || clube.orcamento < j.valorMercado) {
+    return {
+      aceitaNegociar: true,
+      resposta:
+        "A diretoria aceita negociar e está aberta a propostas adequadas pelo seu passe.",
+    };
+  }
+  return {
+    aceitaNegociar: true,
+    resposta:
+      "A diretoria registrou o pedido em privado. Aceita conversar se chegar uma proposta compatível com o valor pedido.",
+  };
+}
+
+export function avaliarPedidoEmprestimoDiretoria(c: EstadoCarreira): {
+  aceita: boolean;
+  resposta: string;
+} {
+  const j = c.jogador;
+  const clube = c.clubes.find((cl) => cl.id === c.clubeAtualId)!;
+  const nec = avaliarNecessidadeElenco(clube).find(
+    (n) => n.posicao === j.posicao,
+  )!;
+  const titular = ["titular", "jogador importante", "estrela do time"].includes(
+    j.status,
+  );
+  const chegouHaPouco =
+    Date.parse(c.dataAtual) - Date.parse(j.contrato.dataInicio) < 90 * 86400000;
+  if (titular && nec.nivel !== "baixa") {
+    return {
+      aceita: false,
+      resposta:
+        "Seu clube recusou o pedido de empréstimo porque considera você parte importante da rotação.",
+    };
+  }
+  if (nec.quantidade <= 1 || nec.nivel === "critica") {
+    return {
+      aceita: false,
+      resposta:
+        "A diretoria negou: o elenco está curto na posição e não há reposição imediata.",
+    };
+  }
+  if (chegouHaPouco) {
+    return {
+      aceita: false,
+      resposta:
+        "A diretoria pediu para reavaliar mais adiante: você acabou de chegar ao clube.",
+    };
+  }
+  if (
+    j.idade <= 23 ||
+    j.status === "promessa" ||
+    j.status === "reserva" ||
+    j.overall < clube.forcaGeral - 4
+  ) {
+    return {
+      aceita: true,
+      resposta:
+        "A diretoria autorizou disponibilizá-lo para empréstimo. Clubes compatíveis poderão fazer propostas.",
+    };
+  }
+  if (c.relacionamentos.diretoria >= 55 && !titular) {
+    return {
+      aceita: true,
+      resposta:
+        "A diretoria aceitou o pedido de empréstimo para você ganhar minutos.",
+    };
+  }
+  return {
+    aceita: false,
+    resposta:
+      "A diretoria quer reavaliar na próxima janela e negou o empréstimo por enquanto.",
+  };
+}
 export function registrarNegociacao(
   c: EstadoCarreira,
   clubeId: string,
@@ -198,6 +314,8 @@ export function avaliarAlvo(c: EstadoCarreira, clube: Clube) {
     nota,
     nec,
     potencialPercebido,
+    saturado,
+    compativel,
   };
 }
 function atendePreferencias(
@@ -257,42 +375,116 @@ function observar(
   );
   return i;
 }
+export type AcaoAgente =
+  | "contatar"
+  | "buscar"
+  | "sair"
+  | "publicar"
+  | "permanecer"
+  | "bloquear"
+  | "desbloquear"
+  | "emprestar"
+  | "cancelar-emprestimo";
+
 export function conversarAgente(
   estado: EstadoCarreira,
-  acao: "contatar" | "buscar" | "sair" | "publicar" | "permanecer",
+  acao: AcaoAgente,
   clubeId?: string,
 ): EstadoCarreira {
   const c = structuredClone(estado);
   c.mercado ??= criarMercado();
+  if (c.aposentado)
+    throw new Error("Sua carreira profissional já foi encerrada.");
+
+  if (acao === "bloquear" || acao === "desbloquear") {
+    c.mercado.bloquearPropostas = acao === "bloquear";
+    registrarNegociacao(
+      c,
+      c.clubeAtualId,
+      acao === "bloquear"
+        ? "Seu agente vai filtrar novas abordagens espontâneas. Você ainda pode pedir contato ativo com clubes."
+        : "Seu agente voltou a receber propostas espontâneas em seu nome.",
+    );
+    return c;
+  }
+
+  if (acao === "emprestar" || acao === "cancelar-emprestimo") {
+    if (c.jogador.categoria === "base")
+      throw new Error(
+        "Empréstimos profissionais só após a promoção ao time principal.",
+      );
+    if (c.mercado.emprestimo)
+      throw new Error("Você já está emprestado; aguarde o retorno.");
+    if (acao === "cancelar-emprestimo") {
+      c.mercado.pediuEmprestimo = false;
+      c.mercado.disponivelParaEmprestimo = false;
+      c.mercado.respostaDiretoriaEmprestimo = undefined;
+      registrarNegociacao(
+        c,
+        c.clubeAtualId,
+        "Você retirou o pedido de empréstimo.",
+      );
+      return c;
+    }
+    const decisao = avaliarPedidoEmprestimoDiretoria(c);
+    c.mercado.pediuEmprestimo = true;
+    c.mercado.disponivelParaEmprestimo = decisao.aceita;
+    c.mercado.respostaDiretoriaEmprestimo = decisao.resposta;
+    registrarNegociacao(c, c.clubeAtualId, decisao.resposta);
+    return c;
+  }
+
   if (acao === "sair" || acao === "publicar" || acao === "permanecer") {
     if (acao === "publicar" && !c.mercado.pediuSaida)
       throw new Error("Converse primeiro com o agente sobre sua saída.");
     if (acao === "publicar" && !c.mercado.pedidoPublico) {
       c.relacionamentos.diretoria = limitar(c.relacionamentos.diretoria - 12);
       c.relacionamentos.treinador = limitar(c.relacionamentos.treinador - 6);
+      c.jogador.moral = limitar(c.jogador.moral - 2);
     }
-    if (acao === "sair" && !c.mercado.pediuSaida)
+    if (acao === "sair" && !c.mercado.pediuSaida) {
       c.jogador.moral = limitar(c.jogador.moral - 3);
-    c.mercado.pediuSaida = acao !== "permanecer";
-    c.mercado.pedidoPublico =
-      acao === "permanecer"
-        ? false
-        : c.mercado.pedidoPublico || acao === "publicar";
+      const decisao = avaliarPedidoSaidaDiretoria(c);
+      c.mercado.respostaDiretoriaSaida = decisao.resposta;
+      c.mercado.pediuSaida = true;
+      c.mercado.pedidoPublico = false;
+      registrarNegociacao(
+        c,
+        c.clubeAtualId,
+        `Pedido privado de transferência registrado. ${decisao.resposta}`,
+      );
+      return c;
+    }
+    if (acao === "permanecer") {
+      c.mercado.pediuSaida = false;
+      c.mercado.pedidoPublico = false;
+      c.mercado.respostaDiretoriaSaida = undefined;
+      registrarNegociacao(
+        c,
+        c.clubeAtualId,
+        "Você decidiu permanecer e voltou a considerar renovações.",
+      );
+      return c;
+    }
+    c.mercado.pediuSaida = true;
+    c.mercado.pedidoPublico = true;
     registrarNegociacao(
       c,
       c.clubeAtualId,
-      acao === "permanecer"
-        ? "Você decidiu permanecer e voltou a considerar renovações."
-        : acao === "publicar"
-          ? "Seu pedido de saída se tornou público. A diretoria e o treinador reagiram."
-          : "Seu agente recebeu um pedido privado de saída e vai buscar opções compatíveis.",
+      "Seu pedido de saída se tornou público. Isso aumenta a visibilidade no mercado, mas prejudica a relação com a diretoria e o treinador.",
     );
     return c;
   }
+
   if (c.jogador.categoria === "base")
     throw new Error(
       "Seu agente poderá negociar após sua promoção ao profissional.",
     );
+  if (temAcordoAtivo(c))
+    throw new Error(
+      "Você já tem um acordo definitivo. Aguarde a data da transferência.",
+    );
+
   const candidatos =
     acao === "contatar"
       ? c.clubes.filter((cl) => cl.id === clubeId && cl.id !== c.clubeAtualId)
@@ -309,10 +501,20 @@ export function conversarAgente(
               avaliarAlvo(c, b).score - avaliarAlvo(c, a).score,
           )
           .slice(0, 3);
-  if (!candidatos.length)
+  if (!candidatos.length) {
+    if (acao === "buscar") {
+      registrarNegociacao(
+        c,
+        c.clubeAtualId,
+        "Não encontrei clubes realmente interessados neste momento.",
+      );
+      return c;
+    }
     throw new Error(
       "Nenhum clube disponível corresponde ao pedido. Revise suas preferências.",
     );
+  }
+  let abertos = 0;
   for (const clube of candidatos) {
     const anterior = c.mercado.interesses.find((i) => i.clubeId === clube.id);
     if (
@@ -329,7 +531,17 @@ export function conversarAgente(
     c.mercado.interesses = c.mercado.interesses.filter(
       (i) => i.clubeId !== clube.id,
     );
-    observar(c, clube, "agente");
+    const interesse = observar(c, clube, "agente");
+    if (interesse.status !== "encerrado") abertos++;
+  }
+  if (acao === "buscar") {
+    registrarNegociacao(
+      c,
+      c.clubeAtualId,
+      abertos > 0
+        ? `Consegui abrir conversa com ${abertos} clube${abertos > 1 ? "s" : ""}.`
+        : "Não encontrei clubes realmente interessados neste momento.",
+    );
   }
   return c;
 }
@@ -386,6 +598,66 @@ function negociarClubes(
   a: ReturnType<typeof avaliarAlvo>,
 ) {
   const pre = a.preContrato && resolverJanela(c.dataAtual) === "fechada";
+  const comoEmprestimo =
+    !pre &&
+    c.mercado.disponivelParaEmprestimo &&
+    a.compativel &&
+    !a.saturado &&
+    (a.nec.nivel !== "baixa" || !a.viavel);
+  if (comoEmprestimo) {
+    const percentual = 0.5;
+    const custoAnual = a.salario * percentual * 52;
+    if (
+      custoAnual > clube.orcamento * 0.15 ||
+      a.salario * percentual > tetoSalario(clube)
+    ) {
+      encerrar(
+        c,
+        i,
+        "O clube analisou um empréstimo, mas não viu encaixe esportivo ou financeiro agora.",
+      );
+      return;
+    }
+    if (
+      c.propostas.filter(
+        (p) =>
+          p.status === "pendente" &&
+          (p.tipo === "transferencia" || p.tipo === "emprestimo"),
+      ).length >= 2
+    )
+      return;
+    const termos: TermosContrato = {
+      salario: a.salario,
+      duracaoAnos: 1,
+      papelPrometido: a.papel,
+    };
+    const proposta: PropostaTransferencia = {
+      ...termos,
+      id: `emprestimo-${clube.id}-${c.dataAtual}-${c.propostas.length}`,
+      clubeId: clube.id,
+      clubeOrigemId: c.clubeAtualId,
+      tipo: "emprestimo",
+      etapa: "proposta_jogador",
+      data: c.dataAtual,
+      validade: somarDias(c.dataAtual, 21),
+      status: "pendente",
+      valorTransferencia: 0,
+      percentualSalario: percentual,
+      rodadasNegociacao: 0,
+      ofertaInicial: { ...termos },
+    };
+    c.propostas.push(proposta);
+    i.propostaId = proposta.id;
+    i.status = "negociando";
+    registrarNegociacao(
+      c,
+      clube.id,
+      "O clube apresentou uma proposta de empréstimo após avaliar necessidade e minutos prováveis.",
+      proposta.id,
+      termos,
+    );
+    return;
+  }
   const pedido = pre ? 0 : precoPedido(c);
   const limite = Math.max(
     0,
@@ -472,11 +744,10 @@ function negociarClubes(
 }
 export function avancarInteresses(c: EstadoCarreira) {
   c.mercado ??= criarMercado();
-  if (
-    c.jogador.categoria === "base" ||
-    c.propostas.some((p) => p.status === "aceita" && p.etapa === "acordo")
-  )
+  if (c.aposentado || c.jogador.categoria === "base" || temAcordoAtivo(c))
     return;
+  const peso = pesoFrequenciaPropostas(c.dataAtual);
+  const limiarEspontaneo = 25 / Math.max(0.15, peso);
   for (const clube of c.clubes) {
     if (clube.id === c.clubeAtualId) continue;
     const a = avaliarAlvo(c, clube);
@@ -487,7 +758,8 @@ export function avancarInteresses(c: EstadoCarreira) {
       i.reabrirEm <= c.dataAtual &&
       a.viavel &&
       a.evidencia &&
-      atendePreferencias(c, clube, a)
+      atendePreferencias(c, clube, a) &&
+      !c.mercado.bloquearPropostas
     ) {
       c.mercado.interesses = c.mercado.interesses.filter((x) => x !== i);
       observar(c, clube, i.origem);
@@ -495,9 +767,10 @@ export function avancarInteresses(c: EstadoCarreira) {
     }
     if (!i) {
       if (
+        !c.mercado.bloquearPropostas &&
         a.viavel &&
         a.evidencia &&
-        a.score >= 25 &&
+        a.score >= limiarEspontaneo &&
         atendePreferencias(c, clube, a)
       )
         observar(
@@ -507,6 +780,16 @@ export function avancarInteresses(c: EstadoCarreira) {
             ? "agente"
             : "clube",
         );
+      else if (
+        c.mercado.disponivelParaEmprestimo &&
+        !c.mercado.bloquearPropostas &&
+        a.compativel &&
+        !a.saturado &&
+        a.nec.nivel !== "baixa" &&
+        a.evidencia &&
+        a.score >= limiarEspontaneo * 0.7
+      )
+        observar(c, clube, "clube");
       continue;
     }
     if (
@@ -523,10 +806,22 @@ export function avancarInteresses(c: EstadoCarreira) {
       (p) =>
         p.clubeId === clube.id &&
         (p.status === "pendente" ||
-          (p.status === "aceita" && p.etapa === "acordo")),
+          (p.status === "aceita" &&
+            (p.etapa === "acordo" || p.etapa === "acordo_futuro"))),
     );
-    if (pendente?.etapa === "acordo") continue;
+    if (pendente?.etapa === "acordo" || pendente?.etapa === "acordo_futuro")
+      continue;
     if (!a.viavel || (c.jogador.lesao?.diasRecuperacao ?? 0) >= 60) {
+      if (
+        c.mercado.disponivelParaEmprestimo &&
+        a.compativel &&
+        !a.saturado &&
+        i.status === "negociando"
+      ) {
+        negociarClubes(c, clube, i, a);
+        i.resposta = a.resposta;
+        continue;
+      }
       i.nivelInteresse = Math.max(0, i.nivelInteresse - 20);
       if (i.status === "negociando" || i.nivelInteresse === 0) {
         if (pendente) {
@@ -570,17 +865,17 @@ export function avancarInteresses(c: EstadoCarreira) {
       );
     }
     if (i.status === "negociando") {
-      if (resolverJanela(c.dataAtual) !== "fechada" || a.preContrato)
-        negociarClubes(c, clube, i, a);
+      negociarClubes(c, clube, i, a);
     } else if (
       i.status === "sondagem" &&
       i.nivelInteresse >= 65 &&
-      a.evidencia &&
-      (resolverJanela(c.dataAtual) !== "fechada" || a.preContrato)
+      a.evidencia
     ) {
       if (
         c.propostas.filter(
-          (p) => p.status === "pendente" && p.tipo === "transferencia",
+          (p) =>
+            p.status === "pendente" &&
+            (p.tipo === "transferencia" || p.tipo === "emprestimo"),
         ).length >= 2
       )
         continue;
@@ -588,7 +883,9 @@ export function avancarInteresses(c: EstadoCarreira) {
       registrarNegociacao(
         c,
         clube.id,
-        "Interesse sério: o clube decidiu abrir a negociação de contratação.",
+        resolverJanela(c.dataAtual) === "fechada"
+          ? "Interesse sério: o clube quer negociar agora e agendar a mudança para a próxima janela."
+          : "Interesse sério: o clube decidiu abrir a negociação de contratação.",
       );
     } else if (i.status === "interessado" && i.nivelInteresse >= 45) {
       i.status = "sondagem";

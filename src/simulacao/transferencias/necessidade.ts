@@ -137,11 +137,54 @@ export function papelPrometidoPara(
   return "reserva";
 }
 
-export function resolverJanela(data: string): "fechada" | "verao" | "inverno" {
+export type TipoJanela = "fechada" | "verao" | "inverno";
+
+export type SituacaoJanela = {
+  aberta: boolean;
+  tipo: TipoJanela;
+  proximaAbertura: string;
+};
+
+/** Janelas oficiais: janeiro, fevereiro e julho. */
+export function resolverJanela(data: string): TipoJanela {
   const mes = Number(data.slice(5, 7));
   if (mes === 1 || mes === 2) return "inverno";
-  if (mes >= 6 && mes <= 8) return "verao";
+  if (mes === 7) return "verao";
   return "fechada";
+}
+
+/** Próxima data em que uma transferência pode ser efetivada a partir de `data`. */
+export function proximaAberturaJanela(data: string): string {
+  const ano = Number(data.slice(0, 4));
+  const mes = Number(data.slice(5, 7));
+  if (mes >= 3 && mes <= 6) return `${ano}-07-01`;
+  if (mes >= 8) return `${ano + 1}-01-01`;
+  if (mes === 1 || mes === 2) return `${ano}-07-01`;
+  return `${ano + 1}-01-01`;
+}
+
+export function obterSituacaoJanela(data: string): SituacaoJanela {
+  const tipo = resolverJanela(data);
+  const ano = Number(data.slice(0, 4));
+  return {
+    aberta: tipo !== "fechada",
+    tipo,
+    proximaAbertura:
+      tipo === "fechada"
+        ? proximaAberturaJanela(data)
+        : tipo === "inverno"
+          ? `${ano}-01-01`
+          : `${ano}-07-01`,
+  };
+}
+
+/** Peso de frequência de propostas espontâneas (testável). */
+export function pesoFrequenciaPropostas(data: string): number {
+  const mes = Number(data.slice(5, 7));
+  if (mes === 1 || mes === 7) return 1;
+  if (mes === 2) return 0.75;
+  if (mes === 6 || mes === 12) return 0.45;
+  return 0.18;
 }
 
 export function clubePodePagar(clube: Clube, valor: number): boolean {

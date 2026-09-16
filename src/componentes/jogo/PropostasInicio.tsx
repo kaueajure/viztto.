@@ -1,6 +1,6 @@
 "use client";
 import { Contraproposta } from "./Contraproposta";
-import { resolverJanela } from "@/simulacao/transferencias/necessidade";
+import { obterSituacaoJanela } from "@/simulacao/transferencias/necessidade";
 import { useEffect, useRef, useState } from "react";
 import type { EstadoCarreira } from "@/dominio/entidades/modelos";
 import { useJogoStore } from "@/estado/jogo-store";
@@ -22,6 +22,7 @@ export function PropostasInicio({ carreira }: { carreira: EstadoCarreira }) {
     anteriores.current = new Set(atuais);
   }, [ids]);
   if (!propostas.length) return null;
+  const janela = obterSituacaoJanela(carreira.dataAtual);
   return (
     <section
       ref={painel}
@@ -37,22 +38,27 @@ export function PropostasInicio({ carreira }: { carreira: EstadoCarreira }) {
       </div>
       {propostas.map((proposta) => {
         const clube = carreira.clubes.find((c) => c.id === proposta.clubeId)!;
-        const podeAceitar =
+        const formal =
           !proposta.contrapropostaPendente &&
-          ["proposta_jogador", "negociacao"].includes(proposta.etapa) &&
-          (proposta.tipo === "renovacao" ||
-            proposta.preContrato ||
-            resolverJanela(carreira.dataAtual) !== "fechada");
+          ["proposta_jogador", "negociacao"].includes(proposta.etapa);
+        const podeAceitar = formal;
+        const agendada =
+          formal &&
+          proposta.tipo !== "renovacao" &&
+          !proposta.preContrato &&
+          !janela.aberta;
+        const tipoRotulo =
+          proposta.tipo === "renovacao"
+            ? "RENOVAÇÃO DE CONTRATO"
+            : proposta.tipo === "emprestimo"
+              ? "PROPOSTA DE EMPRÉSTIMO"
+              : "PROPOSTA DE TRANSFERÊNCIA";
         return (
           <article className="oferta-inicio" key={proposta.id}>
             <div className="nome-clube">
               <Escudo clube={clube} tamanho={42} />
               <div>
-                <span className="sobretitulo">
-                  {proposta.tipo === "renovacao"
-                    ? "RENOVAÇÃO DE CONTRATO"
-                    : "PROPOSTA DE TRANSFERÊNCIA"}
-                </span>
+                <span className="sobretitulo">{tipoRotulo}</span>
                 <h3>{clube.nome}</h3>
               </div>
             </div>
@@ -67,12 +73,25 @@ export function PropostasInicio({ carreira }: { carreira: EstadoCarreira }) {
                 · Elenco {clube.forcaGeral}
               </span>
               {proposta.etapa === "sondagem" && (
-                <span>Sondagem (fora da janela formal)</span>
+                <span>Sondagem (ainda sem oferta formal)</span>
               )}
               {proposta.preContrato && (
                 <span>
                   Pré-contrato · chegada após o vínculo atual:{" "}
                   {formatarData(proposta.efetivarEm!)}
+                </span>
+              )}
+              {agendada && (
+                <span>
+                  Janela fechada: ao aceitar, a mudança fica agendada para{" "}
+                  {formatarData(janela.proximaAbertura)}.
+                </span>
+              )}
+              {proposta.tipo === "emprestimo" && (
+                <span>
+                  Empréstimo · clube cobre{" "}
+                  {Math.round((proposta.percentualSalario ?? 0.5) * 100)}% do
+                  salário
                 </span>
               )}
               {proposta.clausulaRescisao && (
@@ -85,9 +104,7 @@ export function PropostasInicio({ carreira }: { carreira: EstadoCarreira }) {
                 <span>Luvas: {dinheiro(proposta.luvas)}</span>
               )}
               {!podeAceitar && !proposta.contrapropostaPendente && (
-                <span>
-                  Aguarde a janela aberta e uma oferta contratual formal.
-                </span>
+                <span>Aguarde uma oferta contratual formal.</span>
               )}
               <span>Responder até {formatarData(proposta.validade)}</span>
             </div>
@@ -97,7 +114,9 @@ export function PropostasInicio({ carreira }: { carreira: EstadoCarreira }) {
                   <p>
                     {proposta.tipo === "renovacao"
                       ? "Confirmar o novo contrato?"
-                      : `Confirmar sua transferência para ${clube.nome}?`}
+                      : agendada
+                        ? `Confirmar o acordo com ${clube.nome}? Você permanece no clube atual até ${formatarData(janela.proximaAbertura)}.`
+                        : `Confirmar sua transferência para ${clube.nome}?`}
                   </p>
                   <div className="acoes">
                     <button
@@ -136,11 +155,13 @@ export function PropostasInicio({ carreira }: { carreira: EstadoCarreira }) {
                 </div>
               )}
             </div>
-            <Contraproposta
-              key={`${proposta.id}-${proposta.rodadasNegociacao ?? 0}`}
-              proposta={proposta}
-              clube={clube.nome}
-            />
+            {proposta.tipo !== "emprestimo" && (
+              <Contraproposta
+                key={`${proposta.id}-${proposta.rodadasNegociacao ?? 0}`}
+                proposta={proposta}
+                clube={clube.nome}
+              />
+            )}
           </article>
         );
       })}

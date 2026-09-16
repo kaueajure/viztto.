@@ -119,24 +119,32 @@ export function InicioCarreira({
           <div className="rodape-proxima">
             <div>
               <span className="rotulo">
-                {j.lesao ? "DEPARTAMENTO MÉDICO" : "PREPARAÇÃO DA SEMANA"}
+                {c.aposentado
+                  ? "CARREIRA ENCERRADA"
+                  : j.lesao
+                    ? "DEPARTAMENTO MÉDICO"
+                    : "PREPARAÇÃO DA SEMANA"}
               </span>
               <p>
-                {j.lesao
-                  ? `${j.lesao.tipo} · ${j.lesao.diasRecuperacao} dias`
-                  : FOCOS_TREINO[c.focoTreino].nome}
+                {c.aposentado
+                  ? `Aposentado em ${formatarData(c.dataAposentadoria!)}`
+                  : j.lesao
+                    ? `${j.lesao.tipo} · ${j.lesao.diasRecuperacao} dias`
+                    : FOCOS_TREINO[c.focoTreino].nome}
               </p>
             </div>
             <button
               className="botao principal"
               onClick={avancar}
-              disabled={ocupado}
+              disabled={ocupado || !!c.aposentado}
             >
-              {ocupado
-                ? "Simulando…"
-                : c.temporada.encerrada
-                  ? "Próxima temporada"
-                  : "Avançar semana"}
+              {c.aposentado
+                ? "Aposentado"
+                : ocupado
+                  ? "Simulando…"
+                  : c.temporada.encerrada
+                    ? "Próxima temporada"
+                    : "Avançar semana"}
               <ArrowRight size={18} />
             </button>
           </div>

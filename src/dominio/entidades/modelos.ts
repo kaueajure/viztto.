@@ -147,10 +147,12 @@ export type EtapaTransferencia =
   | "proposta_clube"
   | "negociacao"
   | "acordo"
+  | "acordo_futuro"
   | "proposta_jogador"
   | "aceite"
   | "rejeicao"
-  | "concluida";
+  | "concluida"
+  | "cancelada";
 export interface TransferenciaMundial {
   id: string;
   jogadorId: string;
@@ -391,10 +393,13 @@ export interface PropostaTransferencia {
   bonusGol?: number;
   luvas?: number;
   preContrato?: boolean;
+  /** Acordo fechado fora da janela; transferência só na data prevista. */
+  acordoFuturo?: boolean;
   efetivarEm?: string;
+  percentualSalario?: number;
   id: string;
   clubeId: string;
-  tipo: "transferencia" | "renovacao";
+  tipo: "transferencia" | "renovacao" | "emprestimo";
   salario: number;
   duracaoAnos: number;
   papelPrometido: StatusElenco;
@@ -461,4 +466,8 @@ export interface EstadoCarreira {
   registros: RegistroTemporada[];
   temporadasAnteriores: TemporadaArquivada[];
   ultimaPartidaId: string | null;
+  aposentado?: boolean;
+  dataAposentadoria?: string;
+  idadeAposentadoria?: number;
+  clubeFinalId?: string;
 }
