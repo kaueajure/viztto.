@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from fastapi import HTTPException
+
 from app.services.base import TransfermarktBase
 from app.utils.utils import extract_from_url
 from app.utils.xpath import Competitions
@@ -23,8 +25,20 @@ class TransfermarktCompetitionClubs(TransfermarktBase):
     def __post_init__(self) -> None:
         """Initialize the TransfermarktCompetitionClubs class."""
         self.URL = self.URL.format(competition_id=self.competition_id, season_id=self.season_id)
-        self.page = self.request_url_page()
-        self.raise_exception_if_not_found(xpath=Competitions.Profile.NAME)
+        try:
+            self.page = self.request_url_page()
+            self.raise_exception_if_not_found(xpath=Competitions.Profile.NAME)
+        except HTTPException as error:
+            if error.status_code != 404:
+                raise
+            # Competições por fases (como a Série C) usam a página de participantes.
+            self.URL = (
+                f"https://www.transfermarkt.com/-/teilnehmer/pokalwettbewerb/{self.competition_id}"
+                f"/saison_id/{self.season_id}" if self.season_id else
+                f"https://www.transfermarkt.com/-/teilnehmer/pokalwettbewerb/{self.competition_id}"
+            )
+            self.page = self.request_url_page()
+            self.raise_exception_if_not_found(xpath="//h1//text()")
 
     def __parse_competition_clubs(self) -> list:
         """
@@ -35,11 +49,13 @@ class TransfermarktCompetitionClubs(TransfermarktBase):
             list: A list of dictionaries, where each dictionary contains information about a
                 football club in the competition, including the club's unique identifier and name.
         """
-        urls = self.get_list_by_xpath(Competitions.Clubs.URLS)
-        names = self.get_list_by_xpath(Competitions.Clubs.NAMES)
-        ids = [extract_from_url(url) for url in urls]
-
-        return [{"id": idx, "name": name} for idx, name in zip(ids, names)]
+        clubs = {}
+        for link in self.page.xpath("//table[contains(@class, 'items')]//a[contains(@href, '/verein/')]"):
+            club_id = extract_from_url(link.get("href"))
+            name = "".join(link.itertext()).strip() or link.get("title")
+            if club_id and name:
+                clubs[club_id] = {"id": club_id, "name": name}
+        return list(clubs.values())
 
     def get_competition_clubs(self) -> dict:
         """
@@ -50,8 +66,10 @@ class TransfermarktCompetitionClubs(TransfermarktBase):
                   participating in the competition, and the timestamp of when the data was last updated.
         """
         self.response["id"] = self.competition_id
-        self.response["name"] = self.get_text_by_xpath(Competitions.Profile.NAME)
-        self.response["seasonId"] = extract_from_url(
+        self.response["name"] = self.get_text_by_xpath("//h1//text()", join_str=" ")
+        self.response["seasonId"] = self.get_text_by_xpath(
+            "//select[@name='saison_id']/option[@selected]/@value"
+        ) or extract_from_url(
             self.get_text_by_xpath(Competitions.Profile.URL),
             "season_id",
         )

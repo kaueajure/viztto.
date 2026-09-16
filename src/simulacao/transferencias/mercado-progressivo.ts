@@ -207,13 +207,7 @@ function atendePreferencias(
 ) {
   const p = c.mercado.preferencias;
   const atual = c.clubes.find((cl) => cl.id === c.clubeAtualId)!;
-  const europa = [
-    "premier-league",
-    "la-liga",
-    "serie-a",
-    "bundesliga",
-    "ligue-1",
-  ];
+  const europa = c.ligas.filter((l) => l.pais !== "Brasil").map((l) => l.id);
   return (
     (!p.apenasDesejados || c.mercado.clubesDesejados.includes(clube.id)) &&
     (!p.mesmoPais || clube.pais === atual.pais) &&

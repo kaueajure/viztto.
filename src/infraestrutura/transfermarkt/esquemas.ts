@@ -137,6 +137,7 @@ export const esquemaProgressoImportacao = z.object({
 });
 
 export const esquemaDadosLigaImportados = z.object({
+  temporadaTransfermarkt: z.string().optional(),
   ligaId: z.string(),
   temporada: z.number(),
   inicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -157,22 +158,6 @@ export const esquemaImportacao = z.object({
   origem: z.enum(["api", "demonstracao"]),
   aviso: z.string().nullable(),
   progresso: esquemaProgressoImportacao.optional(),
-  precisaImportar: z.boolean().optional(),
-});
-
-export const esquemaStatusImportacao = z.object({
-  ligaId: z.string(),
-  status: z.enum([
-    "em_andamento",
-    "parcial",
-    "completo",
-    "interrompido",
-    "nao_importada",
-  ]),
-  progresso: esquemaProgressoImportacao.nullable(),
-  motivoInterrupcao: z.string().nullable().optional(),
-  importadoEm: z.string().nullable().optional(),
-  atualizadoEm: z.string().nullable().optional(),
 });
 
 export const esquemaCompetitionSearch = z.object({

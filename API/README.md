@@ -10,17 +10,17 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements-viztto.txt
 ```
 
-(O script `npm run api` / `npm run dev` cria o venv automaticamente se faltar.)
+(O script `npm run atualizar-dados-futebol` / `npm run api` cria o venv automaticamente se faltar.)
 
 ## Subir
 
 Na raiz do viztto, o fluxo normal é só:
 
 ```bash
-npm run dev
+npm run atualizar-dados-futebol
 ```
 
-Isso sobe a API em http://localhost:8000 e o Next. Para só a API:
+Isso reutiliza ou inicia a API em http://localhost:8000 e atualiza os snapshots sem subir Next.js. Para diagnóstico da API:
 
 ```bash
 npm run api
@@ -36,4 +36,4 @@ No `.env` da raiz:
 TRANSFERMARKT_API_URL=http://localhost:8000
 ```
 
-Não há chave de API. Ao escolher a liga na criação de carreira, a importação começa sozinha.
+Não há chave de API. Produção e criação de carreira leem somente snapshots locais. O parser aceita páginas de ligas e páginas de participantes (Série C), preservando o identificador interno da edição.
