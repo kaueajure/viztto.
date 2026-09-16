@@ -1,0 +1,59 @@
+name: Deploy Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: viztto-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to viztto.site
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${{ secrets.VIZTTO_DEPLOY_KEY }}" > ~/.ssh/viztto_deploy
+          chmod 600 ~/.ssh/viztto_deploy
+          printf '%s\n' "${{ secrets.VIZTTO_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy on VM
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh \
+            -i ~/.ssh/viztto_deploy \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=15 \
+            kaue@20.120.1.228
+
+      - name: Verify production URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error \
+            --retry 5 \
+            --retry-delay 2 \
+            --retry-connrefused \
+            https://viztto.site/ >/dev/null
+          curl --fail --silent --show-error \
+            --retry 5 \
+            --retry-delay 2 \
+            --retry-connrefused \
+            https://viztto.site/api/openapi.json >/dev/null
+          echo "Production health checks passed."
