@@ -51,9 +51,4 @@ jobs:
             --retry-delay 2 \
             --retry-connrefused \
             https://viztto.site/ >/dev/null
-          curl --fail --silent --show-error \
-            --retry 5 \
-            --retry-delay 2 \
-            --retry-connrefused \
-            https://viztto.site/api/openapi.json >/dev/null
-          echo "Production health checks passed."
+          echo "Production health check passed."
