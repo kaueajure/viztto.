@@ -59,7 +59,11 @@ export function atualizarObjetivos(carreira: EstadoCarreira): void {
   for (const objetivo of carreira.objetivos) {
     objetivo.progresso = Math.min(
       objetivo.meta,
-      objetivo.id === "jogos"
+      objetivo.id === "treinos"
+        ? carreira.jogador.preparacao.historico.filter(t => t.nota >= 55).length
+        : objetivo.id === "minutos"
+          ? carreira.registros.filter(r => r.ano === carreira.temporada.ano).reduce((s,r) => s+r.estatisticas.minutos,0)
+        : objetivo.id === "jogos"
         ? totais.jogos
         : objetivo.id === "gol"
           ? totais.gols

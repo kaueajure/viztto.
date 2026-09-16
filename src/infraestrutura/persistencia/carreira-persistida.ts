@@ -1,3 +1,5 @@
+import { validarEscolhasHistoria } from "@/dominio/historia-formacao";
+import { migrarDesenvolvimento } from "./migrar-desenvolvimento";
 import { z } from "zod";
 import type {
   Clube,
@@ -8,6 +10,7 @@ import type {
 import { FORMACOES } from "@/dominio/formacao";
 import { prepararClubesParaMundo } from "@/dominio/mundo-futebol";
 import { esquemaCarreira, validarSave } from "./validar-save";
+import { migrarMercadoPersistido } from "./migrar-mercado";
 
 const id = z
   .string()
@@ -127,7 +130,7 @@ export const esquemaCarreiraPersistida = esquemaCarreira
     transferenciasRecentes: true,
   })
   .extend({
-    versao: z.literal(3),
+    versao: z.literal(4),
     id,
     seed: id,
     clubeAtualId: id,
@@ -179,7 +182,8 @@ export function validarCarreiraPersistida(
   valor: unknown,
 ): EstadoCarreiraPersistido {
   validarEstruturaJson(valor);
-  const resultado = esquemaCarreiraPersistida.parse(valor);
+  const migrado = migrarDesenvolvimento(migrarMercadoPersistido(valor), true);
+  const resultado = esquemaCarreiraPersistida.parse(migrado);
   function conferirEntrada(entrada: unknown, saida: unknown): void {
     if (!entrada || typeof entrada !== "object") return;
     for (const [chave, item] of Object.entries(entrada)) {
@@ -197,8 +201,118 @@ export function validarCarreiraPersistida(
       conferirEntrada(item, (saida as Record<string, unknown>)[chave]);
     }
   }
-  conferirEntrada(valor, resultado);
+  conferirEntrada(migrado, resultado);
+  const perfil = resultado.jogador.perfilFormacao;
+  if (perfil.origem === "historia") validarEscolhasHistoria(perfil.seed, resultado.identidadeInicial.posicao, perfil.escolhas);
   return resultado;
+}
+
+/** Contrato/empréstimo: origem do contrato ≠ clube atual quando há empréstimo. */
+export function validarVinculosContratoPersistido(
+  p: EstadoCarreiraPersistido,
+): void {
+  if (p.temporadasExternas[p.ligaId])
+    throw new Error("Vínculos do save inválidos.");
+  const emprestimo = p.mercado.emprestimo;
+  if (emprestimo) {
+    if (emprestimo.clubeOrigemId !== p.jogador.contrato.clubeId)
+      throw new Error("Vínculos do save inválidos.");
+    if (emprestimo.clubeOrigemId === p.clubeAtualId)
+      throw new Error("Vínculos do save inválidos.");
+    if (!z.iso.date().safeParse(emprestimo.retornoEm).success)
+      throw new Error("Data inválida no save.");
+  } else if (p.jogador.contrato.clubeId !== p.clubeAtualId) {
+    throw new Error("Vínculos do save inválidos.");
+  }
+}
+
+/**
+ * Validação semântica barata para PUT: IDs, catálogo e relações sem reconstruir o runtime.
+ */
+export function validarReferenciasCarreiraPersistida(
+  p: EstadoCarreiraPersistido,
+  catalogo: CatalogoCarreira,
+): void {
+  const ligasPorId = new Map(catalogo.ligas.map((l) => [l.id, l]));
+  for (const id of p.ligasIds) {
+    if (!ligasPorId.has(id)) throw new ErroCompatibilidadeSave();
+  }
+  if (new Set(p.ligasIds).size !== p.ligasIds.length)
+    throw new Error("IDs duplicados no save.");
+  const clubesBase = new Map(
+    catalogo.clubes
+      .filter((c) => p.ligasIds.includes(c.ligaId))
+      .map((c) => [c.id, c]),
+  );
+  const idsClubes = new Set<string>();
+  const jogadoresBase = new Set(
+    catalogo.clubes.flatMap((c) => c.elenco.map((j) => j.id)),
+  );
+  const gerados = new Set(p.jogadoresGerados.map((j) => j.id));
+  if (gerados.size !== p.jogadoresGerados.length)
+    throw new Error("IDs gerados duplicados.");
+  const jogadoresVistos = new Set<string>();
+  for (const delta of p.clubesDinamicos) {
+    const base = clubesBase.get(delta.id);
+    if (!base || !p.ligasIds.includes(base.ligaId))
+      throw new ErroCompatibilidadeSave();
+    if (idsClubes.has(delta.id)) throw new Error("IDs duplicados no save.");
+    idsClubes.add(delta.id);
+    for (const j of delta.elenco) {
+      const conhecido =
+        j.id.startsWith("gerado-") ? gerados.has(j.id) : jogadoresBase.has(j.id);
+      if (!conhecido || j.clubeId !== delta.id || jogadoresVistos.has(j.id))
+        throw new Error("Vínculo de jogador inválido.");
+      jogadoresVistos.add(j.id);
+    }
+  }
+  if ([...gerados].some(id => !jogadoresVistos.has(id))) throw new Error("Jogador gerado sem vínculo no save.");
+  const exigirClube = (id: string) => {
+    if (!idsClubes.has(id)) throw new Error("Referência de clube inválida.");
+  };
+  exigirClube(p.clubeAtualId);
+  exigirClube(p.clubeInicialId);
+  exigirClube(p.jogador.contrato.clubeId);
+  if (p.mercado.emprestimo) exigirClube(p.mercado.emprestimo.clubeOrigemId);
+  validarVinculosContratoPersistido(p);
+  const ligaAtual = ligasPorId.get(p.ligaId);
+  const clubeAtual = clubesBase.get(p.clubeAtualId);
+  if (!ligaAtual || clubeAtual?.ligaId !== p.ligaId)
+    throw new Error("Liga atual inválida.");
+  for (const ligaId of p.ligasIds) {
+    const qtd = p.clubesDinamicos.filter(
+      (c) => clubesBase.get(c.id)?.ligaId === ligaId,
+    ).length;
+    if (qtd < 2 || (ligaId !== p.ligaId && !p.temporadasExternas[ligaId]))
+      throw new Error("Universo incompleto.");
+  }
+  for (const [ligaId, temporada] of [[p.ligaId,p.temporada],...Object.entries(p.temporadasExternas)] as const) {
+    if (!p.ligasIds.includes(ligaId)) throw new Error("Temporada inválida.");
+    for (const jogo of [...temporada.partidas,...temporada.partidasBase]) {
+      exigirClube(jogo.mandanteId); exigirClube(jogo.visitanteId);
+      if ([jogo.mandanteId,jogo.visitanteId].some(id => clubesBase.get(id)?.ligaId !== ligaId)) throw new Error("Partida de outra liga.");
+    }
+    for (const linha of [...temporada.classificacao,...temporada.classificacaoBase]) exigirClube(linha.clubeId);
+  }
+  for (const temporada of p.temporadasAnteriores) {
+    exigirClube(temporada.campeaoId); exigirClube(temporada.campeaoBaseId);
+    for (const linha of [...temporada.classificacao,...temporada.classificacaoBase]) exigirClube(linha.clubeId);
+  }
+  for (const conversa of p.acompanhamento.conversas) exigirClube(conversa.clubeId);
+  for (const pedido of p.acompanhamento.pedidosContrato) exigirClube(pedido.clubeId);
+  if (p.acompanhamento.promessa) exigirClube(p.acompanhamento.promessa.clubeId);
+  if (p.acompanhamento.adaptacao) exigirClube(p.acompanhamento.adaptacao.clubeId);
+  for (const proposta of p.propostas) {
+    exigirClube(proposta.clubeId);
+    if (proposta.clubeOrigemId) exigirClube(proposta.clubeOrigemId);
+  }
+  for (const interesse of p.mercado.interesses) exigirClube(interesse.clubeId);
+  p.mercado.clubesDesejados.forEach(exigirClube);
+  for (const registro of p.registros) exigirClube(registro.clubeId);
+  for (const t of p.transferenciasRecentes) {
+    exigirClube(t.deClubeId);
+    exigirClube(t.paraClubeId);
+  }
 }
 
 export function serializarCarreira(
@@ -214,7 +328,7 @@ export function serializarCarreira(
   } = c;
   return validarCarreiraPersistida({
     ...estado,
-    versao: 3,
+    versao: 4,
     ligaId: liga.id,
     ligasIds: ligas.map((l) => l.id),
     jogadoresGerados: clubes
@@ -337,11 +451,8 @@ export function hidratarCarreira(
   };
   exigirClube(p.clubeInicialId);
   exigirClube(p.jogador.contrato.clubeId);
-  if (
-    p.jogador.contrato.clubeId !== p.clubeAtualId ||
-    p.temporadasExternas[p.ligaId]
-  )
-    throw new Error("Vínculos do save inválidos.");
+  if (p.mercado.emprestimo) exigirClube(p.mercado.emprestimo.clubeOrigemId);
+  validarVinculosContratoPersistido(p);
   for (const l of ligas) {
     if (
       clubes.filter((c) => c.ligaId === l.id).length < 2 ||

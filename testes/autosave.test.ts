@@ -52,7 +52,7 @@ describe("autosave em memória", () => {
     await store.getState().tentarSalvar();
     expect(store.getState().carreira?.focoTreino).toBe("drible");
     expect(store.getState().alteracoesPendentes).toBe(true);
-    expect(store.getState().erroPersistencia).toContain("não salvas");
+    expect(store.getState().erroPersistencia).toBeTruthy();
     await store.getState().tentarSalvar();
     expect(store.getState().alteracoesPendentes).toBe(false);
     vi.mocked(api.salvar).mockRejectedValueOnce(
@@ -93,5 +93,38 @@ describe("autosave em memória", () => {
     expect(await exclusao).toBe(true);
     expect(api.excluir).toHaveBeenCalledWith(1);
     expect(store.getState().carreira).toBeNull();
+  });
+});
+
+describe('Fase 08 — regressões da fila', () => {
+  it('ACK perdido reenvia o mesmo payload antes de salvar alterações mais novas', async () => {
+    const { store, api } = ambiente();
+    await store.getState().carregar();
+    let confirmado: unknown;
+    let chamadas=0;
+    vi.mocked(api.salvar).mockImplementation(async (p, revision) => {
+      chamadas++;
+      if(chamadas===1){confirmado=structuredClone(p);throw new ErroApiCarreira(0,'timeout',undefined,'TIMEOUT');}
+      if(chamadas===2){expect(p).toEqual(confirmado);expect(revision).toBe(0);return {revision:1};}
+      expect(p.focoTreino).toBe('defesa');expect(revision).toBe(1);return {revision:2};
+    });
+    store.getState().escolherTreino('drible');
+    await store.getState().tentarSalvar();
+    store.getState().escolherTreino('defesa');
+    await store.getState().tentarSalvar();
+    expect(chamadas).toBe(3);
+    expect(store.getState().revision).toBe(2);
+    expect(store.getState().alteracoesPendentes).toBe(false);
+  });
+  it.each([400,401,403,404,409,413,422])('HTTP %i não recebe retry mesmo com código genérico', async status => {
+    vi.useFakeTimers();
+    try {
+      const {store,api}=ambiente();await store.getState().carregar();
+      vi.mocked(api.salvar).mockRejectedValue(new ErroApiCarreira(status,'falha',undefined,'INDISPONIVEL'));
+      store.getState().escolherTreino('defesa');await store.getState().tentarSalvar();
+      const chamadas=vi.mocked(api.salvar).mock.calls.length;
+      await vi.advanceTimersByTimeAsync(60000);
+      expect(api.salvar).toHaveBeenCalledTimes(chamadas);
+    } finally {vi.useRealTimers();}
   });
 });

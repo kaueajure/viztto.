@@ -141,6 +141,7 @@ export function jogadorMundoComoCandidato(
 
 export function jogadorUsuarioComoCandidato(
   j: Jogador,
+  incentivo = 0,
 ): CandidatoEscalacao {
   return {
     id: "usuario",
@@ -153,7 +154,7 @@ export function jogadorUsuarioComoCandidato(
     moral: j.moral,
     condicionamento: j.condicionamento,
     fadiga: j.fadiga,
-    confiancaTreinador: j.confianca,
+    confiancaTreinador: incentivo * 10 + limitar(j.confianca + ((j.preparacao.historico.at(-1)?.nota ?? 55) - 55) * 0.15),
     statusElenco: j.status,
     lesionado: !!j.lesao,
     suspensao: j.suspensao,

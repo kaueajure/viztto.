@@ -1,3 +1,5 @@
+import { ConversaContrato } from "@/componentes/clube/ConversaContrato";
+import { ConversaTreinador } from "@/componentes/clube/ConversaTreinador";
 import { MercadoAgente } from "./MercadoAgente";
 import type { EstadoCarreira } from "@/dominio/entidades/modelos";
 import { Escudo } from "@/componentes/clube/Escudo";
@@ -25,6 +27,8 @@ export function MercadoClube({
       <>
         <p className="sobretitulo">ESTRUTURA / EQUIPE</p>
         <h1>{clube.nome.toUpperCase()}</h1>
+        <ConversaTreinador carreira={c} />
+        <ConversaContrato carreira={c} />
         <PainelEquipe clube={clube} jogadorUsuario={c.jogador} />
         <section className="painel espaco">
           <div className="linha-titulo">

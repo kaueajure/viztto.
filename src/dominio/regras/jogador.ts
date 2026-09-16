@@ -174,11 +174,10 @@ export function criarAtributosUniformes(valor: number): Atributos {
   ) as Atributos;
 }
 export function avaliarPotencial(jogador: Jogador): string {
-  return jogador.potencialInterno >= 90
-    ? "Uma das principais promessas da geração"
-    : jogador.potencialInterno >= 82
-      ? "Grande promessa"
-      : jogador.potencialInterno >= 72
-        ? "Pode se tornar um bom jogador"
-        : "Potencial limitado";
+  // Parecer baseado no que a comissão observa, sem ler o teto oculto.
+  const observado = jogador.overall + Math.max(0, 23 - jogador.idade) * 2 + jogador.reputacao * 0.08;
+  return observado >= 86 ? "Sinais de uma promessa excepcional"
+    : observado >= 77 ? "Grande promessa aos olhos da comissão"
+    : observado >= 68 ? "Perfil promissor, ainda em avaliação"
+    : "Desenvolvimento em observação";
 }

@@ -20,6 +20,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { EstadoPersistencia } from "./EstadoPersistencia";
+import { badgeMercado } from "./AtencaoCarreira";
 import { useJogoStore } from "@/estado/jogo-store";
 import { InicioCarreira } from "./InicioCarreira";
 import { PainelJogador } from "@/componentes/jogador/PainelJogador";
@@ -48,6 +49,7 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
       salvando,
       alteracoesPendentes,
       erroPersistencia,
+      statusPersistencia,
       operando,
       erro,
       avancar,
@@ -134,6 +136,9 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
               {nome}
               {rota === "noticias" && c.noticias.some((n) => !n.lida) && (
                 <span className="ponto" />
+              )}
+              {rota === "mercado" && badgeMercado(c) > 0 && (
+                <span className="ponto" aria-label={`${badgeMercado(c)} pendências`} />
               )}
             </Link>
           ))}
@@ -228,13 +233,17 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
         <footer className="rodape-jogo">
           <span>
             <span className="ponto" />{" "}
-            {erroPersistencia
-              ? "ALTERAÇÕES NÃO SALVAS"
-              : salvando
-                ? "SALVANDO NO SERVIDOR…"
-                : alteracoesPendentes
-                  ? "SALVAMENTO PENDENTE"
-                  : "PROGRESSO SALVO NO SERVIDOR"}
+            {statusPersistencia === "conflito"
+              ? "CONFLITO DE SAVE"
+              : statusPersistencia === "salvando" || salvando
+                ? "SALVANDO…"
+                : statusPersistencia === "retentando"
+                  ? "TENTANDO SALVAR NOVAMENTE…"
+                  : statusPersistencia === "erro" || erroPersistencia
+                    ? "ERRO AO SALVAR"
+                    : alteracoesPendentes || statusPersistencia === "pendente"
+                      ? "SALVAMENTO PENDENTE"
+                      : "PROGRESSO SALVO"}
           </span>
           <span>VIZTTO / CARREIRA DE JOGADOR</span>
         </footer>

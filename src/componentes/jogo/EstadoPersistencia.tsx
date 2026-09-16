@@ -1,5 +1,6 @@
 "use client";
 import { useJogoStore } from "@/estado/jogo-store";
+
 export function EstadoPersistencia() {
   const {
     erroPersistencia,
@@ -7,17 +8,22 @@ export function EstadoPersistencia() {
     salvando,
     operando,
     conflito,
+    statusPersistencia,
+    falhasPersistencia,
     carregar,
     tentarSalvar,
   } = useJogoStore();
-  if (!erroPersistencia) return null;
+
+  const mostrarBanner =
+    conflito ||
+    statusPersistencia === "erro" ||
+    (falhasPersistencia >= 3 && !!erroPersistencia);
+
+  if (!mostrarBanner || !erroPersistencia) return null;
+
   return (
-    <div className="aviso erro" role="alert">
-      <p>
-        {erroPersistencia}{" "}
-        {alteracoesPendentes &&
-          "Há alterações não salvas. Mantenha esta página aberta."}
-      </p>
+    <div className={`aviso ${conflito ? "erro" : "erro"}`} role="alert">
+      <p>{erroPersistencia}</p>
       {!conflito && (
         <button
           className="botao-texto"

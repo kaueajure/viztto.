@@ -1,4 +1,5 @@
 "use client";
+import { ConversaContrato } from "@/componentes/clube/ConversaContrato";
 import { useState } from "react";
 import type { EstadoCarreira } from "@/dominio/entidades/modelos";
 import {
@@ -11,14 +12,24 @@ import { Escudo } from "@/componentes/clube/Escudo";
 import { PropostasInicio } from "./PropostasInicio";
 import { dinheiro, formatarData } from "@/utilitarios/formatacao";
 import { obterSituacaoJanela } from "@/simulacao/transferencias/necessidade";
+
 const SECOES = {
-  interesses: "INTERESSES",
+  geral: "VISÃO GERAL",
   propostas: "PROPOSTAS",
   agente: "MEU AGENTE",
   historico: "HISTÓRICO",
-};
+} as const;
+
+const ROTULO_STATUS = {
+  observando: "OBSERVANDO",
+  interessado: "INTERESSE",
+  sondagem: "SONDAGEM",
+  negociando: "NEGOCIANDO",
+  encerrado: "ENCERRADO",
+} as const;
+
 export function MercadoAgente({ carreira: c }: { carreira: EstadoCarreira }) {
-  const [secao, setSecao] = useState<keyof typeof SECOES>("interesses");
+  const [secao, setSecao] = useState<keyof typeof SECOES>("geral");
   const conversar = useJogoStore((s) => s.conversarAgente);
   const aposentar = useJogoStore((s) => s.aposentar);
   const salvar = useJogoStore((s) => s.definirPreferencias);
@@ -34,10 +45,30 @@ export function MercadoAgente({ carreira: c }: { carreira: EstadoCarreira }) {
       (p.etapa === "acordo" || p.etapa === "acordo_futuro") &&
       p.efetivarEm,
   );
+  const propostasPendentes = c.propostas.filter(
+    (p) => p.status === "pendente" && p.validade >= c.dataAtual,
+  );
+  const interessesAtivos = m.interesses.filter((i) => i.status !== "encerrado");
   const nome = (id: string) =>
     c.clubes.find((cl) => cl.id === id)?.nome ?? "Clube";
   const notificar = (mensagem: string) =>
     setAviso(useJogoStore.getState().erro ? "" : mensagem);
+  const textoPedidoSaida =
+    m.statusPedidoSaida === "aceito"
+      ? m.pedidoPublico
+        ? "Aceito e público"
+        : "Aceito (privado)"
+      : m.statusPedidoSaida === "recusado"
+        ? "Recusado pela diretoria"
+        : "Nenhum";
+  const textoEmprestimo = m.emprestimo
+    ? `Ativo · retorno ${formatarData(m.emprestimo.retornoEm)}`
+    : m.disponivelParaEmprestimo
+      ? "Disponível para empréstimo"
+      : m.pediuEmprestimo
+        ? "Pedido recusado pela diretoria"
+        : "Não solicitado";
+
   return (
     <>
       <p className="sobretitulo">CARREIRA / MERCADO</p>
@@ -69,6 +100,12 @@ export function MercadoAgente({ carreira: c }: { carreira: EstadoCarreira }) {
             : ""}
         </span>
       </div>
+      {!janela.aberta && propostasPendentes.length > 0 && (
+        <p className="painel" role="status">
+          Você pode negociar agora. A mudança só poderá acontecer em{" "}
+          {formatarData(janela.proximaAbertura)}.
+        </p>
+      )}
       {acordoFuturo && (
         <p className="painel" role="status">
           Transferência acertada para {nome(acordoFuturo.clubeId)}.
@@ -88,48 +125,90 @@ export function MercadoAgente({ carreira: c }: { carreira: EstadoCarreira }) {
             onClick={() => setSecao(id as keyof typeof SECOES)}
           >
             {label}
+            {id === "propostas" && propostasPendentes.length > 0
+              ? ` (${propostasPendentes.length})`
+              : ""}
           </button>
         ))}
       </div>
       {erro && <p role="alert">{erro}</p>}
       {aviso && !erro && <p role="status">{aviso}</p>}
-      {secao === "interesses" && (
-        <section className="painel espaco" aria-labelledby="interesses-titulo">
-          <h2 id="interesses-titulo">NO RADAR DOS CLUBES</h2>
-          <p className="texto-suave">
-            Observação → interesse → sondagem → negociação. Cada clube considera
-            seu elenco e sua trajetória.
-          </p>
-          {!m.interesses.length && (
+      {secao === "geral" && (
+        <section className="painel espaco" aria-labelledby="geral-titulo">
+          <h2 id="geral-titulo">SITUAÇÃO DO MERCADO</h2>
+          <dl className="mercado-resumo">
+            <div>
+              <dt>Janela</dt>
+              <dd>
+                {janela.aberta
+                  ? "Aberta"
+                  : `Fechada · próxima ${formatarData(janela.proximaAbertura)}`}
+              </dd>
+            </div>
+            <div>
+              <dt>Pedido de saída</dt>
+              <dd>{textoPedidoSaida}</dd>
+            </div>
+            <div>
+              <dt>Empréstimo</dt>
+              <dd>{textoEmprestimo}</dd>
+            </div>
+            <div>
+              <dt>Propostas pendentes</dt>
+              <dd>{propostasPendentes.length}</dd>
+            </div>
+            <div>
+              <dt>Interesses ativos</dt>
+              <dd>{interessesAtivos.length}</dd>
+            </div>
+            <div>
+              <dt>Clubes contatados</dt>
+              <dd>
+                {m.interesses.filter((i) => i.origem === "agente").length}
+              </dd>
+            </div>
+          </dl>
+          {m.respostaDiretoriaSaida && (
+            <p className="texto-suave">{m.respostaDiretoriaSaida}</p>
+          )}
+          {m.respostaDiretoriaEmprestimo && (
+            <p className="texto-suave">{m.respostaDiretoriaEmprestimo}</p>
+          )}
+          <div className="acoes espaco">
+            <button
+              className="botao principal"
+              onClick={() => setSecao("agente")}
+            >
+              Falar com o agente
+            </button>
+            {propostasPendentes.length > 0 && (
+              <button
+                className="botao secundario"
+                onClick={() => setSecao("propostas")}
+              >
+                Ver propostas
+              </button>
+            )}
+          </div>
+          <h3>Interesses principais</h3>
+          {!interessesAtivos.length && (
             <p>
-              Nenhum clube iniciou observação. Construa seu histórico em campo
-              ou converse com o agente.
+              Nenhum clube no radar agora. Construa histórico em campo ou peça
+              ao agente para buscar oportunidades.
             </p>
           )}
-          {m.interesses.map((i) => (
+          {interessesAtivos.slice(0, 5).map((i) => (
             <article className="mercado-interesse" key={i.clubeId}>
               <div className="linha-titulo">
                 <h3>{nome(i.clubeId)}</h3>
-                <span className="rotulo">{i.status.toUpperCase()}</span>
+                <span className="rotulo">{ROTULO_STATUS[i.status]}</span>
               </div>
               <p>{i.resposta}</p>
               <p className="texto-suave">
-                {i.semanasObservando} semanas de observação · Papel:{" "}
-                {i.papel.replace("rotacao", "rotação")} · Motivo:{" "}
-                {
-                  {
-                    reforco: "reforço",
-                    promessa: "promessa",
-                    sucessao: "sucessão",
-                    lesao: "desfalque por lesão",
-                    oportunidade: "situação contratual",
-                  }[i.motivo]
-                }
+                Observando há {i.semanasObservando} semana
+                {i.semanasObservando === 1 ? "" : "s"} · Papel:{" "}
+                {i.papel.replace("rotacao", "rotação")}
               </p>
-              <label className="mercado-progresso">
-                Interesse acumulado: {Math.round(i.nivelInteresse)} / 100{" "}
-                <progress max={100} value={i.nivelInteresse} />
-              </label>
             </article>
           ))}
         </section>
@@ -137,9 +216,7 @@ export function MercadoAgente({ carreira: c }: { carreira: EstadoCarreira }) {
       {secao === "propostas" && (
         <div className="espaco">
           <PropostasInicio carreira={c} />
-          {!c.propostas.some(
-            (p) => p.status === "pendente" && p.validade >= c.dataAtual,
-          ) && (
+          {!propostasPendentes.length && (
             <p className="painel">
               Nenhuma oferta contratual aguardando resposta.
             </p>
@@ -158,42 +235,70 @@ export function MercadoAgente({ carreira: c }: { carreira: EstadoCarreira }) {
             ))}
         </div>
       )}
+      {secao === "agente" && <ConversaContrato carreira={c} />}
       {secao === "agente" && (
         <section className="painel espaco" aria-labelledby="agente-titulo">
           <p className="sobretitulo">MEU AGENTE</p>
-          <h2 id="agente-titulo">CONVERSAR COM O SEU AGENTE</h2>
-          <p>
-            Situação: {m.pediuSaida ? "pedido de saída ativo" : "sem pedido de saída"}
-            {" · "}
-            {m.disponivelParaEmprestimo
-              ? "disponível para empréstimo"
-              : m.pediuEmprestimo
-                ? "pedido de empréstimo em análise/recusado"
-                : "sem pedido de empréstimo"}
-            {" · "}
-            {m.bloquearPropostas
-              ? "propostas espontâneas bloqueadas"
-              : "recebendo propostas"}
-          </p>
+          <h2 id="agente-titulo">SITUAÇÃO ATUAL</h2>
+          <dl className="mercado-resumo">
+            <div>
+              <dt>Seu agente</dt>
+              <dd>
+                {m.bloquearPropostas
+                  ? "Filtrando propostas espontâneas"
+                  : "Recebendo propostas"}
+              </dd>
+            </div>
+            <div>
+              <dt>Pedido de saída</dt>
+              <dd>{textoPedidoSaida}</dd>
+            </div>
+            <div>
+              <dt>Empréstimo</dt>
+              <dd>{textoEmprestimo}</dd>
+            </div>
+            <div>
+              <dt>Clubes contatados</dt>
+              <dd>
+                {m.interesses.filter((i) => i.origem === "agente").length}
+              </dd>
+            </div>
+            <div>
+              <dt>Próxima janela</dt>
+              <dd>
+                {janela.aberta
+                  ? "Aberta agora"
+                  : formatarData(janela.proximaAbertura)}
+              </dd>
+            </div>
+          </dl>
           {m.respostaDiretoriaSaida && (
-            <p className="texto-suave">{m.respostaDiretoriaSaida}</p>
+            <p className="texto-suave" role="status">
+              {m.respostaDiretoriaSaida}
+            </p>
           )}
           {m.respostaDiretoriaEmprestimo && (
-            <p className="texto-suave">{m.respostaDiretoriaEmprestimo}</p>
+            <p className="texto-suave" role="status">
+              {m.respostaDiretoriaEmprestimo}
+            </p>
           )}
           {!c.aposentado && (
             <>
+              <h3>AÇÕES</h3>
               <form
                 className="espaco"
                 aria-label="Procurar clube específico"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  conversar(
-                    "contatar",
-                    String(new FormData(e.currentTarget).get("clube")),
+                  const clubeId = String(
+                    new FormData(e.currentTarget).get("clube"),
                   );
+                  conversar("contatar", clubeId);
+                  const falha = useJogoStore.getState().erro;
                   notificar(
-                    "Contato registrado. Confira a resposta em Interesses.",
+                    falha
+                      ? ""
+                      : `Seu agente contatou ${nome(clubeId)}. Confira a resposta nos interesses.`,
                   );
                 }}
               >
@@ -216,6 +321,113 @@ export function MercadoAgente({ carreira: c }: { carreira: EstadoCarreira }) {
                   Pedir contato ao agente
                 </button>
               </form>
+              <div className="acoes espaco">
+                <button
+                  className="botao secundario"
+                  onClick={() => {
+                    conversar("situacao");
+                    const hist = useJogoStore.getState().carreira?.mercado
+                      ?.historico.at(-1)?.texto;
+                    notificar(hist ?? "Seu agente analisou a situação.");
+                  }}
+                >
+                  Conversar sobre minha situação
+                </button>
+                <button
+                  className="botao secundario"
+                  onClick={() => {
+                    conversar("buscar");
+                    const hist = useJogoStore.getState().carreira?.mercado
+                      ?.historico.at(-1)?.texto;
+                    notificar(
+                      hist ??
+                        "Seu agente avaliou opções. Confira os contatos.",
+                    );
+                  }}
+                >
+                  Buscar oportunidades
+                </button>
+                <button
+                  className="botao secundario"
+                  onClick={() => {
+                    const retirar =
+                      m.statusPedidoSaida === "aceito" ||
+                      m.statusPedidoSaida === "recusado";
+                    conversar(retirar ? "permanecer" : "sair");
+                    const hist = useJogoStore.getState().carreira?.mercado
+                      ?.historico.at(-1)?.texto;
+                    notificar(
+                      hist ??
+                        (retirar
+                          ? "Pedido de saída retirado."
+                          : "Seu agente levou o pedido privado à diretoria."),
+                    );
+                  }}
+                >
+                  {m.statusPedidoSaida === "aceito" ||
+                  m.statusPedidoSaida === "recusado"
+                    ? "Retirar pedido / permanecer"
+                    : "Solicitar transferência"}
+                </button>
+                <button
+                  className="botao secundario"
+                  onClick={() => {
+                    conversar(
+                      m.pediuEmprestimo || m.disponivelParaEmprestimo
+                        ? "cancelar-emprestimo"
+                        : "emprestar",
+                    );
+                    const hist = useJogoStore.getState().carreira?.mercado
+                      ?.historico.at(-1)?.texto;
+                    notificar(
+                      hist ??
+                        (m.pediuEmprestimo || m.disponivelParaEmprestimo
+                          ? "Pedido de empréstimo retirado."
+                          : "Seu agente levou o pedido de empréstimo à diretoria."),
+                    );
+                  }}
+                >
+                  {m.pediuEmprestimo || m.disponivelParaEmprestimo
+                    ? "Retirar pedido de empréstimo"
+                    : "Solicitar empréstimo"}
+                </button>
+                <button
+                  className="botao secundario"
+                  onClick={() => {
+                    conversar(
+                      m.bloquearPropostas ? "desbloquear" : "bloquear",
+                    );
+                    notificar(
+                      m.bloquearPropostas
+                        ? "Voltando a receber propostas espontâneas."
+                        : "Novas propostas espontâneas bloqueadas. Observação dos clubes continua.",
+                    );
+                  }}
+                >
+                  {m.bloquearPropostas
+                    ? "Aceitar propostas espontâneas"
+                    : "Bloquear novas propostas"}
+                </button>
+              </div>
+              {m.statusPedidoSaida === "aceito" && !m.pedidoPublico && (
+                <details className="espaco">
+                  <summary>Tornar o pedido de saída público</summary>
+                  <p>
+                    Aumenta a visibilidade entre clubes compatíveis, mas
+                    prejudica a relação com treinador e diretoria. Não garante
+                    proposta.
+                  </p>
+                  <button
+                    className="botao secundario"
+                    onClick={() => {
+                      conversar("publicar");
+                      notificar("O pedido de saída foi tornado público.");
+                    }}
+                  >
+                    Confirmar pedido público
+                  </button>
+                </details>
+              )}
               <details className="espaco">
                 <summary>
                   Definir preferências de carreira e clubes desejados
@@ -233,7 +445,9 @@ export function MercadoAgente({ carreira: c }: { carreira: EstadoCarreira }) {
                       ]),
                     ) as PreferenciasCarreira;
                     salvar(preferencias, f.getAll("desejados").map(String));
-                    notificar("Seu agente recebeu as novas preferências.");
+                    notificar(
+                      "Preferências atualizadas. Elas guiam a busca do agente, não o interesse espontâneo dos clubes.",
+                    );
                   }}
                 >
                   <fieldset className="mercado-preferencias">
@@ -272,88 +486,6 @@ export function MercadoAgente({ carreira: c }: { carreira: EstadoCarreira }) {
                   </button>
                 </form>
               </details>
-              <div className="acoes espaco">
-                <button
-                  className="botao secundario"
-                  onClick={() => {
-                    conversar("buscar");
-                    notificar(
-                      "Seu agente avaliou opções. Confira os contatos em Interesses.",
-                    );
-                  }}
-                >
-                  Buscar oportunidades
-                </button>
-                <button
-                  className="botao secundario"
-                  onClick={() => {
-                    conversar(m.pediuSaida ? "permanecer" : "sair");
-                    notificar(
-                      m.pediuSaida
-                        ? "Pedido de saída retirado."
-                        : "Seu agente levou o pedido privado à diretoria.",
-                    );
-                  }}
-                >
-                  {m.pediuSaida
-                    ? "Quero permanecer"
-                    : "Solicitar transferência"}
-                </button>
-                <button
-                  className="botao secundario"
-                  onClick={() => {
-                    conversar(
-                      m.pediuEmprestimo || m.disponivelParaEmprestimo
-                        ? "cancelar-emprestimo"
-                        : "emprestar",
-                    );
-                    notificar(
-                      m.pediuEmprestimo || m.disponivelParaEmprestimo
-                        ? "Pedido de empréstimo retirado."
-                        : "Seu agente levou o pedido de empréstimo à diretoria.",
-                    );
-                  }}
-                >
-                  {m.pediuEmprestimo || m.disponivelParaEmprestimo
-                    ? "Retirar pedido de empréstimo"
-                    : "Solicitar empréstimo"}
-                </button>
-                <button
-                  className="botao secundario"
-                  onClick={() => {
-                    conversar(
-                      m.bloquearPropostas ? "desbloquear" : "bloquear",
-                    );
-                    notificar(
-                      m.bloquearPropostas
-                        ? "Voltando a receber propostas espontâneas."
-                        : "Novas propostas espontâneas bloqueadas.",
-                    );
-                  }}
-                >
-                  {m.bloquearPropostas
-                    ? "Aceitar propostas"
-                    : "Bloquear novas propostas"}
-                </button>
-              </div>
-              {m.pediuSaida && !m.pedidoPublico && (
-                <details className="espaco">
-                  <summary>Tornar o pedido de saída público</summary>
-                  <p>
-                    Isso pode prejudicar sua relação com o treinador e a
-                    diretoria e aumentar a visibilidade no mercado.
-                  </p>
-                  <button
-                    className="botao secundario"
-                    onClick={() => {
-                      conversar("publicar");
-                      notificar("O pedido de saída foi tornado público.");
-                    }}
-                  >
-                    Confirmar pedido público
-                  </button>
-                </details>
-              )}
               <details className="espaco">
                 <summary>Solicitar aposentadoria</summary>
                 {!confirmarAposentadoria ? (
@@ -384,7 +516,9 @@ export function MercadoAgente({ carreira: c }: { carreira: EstadoCarreira }) {
                         onClick={() => {
                           aposentar();
                           setConfirmarAposentadoria(false);
-                          notificar("Carreira encerrada. O histórico foi preservado.");
+                          notificar(
+                            "Carreira encerrada. O histórico foi preservado.",
+                          );
                         }}
                       >
                         Confirmar aposentadoria

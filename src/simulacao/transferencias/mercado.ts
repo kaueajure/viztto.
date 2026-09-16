@@ -1,3 +1,4 @@
+import { atualizarVinculoAcompanhamento, atualizarObjetivoPessoal } from "../carreira/acompanhamento";
 import {
   avancarInteresses,
   processarContrapropostas,
@@ -91,6 +92,7 @@ export function processarRetornoEmprestimo(carreira: EstadoCarreira): void {
   sincronizarLigaAoClube(carreira, origem.id);
   carreira.clubeAtualId = origem.id;
   delete carreira.mercado.emprestimo;
+  atualizarVinculoAcompanhamento(carreira, carreira.clubes.find(c => c.id === deId)?.pais);
   carreira.mercado.disponivelParaEmprestimo = false;
   carreira.mercado.pediuEmprestimo = false;
   carreira.mercado.respostaDiretoriaEmprestimo = undefined;
@@ -283,6 +285,7 @@ export function avaliarMercado(
     .at(-1);
   if (
     !carreira.mercado.pediuSaida &&
+    !carreira.mercado.emprestimo &&
     !temAcordoAgendado(carreira) &&
     j.contrato.dataTermino < somarDias(carreira.dataAtual, 365) &&
     !pendentes.some((p) => p.tipo === "renovacao") &&
@@ -311,7 +314,7 @@ export function avaliarMercado(
   }
 
   processarContrapropostas(carreira);
-  avancarInteresses(carreira);
+  avancarInteresses(carreira, aleatorio);
   avaliarPapelPrometido(carreira);
 }
 
@@ -417,7 +420,7 @@ export function responderProposta(
     const atual = carreira.clubes.find(
       (cl) => cl.id === carreira.clubeAtualId,
     )!;
-    if (proposta.clubeId !== atual.id || proposta.salario > tetoSalario(atual))
+    if (carreira.mercado.emprestimo || proposta.clubeId !== j.contrato.clubeId || proposta.clubeId !== atual.id || proposta.salario > tetoSalario(atual))
       throw new Error("A renovação não cabe na folha do clube atual.");
     j.contrato = {
       ...j.contrato,
@@ -446,6 +449,7 @@ export function responderProposta(
       proposta.id,
       proposta,
     );
+    atualizarObjetivoPessoal(carreira);
     return carreira;
   }
   const destino = carreira.clubes.find((c) => c.id === proposta.clubeId);
@@ -566,6 +570,7 @@ export function responderProposta(
   proposta.acordoFuturo = false;
   encerrarNegociacoesIncompativeis(carreira, destino.id, proposta.id);
   carreira.mercado.pediuSaida = false;
+  carreira.mercado.statusPedidoSaida = "nenhum";
   carreira.mercado.pedidoPublico = false;
   carreira.mercado.pediuEmprestimo = false;
   carreira.mercado.disponivelParaEmprestimo = false;
@@ -585,6 +590,7 @@ export function responderProposta(
     `Papel prometido: ${proposta.papelPrometido}.`,
     "Agente",
   );
+  atualizarVinculoAcompanhamento(carreira, origem?.pais);
   return carreira;
 }
 
@@ -652,6 +658,7 @@ function efetivarEmprestimoUsuario(
     `Retorno previsto para ${formatarDataCurta(retornoEm)}.`,
     "Agente",
   );
+  atualizarVinculoAcompanhamento(carreira, carreira.clubes.find(c => c.id === origemId)?.pais);
   return carreira;
 }
 

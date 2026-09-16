@@ -1,3 +1,8 @@
+import { gerarContextoSemana, avisarConcorrencia } from "@/simulacao/decisoes/contexto";
+import { registrarResumoSemanal } from "@/simulacao/carreira/acompanhamento";
+import { avaliarBase, relacionadoProfissional } from "@/simulacao/base/formacao";
+import { avaliarHierarquia, bonusPromessa } from "@/simulacao/elenco/hierarquia";
+import { atualizarCompromissos } from "@/simulacao/elenco/treinador";
 import type {
   EstadoCarreira,
   Partida,
@@ -52,10 +57,10 @@ function aplicarDesempenho(
   const p = partida.participacao!,
     j = carreira.jogador;
   const estreia = !carreira.registros.some(
-    (r) => r.categoria === j.categoria && r.estatisticas.jogos > 0,
+    (r) => r.categoria === partida.categoria && r.estatisticas.jogos > 0,
   );
   const primeiroGol = !carreira.registros.some(
-    (r) => r.categoria === j.categoria && r.estatisticas.gols > 0,
+    (r) => r.categoria === partida.categoria && r.estatisticas.gols > 0,
   );
   registrarEstatisticas(carreira, partida);
   if (p.minutos > 0) {
@@ -135,22 +140,24 @@ function aplicarDesempenho(
   if (p.escalacao === "suspenso") j.suspensao = Math.max(0, j.suspensao - 1);
 }
 
-function avaliarPromocao(carreira: EstadoCarreira, clube: Clube): void {
+export function avaliarPromocao(carreira: EstadoCarreira, clube: Clube): void {
   const j = carreira.jogador;
   if (j.categoria !== "base") return;
   const media =
     j.notasRecentes.reduce((a, b) => a + b, 0) /
     Math.max(1, j.notasRecentes.length);
+  const treinos = j.preparacao.historico.filter(t => t.avaliacao !== "Recuperação");
+  const mediaTreino = treinos.length ? treinos.reduce((s,t) => s+t.nota,0)/treinos.length : 0;
   const pronto =
     j.overall >= clube.forcaGeral - 13 &&
     j.confianca > 64 &&
     j.forma > 52 &&
-    media > 6.5;
+    (media > 6.5 || (mediaTreino >= 72 && carreira.acompanhamento.base.treinosProfissional >= 4));
   const precoce =
     j.idade >= 16 &&
     j.potencialInterno >= 86 &&
     j.overall >= clube.forcaGeral - 8 &&
-    j.confianca > 75;
+    j.confianca > 75 && mediaTreino >= 65;
   if ((j.idade >= 17 && pronto) || precoce || j.idade >= 20) {
     j.categoria = "profissional";
     j.status = "promessa";
@@ -186,7 +193,7 @@ function prepararClubesRodada(
     if (c.ligaId !== carreira.liga.id) continue;
     const candidatos = c.elenco.map(jogadorMundoComoCandidato);
     if (c.id === carreira.clubeAtualId && j.categoria === "profissional") {
-      candidatos.push(jogadorUsuarioComoCandidato(j));
+      candidatos.push(jogadorUsuarioComoCandidato(j, bonusPromessa(carreira)));
     }
     const resultado = escalarElencoCompleto(
       candidatos,
@@ -210,6 +217,7 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
       "Esta carreira está aposentada. Você pode consultar o histórico, mas não avançar como jogador ativo.",
     );
   if (estado.temporada.encerrada) return estado;
+  const hierarquiaAntes = avaliarHierarquia(estado);
   const carreira = structuredClone(estado),
     aleatorio = new GeradorAleatorio(carreira.estadoAleatorio),
     j = carreira.jogador;
@@ -246,6 +254,11 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
   );
   aplicarDeclinio(j);
 
+  avaliarBase(carreira);
+  const convocado = relacionadoProfissional(carreira);
+  const motivoParticipacao = avaliarHierarquia(carreira).motivo;
+  const categoriaSemana = convocado ? 'profissional' : j.categoria;
+  if (convocado) registrarEvento(carreira,'base-relacionado','Relacionado para o profissional','A comissão chamou você para suprir uma ausência na sua posição. O vínculo com a base permanece.','Treinador',false);
   prepararClubesRodada(carreira, aleatorio);
 
   const rodada = ++carreira.temporada.rodadaAtual;
@@ -254,15 +267,16 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
     carreira.temporada[chave] = carreira.temporada[chave].map((partida) => {
       if (partida.rodada !== rodada) return partida;
       const pertence =
-        partida.categoria === j.categoria &&
+        partida.categoria === categoriaSemana &&
         [partida.mandanteId, partida.visitanteId].includes(clube.id);
       const resultado = simularPartida(
         partida,
         mapa.get(partida.mandanteId)!,
         mapa.get(partida.visitanteId)!,
         aleatorio,
-        pertence ? j : undefined,
+        pertence ? convocado ? { ...j, categoria: "profissional" } : j : undefined,
         pertence ? clube.id : undefined,
+        pertence ? bonusPromessa(carreira) : 0,
       );
       if (pertence) {
         carreira.ultimaPartidaId = resultado.id;
@@ -330,7 +344,7 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
     const anterior = j.status;
     const candidatos = [
       ...clube.elenco.map(jogadorMundoComoCandidato),
-      jogadorUsuarioComoCandidato(j),
+      jogadorUsuarioComoCandidato(j, bonusPromessa(carreira)),
     ];
     const esc = escalarElencoCompleto(
       candidatos,
@@ -361,9 +375,15 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
         "Treinador",
       );
   }
+  atualizarCompromissos(carreira);
+  const hierarquiaDepois = avaliarHierarquia(carreira);
+  if (hierarquiaDepois.ordem < hierarquiaAntes.ordem || (!hierarquiaAntes.titular && hierarquiaDepois.titular))
+    registrarEvento(carreira, 'hierarquia', hierarquiaDepois.titular ? 'Você conquistou a vaga' : 'Você subiu na hierarquia', `Agora você é a ${hierarquiaDepois.ordem}ª opção de ${j.posicao}. ${hierarquiaDepois.motivo}`, 'Treinador', false);
   atualizarObjetivos(carreira);
   j.valorMercado = calcularValorMercado(j, carreira.liga, carreira.dataAtual);
   avaliarMercado(carreira, aleatorio);
+  avisarConcorrencia(carreira, estado);
+  gerarContextoSemana(carreira, aleatorio);
   gerarDecisoesSemana(carreira, aleatorio);
   if (
     j.contrato.dataTermino < carreira.dataAtual &&
@@ -381,6 +401,7 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
       "Agente",
     );
   }
+  registrarResumoSemanal(carreira, estado, motivoParticipacao);
   carreira.estadoAleatorio = aleatorio.estado;
   return efetivarPreContratos(
     rodada >= carreira.temporada.totalRodadas

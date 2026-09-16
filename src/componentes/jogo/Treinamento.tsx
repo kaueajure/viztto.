@@ -1,18 +1,36 @@
+import { PlanoDesenvolvimento } from "./PlanoDesenvolvimento";
 import type { EstadoCarreira, FocoTreino } from "@/dominio/entidades/modelos";
 import { FOCOS_TREINO } from "@/simulacao/treinamento/treinamento";
 import { useJogoStore } from "@/estado/jogo-store";
 import { Barra } from "@/componentes/interface/Elementos";
 import { Check } from "lucide-react";
+import { planosDaPosicao } from "@/dominio/planos-desenvolvimento";
+
 export function Treinamento({ carreira: c }: { carreira: EstadoCarreira }) {
   const escolher = useJogoStore((s) => s.escolherTreino);
+  const temPlano = !!c.jogador.preparacao.planoId;
+  const plano = planosDaPosicao(c.jogador.posicao).find(
+    (p) => p.id === c.jogador.preparacao.planoId,
+  );
   return (
     <>
       <p className="sobretitulo">CENTRO DE TREINAMENTO</p>
       <h1>O TRABALHO INVISÍVEL.</h1>
       <p className="texto-suave">
-        Escolha o foco da próxima semana. O treino acontece uma única vez ao
-        avançar o tempo.
+        Defina um plano de desenvolvimento e até duas prioridades. O treino
+        acontece uma vez ao avançar o tempo. Recuperação reduz fadiga e risco.
       </p>
+      <PlanoDesenvolvimento carreira={c} />
+      {temPlano && (
+        <p className="painel" role="status">
+          Plano ativo: <strong>{plano?.nome ?? "Personalizado"}</strong>
+          {c.jogador.preparacao.prioridades.length
+            ? ` · Prioridades definidas`
+            : ""}
+          . O foco rápido abaixo fica em segundo plano enquanto o plano estiver
+          ativo — use-o principalmente para descanso.
+        </p>
+      )}
       <div className="grade-dupla espaco">
         <div className="grade-dupla opcoes">
           {(
@@ -20,27 +38,29 @@ export function Treinamento({ carreira: c }: { carreira: EstadoCarreira }) {
               FocoTreino,
               (typeof FOCOS_TREINO)[FocoTreino],
             ][]
-          ).map(([id, foco]) => (
-            <button
-              key={id}
-              className={`opcao ${c.focoTreino === id ? "selecionada" : ""}`}
-              aria-pressed={c.focoTreino === id}
-              onClick={() => escolher(id)}
-            >
-              <div className="linha-titulo">
-                <strong>{foco.nome}</strong>
-                {c.focoTreino === id && <Check size={18} />}
-              </div>
-              <span>{foco.descricao}</span>
-              <small>
-                {foco.carga < 0
-                  ? "DESCANSO ATIVO"
-                  : foco.carga > 20
-                    ? "CARGA ALTA"
-                    : "CARGA MODERADA"}
-              </small>
-            </button>
-          ))}
+          )
+            .filter(([id]) => !temPlano || id === "recuperacao" || id === "equilibrado")
+            .map(([id, foco]) => (
+              <button
+                key={id}
+                className={`opcao ${c.focoTreino === id ? "selecionada" : ""}`}
+                aria-pressed={c.focoTreino === id}
+                onClick={() => escolher(id)}
+              >
+                <div className="linha-titulo">
+                  <strong>{foco.nome}</strong>
+                  {c.focoTreino === id && <Check size={18} />}
+                </div>
+                <span>{foco.descricao}</span>
+                <small>
+                  {foco.carga < 0
+                    ? "DESCANSO ATIVO"
+                    : foco.carga > 20
+                      ? "CARGA ALTA"
+                      : "CARGA MODERADA"}
+                </small>
+              </button>
+            ))}
         </div>
         <section className="painel">
           <h2>PREPARAÇÃO FÍSICA</h2>
@@ -49,10 +69,6 @@ export function Treinamento({ carreira: c }: { carreira: EstadoCarreira }) {
           <Barra nome="Ritmo de jogo" valor={c.jogador.ritmo} />
           <p className="citacao">
             “Evoluir também é saber a hora de descansar.”
-          </p>
-          <p className="texto-suave">
-            Carga alta e fadiga aumentam o risco de lesão. A evolução é gradual
-            e varia com idade, profissionalismo, moral e qualidade da estrutura.
           </p>
           {c.jogador.lesao && (
             <p className="aviso">

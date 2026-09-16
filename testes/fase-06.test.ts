@@ -347,15 +347,35 @@ describe("Fase 6: agente — bloquear, saída e empréstimo", () => {
   it("bloquear propostas impede novas propostas espontâneas", () => {
     const c = conversarAgente(nova(), "bloquear");
     expect(c.mercado.bloquearPropostas).toBe(true);
-    const antes = c.mercado.interesses.length;
-    for (let i = 0; i < 6; i++) {
+    const propostasAntes = c.propostas.filter((p) => p.status === "pendente")
+      .length;
+    // Força interesses espontâneos avançados até a margem de proposta.
+    for (const clube of c.clubes.slice(1)) {
+      c.mercado.interesses.push({
+        clubeId: clube.id,
+        jogadorId: "usuario",
+        nivelInteresse: 70,
+        motivo: "reforco",
+        semanasObservando: 4,
+        status: "sondagem",
+        ultimaAtualizacao: somarDias(c.dataAtual, -14),
+        origem: "clube",
+        resposta: "Em sondagem",
+        papel: "titular",
+      });
+    }
+    for (let i = 0; i < 4; i++) {
       c.dataAtual = somarDias(c.dataAtual, 7);
       avancarInteresses(c);
     }
-    expect(c.mercado.interesses.filter((i) => i.origem === "clube").length).toBe(
-      0,
-    );
-    expect(c.mercado.interesses.length).toBe(antes);
+    expect(
+      c.propostas.filter((p) => p.status === "pendente").length,
+    ).toBe(propostasAntes);
+    expect(
+      c.mercado.interesses.some(
+        (i) => i.origem === "clube" && i.status !== "encerrado",
+      ),
+    ).toBe(true);
   });
 
   it("bloquear propostas NÃO impede contato ativo pelo agente", () => {
@@ -374,6 +394,7 @@ describe("Fase 6: agente — bloquear, saída e empréstimo", () => {
 
   it("solicitar transferência cria estado correto", () => {
     const c = conversarAgente(nova(), "sair");
+    expect(c.mercado.statusPedidoSaida).toBe("aceito");
     expect(c.mercado.pediuSaida).toBe(true);
     expect(c.mercado.pedidoPublico).toBe(false);
     expect(c.mercado.respostaDiretoriaSaida).toBeTruthy();
@@ -395,6 +416,9 @@ describe("Fase 6: agente — bloquear, saída e empréstimo", () => {
     );
     const d = avaliarPedidoSaidaDiretoria(c);
     expect(d.aceitaNegociar).toBe(false);
+    const depois = conversarAgente(c, "sair");
+    expect(depois.mercado.statusPedidoSaida).toBe("recusado");
+    expect(depois.mercado.pediuSaida).toBe(false);
   });
 
   it("pedido público gera consequências próprias", () => {

@@ -2920,6 +2920,67 @@ details[open] summary {
 }
 
 /* Mercado: caderno do agente e mesa de negociação. */
+.atencao-carreira {
+  margin-bottom: 20px;
+}
+.lista-atencao {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.lista-atencao li {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  border-bottom: 1px solid color-mix(in oklab, var(--borda) 70%, transparent);
+}
+.lista-atencao li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.mercado-resumo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px 20px;
+  margin: 16px 0;
+}
+.mercado-resumo div {
+  display: grid;
+  gap: 4px;
+}
+.mercado-resumo dt {
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--suave);
+}
+.mercado-resumo dd {
+  margin: 0;
+  font-weight: 600;
+}
+.cards-semana {
+  gap: 12px;
+  margin: 16px 0;
+}
+.card-semana {
+  padding: 12px 0;
+  border-bottom: 1px solid color-mix(in oklab, var(--borda) 70%, transparent);
+}
+.card-semana.urgente .rotulo {
+  color: var(--perigo, #c44);
+}
+.card-semana.importante .rotulo {
+  color: var(--destaque, #c4f542);
+}
+.progresso-atributo {
+  margin: -4px 0 10px;
+  font-size: 0.8rem;
+}
 .mercado-vinculo {
   display: flex;
   align-items: center;

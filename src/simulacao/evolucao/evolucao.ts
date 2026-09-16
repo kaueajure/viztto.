@@ -1,3 +1,4 @@
+import { afinidadeHistoria } from "@/dominio/historia-formacao";
 import type { Atributo, Jogador, Clube } from "@/dominio/entidades/modelos";
 import { calcularOverall } from "@/dominio/regras/jogador";
 import { limitar } from "@/utilitarios/formatacao";
@@ -29,10 +30,12 @@ export function calcularEvolucao(
         180);
   const ganho = pontos * curvaIdade * margem * contexto;
   for (const atributo of atributos) {
-    jogador.desenvolvimento[atributo] += ganho;
+    const rendimento = limitar((110 - jogador.atributos[atributo]) / 55, 0.2, 1);
+    jogador.desenvolvimento[atributo] += ganho * rendimento * afinidadeHistoria(jogador.perfilFormacao, atributo, jogador.idade);
     while (
       jogador.desenvolvimento[atributo] >= 100 &&
-      jogador.atributos[atributo] < 99
+      jogador.atributos[atributo] < 99 &&
+      calcularOverall(jogador.atributos, jogador.posicao) < jogador.potencialInterno
     ) {
       jogador.atributos[atributo]++;
       jogador.desenvolvimento[atributo] -= 100;

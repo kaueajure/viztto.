@@ -11,7 +11,9 @@ import {
   ErroCompatibilidadeSave,
   hidratarCarreira,
   validarCarreiraPersistida,
+  validarReferenciasCarreiraPersistida,
 } from "./carreira-persistida";
+import { CODIGOS_ERRO_SAVE } from "./codigos-erro";
 
 export const COOKIE_CARREIRA = "viztto_carreira";
 export const LIMITE_SAVE_BYTES = 16 * 1024 * 1024;
@@ -148,15 +150,19 @@ export function criarApiCarreira(
       }
       const body = escrita.parse(await lerCorpo(req));
       let state;
-      let carreira;
       try {
         state = validarCarreiraPersistida(body.state);
-        carreira = hidratarCarreira(state, await catalogo(state.ligasIds));
       } catch (erro) {
         if (erro instanceof ErroCompatibilidadeSave) throw erro;
+        console.error("[carreira]", {
+          codigo: CODIGOS_ERRO_SAVE.SAVE_INVALID,
+          rota: req.method,
+          operacao: "validar",
+          motivo: "schema-invalido",
+        });
         throw new ErroSave(
           400,
-          "INVALIDO",
+          CODIGOS_ERRO_SAVE.INVALIDO,
           "O save está incompleto ou inválido. O progresso anterior foi preservado.",
         );
       }
@@ -164,26 +170,64 @@ export function criarApiCarreira(
         if (!hash || !existente)
           throw new ErroSave(
             404,
-            "AUSENTE",
+            CODIGOS_ERRO_SAVE.AUSENTE,
             "Carreira não encontrada no servidor.",
           );
         if (body.revision === null || body.substituir)
-          throw new ErroSave(400, "INVALIDO", "Revisão inválida.");
+          throw new ErroSave(400, CODIGOS_ERRO_SAVE.INVALIDO, "Revisão inválida.");
+        try {
+          validarReferenciasCarreiraPersistida(
+            state,
+            await catalogo(state.ligasIds),
+          );
+        } catch (erro) {
+          if (erro instanceof ErroCompatibilidadeSave) throw erro;
+          console.error("[carreira]", {
+            codigo: CODIGOS_ERRO_SAVE.SAVE_INVALID,
+            rota: "PUT",
+            operacao: "referencias",
+            motivo: "referencias-invalidas",
+          });
+          throw new ErroSave(
+            400,
+            CODIGOS_ERRO_SAVE.INVALIDO,
+            "O save está incompleto ou inválido. O progresso anterior foi preservado.",
+          );
+        }
+        const inicio = Date.now();
         const salvo = await repo.atualizar(hash, body.revision, state);
+        console.info("[carreira]", {
+          codigo: "OK",
+          rota: "PUT",
+          operacao: "atualizar",
+          duracaoMs: Date.now() - inicio,
+          tamanhoAprox: Number(req.headers.get("content-length") ?? 0),
+        });
         return json({ revision: salvo.revision });
       }
       if (req.method !== "POST")
         return json({ erro: "Método não permitido." }, 405);
+      let carreira;
+      try {
+        carreira = hidratarCarreira(state, await catalogo(state.ligasIds));
+      } catch (erro) {
+        if (erro instanceof ErroCompatibilidadeSave) throw erro;
+        throw new ErroSave(
+          400,
+          CODIGOS_ERRO_SAVE.INVALIDO,
+          "O save está incompleto ou inválido. O progresso anterior foi preservado.",
+        );
+      }
       if (existente && (!body.substituir || body.revision === null))
         throw new ErroSave(
           409,
-          "CONFLITO",
+          CODIGOS_ERRO_SAVE.CONFLITO,
           "Confirme a substituição da carreira existente.",
         );
       if (!existente && (body.revision !== null || body.substituir))
         throw new ErroSave(
           409,
-          "CONFLITO",
+          CODIGOS_ERRO_SAVE.CONFLITO,
           "A carreira anterior mudou. Recarregue antes de criar outra.",
         );
       if (!existente) token = randomBytes(32).toString("hex");
@@ -200,13 +244,24 @@ export function criarApiCarreira(
       if (erro instanceof ErroSave)
         return json({ erro: erro.message, codigo: erro.codigo }, erro.status);
       if (erro instanceof ErroCompatibilidadeSave)
-        return json({ erro: erro.message, codigo: "INCOMPATIVEL" }, 422);
+        return json(
+          { erro: erro.message, codigo: CODIGOS_ERRO_SAVE.INCOMPATIVEL },
+          422,
+        );
       if (erro instanceof z.ZodError)
-        return json({ erro: "Payload inválido.", codigo: "INVALIDO" }, 400);
+        return json(
+          { erro: "Payload inválido.", codigo: CODIGOS_ERRO_SAVE.INVALIDO },
+          400,
+        );
+      console.error("[carreira]", {
+        codigo: CODIGOS_ERRO_SAVE.INDISPONIVEL,
+        rota: req.method,
+        stack: erro instanceof Error ? erro.stack?.split("\n").filter(l => /^\s+at /.test(l)).slice(0, 6).map(l => l.replace(/(?:postgres(?:ql)?|https?):\/\/\S+/g, "[endereço omitido]")) : undefined,
+      });
       return json(
         {
           erro: "Não foi possível acessar sua carreira no servidor. Tente novamente.",
-          codigo: "INDISPONIVEL",
+          codigo: CODIGOS_ERRO_SAVE.INDISPONIVEL,
         },
         503,
       );

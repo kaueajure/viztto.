@@ -1,14 +1,12 @@
+import { avaliarHierarquia } from "@/simulacao/elenco/hierarquia";
+import Link from "next/link";
+import { ResumoHistoria } from "./SuaHistoria";
 import type { EstadoCarreira, Atributo } from "@/dominio/entidades/modelos";
 import { NOMES_ATRIBUTOS } from "@/dominio/entidades/modelos";
 import { avaliarPotencial, POSICOES } from "@/dominio/regras/jogador";
 import { Barra } from "@/componentes/interface/Elementos";
 import { dinheiro } from "@/utilitarios/formatacao";
 import { rotuloRelacao } from "@/simulacao/decisoes/decisoes";
-import {
-  concorrentesNaPosicao,
-  jogadorMundoComoCandidato,
-  jogadorUsuarioComoCandidato,
-} from "@/simulacao/elenco/escalacao-elenco";
 
 const GRUPOS: Record<string, Atributo[]> = {
   Técnicos: [
@@ -50,17 +48,7 @@ const GRUPOS: Record<string, Atributo[]> = {
 
 export function PainelJogador({ carreira: c }: { carreira: EstadoCarreira }) {
   const j = c.jogador;
-  const clube = c.clubes.find((cl) => cl.id === c.clubeAtualId);
-  const concorrentes = clube
-    ? concorrentesNaPosicao(
-        [
-          ...clube.elenco.map(jogadorMundoComoCandidato),
-          jogadorUsuarioComoCandidato(j),
-        ],
-        j.posicao,
-        5,
-      )
-    : [];
+  const hierarquia = avaliarHierarquia(c);
   const rel = c.relacionamentos ?? {
     treinador: 50,
     diretoria: 50,
@@ -90,6 +78,7 @@ export function PainelJogador({ carreira: c }: { carreira: EstadoCarreira }) {
           </p>
         </div>
       </section>
+      {j.perfilFormacao.origem === "historia" && <ResumoHistoria escolhas={j.perfilFormacao.escolhas} />}
       <div className="grade-dupla espaco">
         <section className="painel">
           <h2>MOMENTO ATUAL</h2>
@@ -135,32 +124,46 @@ export function PainelJogador({ carreira: c }: { carreira: EstadoCarreira }) {
       </div>
       <section className="painel espaco">
         <h2>CONCORRÊNCIA · {POSICOES[j.posicao].toUpperCase()}</h2>
-        <ol className="lista-concorrencia">
-          {concorrentes.map((item, i) => (
-            <li
-              key={item.candidato.id}
-              className={item.candidato.ehUsuario ? "voce" : ""}
-            >
-              <span>{i + 1}.</span>
-              <strong>
-                {item.candidato.nome}
-                {item.candidato.ehUsuario ? " (você)" : ""}
-              </strong>
-              <span>OVR {item.candidato.overall}</span>
-            </li>
-          ))}
-        </ol>
+        <p>{hierarquia.ordem}ª opção. {hierarquia.motivo}</p>
+        <p className="texto-suave">{hierarquia.proximoPasso}</p>
+        <Link className="botao secundario" href="/carreira/clube">Ver hierarquia e conversar com o treinador</Link>
       </section>
       <div className="grade-atributos">
         {Object.entries(GRUPOS).map(([nome, atributos]) => (
           <section className="painel" key={nome}>
             <h2>{nome.toUpperCase()}</h2>
             {atributos.map((a) => (
-              <Barra key={a} nome={NOMES_ATRIBUTOS[a]} valor={j.atributos[a]} />
+              <div key={a}>
+                <Barra nome={NOMES_ATRIBUTOS[a]} valor={j.atributos[a]} />
+                {j.desenvolvimento[a] > 0.05 && (
+                  <p className="texto-suave progresso-atributo">
+                    Progresso interno: {Math.round(j.desenvolvimento[a] * 100)}%
+                    rumo ao próximo ponto
+                  </p>
+                )}
+              </div>
             ))}
           </section>
         ))}
       </div>
+      {j.preparacao.historico.length > 0 && (
+        <section className="painel espaco">
+          <h2>ÚLTIMOS TREINOS</h2>
+          <ul className="lista-atencao">
+            {[...j.preparacao.historico].slice(-4).reverse().map((t) => (
+              <li key={t.data + t.avaliacao}>
+                <div>
+                  <strong>{t.avaliacao}</strong>
+                  <p className="texto-suave">
+                    {t.data} · confiança {t.confianca >= 0 ? "+" : ""}
+                    {t.confianca.toFixed(1)}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </>
   );
 }

@@ -75,6 +75,9 @@ export const esquemaMercado = z
       apenasDesejados: z.boolean(),
     }),
     pediuSaida: z.boolean(),
+    statusPedidoSaida: z
+      .enum(["nenhum", "aceito", "recusado"])
+      .default("nenhum"),
     pedidoPublico: z.boolean(),
     bloquearPropostas: z.boolean().default(false),
     pediuEmprestimo: z.boolean().default(false),

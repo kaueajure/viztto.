@@ -64,6 +64,7 @@ export function simularPartida(
   aleatorio: GeradorAleatorio,
   jogador?: Jogador,
   clubeJogadorId?: string,
+  incentivo = 0,
 ): Partida {
   if (partida.golsMandante !== null) return partida;
   const resultado: Partida = {
@@ -78,7 +79,7 @@ export function simularPartida(
   };
   if (jogador && clubeJogadorId) {
     const clube = clubeJogadorId === mandante.id ? mandante : visitante;
-    const escalacao = determinarEscalacao(jogador, clube, aleatorio);
+    const escalacao = determinarEscalacao(jogador, clube, aleatorio, incentivo);
     const entrada =
       escalacao === "titular"
         ? 0

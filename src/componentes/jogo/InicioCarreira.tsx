@@ -1,5 +1,7 @@
+import { CentralSemana } from "./CentralSemana";
 import { PropostasInicio } from "./PropostasInicio";
 import { DecisoesInicio } from "./DecisoesInicio";
+import { AtencaoCarreira } from "./AtencaoCarreira";
 import { PainelUltimaPartida } from "@/componentes/partida/PainelUltimaPartida";
 import Link from "next/link";
 import { formatarTemporada } from "@/dominio/constantes/temporadas-iniciais";
@@ -48,8 +50,10 @@ export function InicioCarreira({
   );
   return (
     <>
+      <AtencaoCarreira carreira={c} />
       <PropostasInicio carreira={c} />
       <DecisoesInicio carreira={c} />
+      <CentralSemana carreira={c} />
       <div className="linha-titulo titulo-pagina">
         <div>
           <p className="sobretitulo">

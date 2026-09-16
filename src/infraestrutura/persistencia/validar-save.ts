@@ -1,3 +1,5 @@
+import { esquemaHistoria, esquemaPreparacao, esquemaAcompanhamento } from "./esquema-desenvolvimento";
+import { migrarDesenvolvimento } from "./migrar-desenvolvimento";
 import { esquemaLiga } from "@/dominio/regras/liga";
 import { esquemaMercado, camposProposta } from "./esquema-mercado";
 import { z } from "zod";
@@ -117,6 +119,7 @@ const esquemaTemporada = z.object({
 
 export const esquemaCarreira = z.object({
   versao: z.literal(2),
+  acompanhamento: esquemaAcompanhamento,
   id: texto,
   seed: texto,
   estadoAleatorio: numero,
@@ -130,6 +133,8 @@ export const esquemaCarreira = z.object({
   liga: esquemaLiga,
   ligas: z.array(esquemaLiga).min(1),
   jogador: esquemaIdentidade.extend({
+    perfilFormacao: esquemaHistoria,
+    preparacao: esquemaPreparacao,
     idade: numero.min(15),
     atributos,
     desenvolvimento: atributos,
@@ -312,7 +317,7 @@ function migrarParaV2(valor: unknown): unknown {
 }
 
 export function validarSave(valor: unknown): EstadoCarreira {
-  const migrado = migrarParaV2(valor);
+  const migrado = migrarDesenvolvimento(migrarParaV2(valor));
   const resultado = esquemaCarreira.safeParse(migrado);
   if (!resultado.success)
     throw new Error("O save está incompleto ou incompatível.");

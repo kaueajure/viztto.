@@ -1,3 +1,5 @@
+import { responderContexto } from "./contexto";
+import { posicoesPlausiveis } from "../elenco/hierarquia";
 import type {
   DecisaoPendente,
   EstadoCarreira,
@@ -71,19 +73,12 @@ export function gerarDecisoesSemana(
 
   if (
     j.posicaoSecundaria === "" &&
+    !carreira.acompanhamento.adaptacao &&
+    posicoesPlausiveis(j).length > 0 &&
     j.confianca > 55 &&
     aleatorio.chance(0.1)
   ) {
-    const alternativas: Posicao[] =
-      j.posicao === "PD"
-        ? ["PE", "MEI"]
-        : j.posicao === "PE"
-          ? ["PD", "MEI"]
-          : j.posicao === "CA"
-            ? ["MEI", "PD"]
-            : j.posicao === "MC"
-              ? ["VOL", "MEI"]
-              : ["MC"];
+    const alternativas = posicoesPlausiveis(j);
     const nova = aleatorio.escolher(alternativas);
     carreira.decisoes.push({
       id: `dec-pos-${carreira.dataAtual}`,
@@ -137,11 +132,14 @@ export function responderDecisao(
   const carreira = structuredClone(estado);
   const decisao = carreira.decisoes.find((d) => d.id === id && !d.resolvida);
   if (!decisao) throw new Error("Decisão não disponível.");
+  if (!decisao.opcoes.some(o => o.id === opcaoId)) throw new Error("Resposta inválida para esta decisão.");
   decisao.resolvida = true;
   decisao.opcaoEscolhida = opcaoId;
   const j = carreira.jogador;
 
-  if (decisao.tipo === "papel-elenco") {
+  if (["entrevista", "pressao", "conflito-treino", "conselho-veterano"].includes(decisao.tipo)) {
+    responderContexto(carreira, opcaoId);
+  } else if (decisao.tipo === "papel-elenco") {
     if (opcaoId === "aceitar") {
       j.confianca = limitar(j.confianca + 6);
       carreira.relacionamentos.treinador = limitar(
@@ -182,7 +180,8 @@ export function responderDecisao(
   } else if (decisao.tipo === "teste-posicao") {
     if (opcaoId.startsWith("aceitar:")) {
       const pos = opcaoId.split(":")[1] as Posicao;
-      j.posicaoSecundaria = pos;
+      if (!posicoesPlausiveis(j).includes(pos)) throw new Error("Posição incompatível com o perfil atual.");
+      carreira.acompanhamento.adaptacao = { posicao: pos, inicio: carreira.dataAtual, semanas: 0, clubeId: carreira.clubeAtualId, status: 'ativa' };
       j.confianca = limitar(j.confianca + 4);
       carreira.relacionamentos.treinador = limitar(
         carreira.relacionamentos.treinador + 5,
@@ -191,7 +190,7 @@ export function responderDecisao(
         carreira,
         "decisao",
         `Versatilidade: ${pos}`,
-        "Você aceitou o teste posicional.",
+        "Você iniciou um período de adaptação de pelo menos oito semanas. A posição secundária depende da avaliação.",
         "Treinador",
       );
     } else {

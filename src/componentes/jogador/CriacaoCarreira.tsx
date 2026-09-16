@@ -1,4 +1,7 @@
 "use client";
+import { SuaHistoria } from "./SuaHistoria";
+import { CAPITULOS, type EscolhasHistoria } from "@/dominio/desenvolvimento";
+import { sortearHistoria } from "@/dominio/historia-formacao";
 import { formatarTemporada } from "@/dominio/constantes/temporadas-iniciais";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -21,19 +24,11 @@ import { Escudo } from "@/componentes/clube/Escudo";
 const ETAPAS = [
   "Identidade",
   "Jogador",
-  "Estilo",
+  "Sua História",
   "Liga",
   "Clube",
   "Confirmação",
 ];
-const ESTILOS = {
-  equilibrado: ["Completo", "Fundamentos distribuídos. Você define o caminho."],
-  artilheiro: ["Artilheiro", "Instinto de gol, posicionamento e compostura."],
-  criador: ["Maestro", "Enxerga espaços e dita o ritmo com o passe."],
-  velocista: ["Velocista", "Aceleração, drible e profundidade."],
-  marcador: ["Guardião", "Disputa, antecipação e presença defensiva."],
-  paredao: ["Paredão", "Reflexos, defesas e segurança no gol."],
-} as const;
 export function CriacaoCarreira() {
   const roteador = useRouter(),
     iniciar = useJogoStore((s) => s.iniciar),
@@ -53,6 +48,9 @@ export function CriacaoCarreira() {
       peso: 70,
       arquetipo: "equilibrado",
     });
+  const [seed, definirSeed] = useState("");
+  const [capitulo, definirCapitulo] = useState(0);
+  const [escolhas, definirEscolhas] = useState<Partial<EscolhasHistoria>>({});
   const [ligas, definirLigas] = useState<LigaDisponivel[]>([]);
   const [ligaId, definirLiga] = useState(""),
     [clubes, definirClubes] = useState<Clube[]>([]),
@@ -171,6 +169,19 @@ export function CriacaoCarreira() {
       definirErro("Selecione seu clube inicial.");
       return;
     }
+    if (etapa === 1) {
+      if (!seed) definirSeed(crypto.randomUUID());
+      if (seed) {
+        const opcoes = sortearHistoria(seed, identidade.posicao);
+        definirEscolhas(atuais => Object.fromEntries(CAPITULOS.filter(c => opcoes[c].some(o => o.id === atuais[c])).map(c => [c,atuais[c]])));
+      }
+      definirCapitulo(0);
+    }
+    if (etapa === 2 && capitulo < 4) {
+      if (!escolhas[CAPITULOS[capitulo]]) { definirErro("Escolha um caminho para continuar."); return; }
+      definirCapitulo(capitulo + 1);
+      return;
+    }
     definirEtapa(etapa + 1);
   }
   async function confirmar() {
@@ -221,7 +232,8 @@ export function CriacaoCarreira() {
           clubes: principal.clubes as Clube[],
           clubeId,
           origem: "api",
-          seed: crypto.randomUUID(),
+          seed,
+          historia: escolhas as EscolhasHistoria,
           dataInicio: principal.inicio,
           ligasMundo,
           clubesMundo,
@@ -275,7 +287,7 @@ export function CriacaoCarreira() {
               [
                 "QUEM É VOCÊ?",
                 "DENTRO DE CAMPO.",
-                "SEU JEITO DE JOGAR.",
+                "SUA HISTÓRIA.",
                 "ESCOLHA SEU PALCO.",
                 "SEU PRIMEIRO ESCUDO.",
                 "COMEÇA A HISTÓRIA.",
@@ -287,7 +299,7 @@ export function CriacaoCarreira() {
               [
                 "Todo jogador tem um começo. Este é o seu.",
                 "Defina o perfil do atleta que vai entrar em campo.",
-                "Seu estilo orienta os atributos iniciais. A carreira faz o resto.",
+                "Construa o passado do atleta. Cada escolha traz qualidades e desafios.",
                 `${ligas.length} ligas disponíveis. Diferentes caminhos para conquistar espaço.`,
                 "Escolha onde você vai disputar sua primeira oportunidade.",
                 "Confira os detalhes antes de entrar no vestiário.",
@@ -419,23 +431,7 @@ export function CriacaoCarreira() {
               </p>
             </div>
           )}
-          {etapa === 2 && (
-            <div className="opcoes grade-dupla">
-              {Object.entries(ESTILOS).map(([id, [nome, descricao]]) => (
-                <button
-                  aria-pressed={identidade.arquetipo === id}
-                  className={`opcao ${identidade.arquetipo === id ? "selecionada" : ""}`}
-                  key={id}
-                  onClick={() =>
-                    alterar("arquetipo", id as IdentidadeJogador["arquetipo"])
-                  }
-                >
-                  <strong>{nome}</strong>
-                  <span>{descricao}</span>
-                </button>
-              ))}
-            </div>
-          )}
+          {etapa === 2 && seed && <SuaHistoria seed={seed} identidade={identidade} capitulo={capitulo} escolhas={escolhas} escolher={(c,id) => definirEscolhas(atuais => ({...atuais,[c]:id}))} />}
           {etapa === 3 && (
             <>
               <div className="opcoes grade-dupla">
@@ -593,7 +589,8 @@ export function CriacaoCarreira() {
               className="botao-texto"
               disabled={etapa === 0 || confirmando}
               onClick={() => {
-                definirEtapa(etapa - 1);
+                if (etapa === 2 && capitulo > 0) definirCapitulo(capitulo - 1);
+                else definirEtapa(etapa - 1);
                 definirErro(null);
               }}
             >

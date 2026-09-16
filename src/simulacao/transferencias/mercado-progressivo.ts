@@ -12,6 +12,7 @@ import {
   type TermosContrato,
 } from "@/dominio/mercado";
 import { limitar, somarDias } from "@/utilitarios/formatacao";
+import { GeradorAleatorio } from "@/utilitarios/aleatorio";
 import { registrarEvento } from "../eventos/eventos";
 import { somarEstatisticas } from "../temporada/estatisticas";
 import {
@@ -20,6 +21,10 @@ import {
   pesoFrequenciaPropostas,
   resolverJanela,
 } from "./necessidade";
+import { avaliarHierarquia } from "../elenco/hierarquia";
+
+const LIMIAR_ELEGIBILIDADE = 38;
+const MAX_NOVOS_INTERESSES_SEMANA = 2;
 
 const diasContrato = (c: EstadoCarreira) =>
   Math.ceil(
@@ -33,6 +38,33 @@ function temAcordoAtivo(c: EstadoCarreira) {
       p.status === "aceita" &&
       (p.etapa === "acordo" || p.etapa === "acordo_futuro"),
   );
+}
+
+export function normalizarTermosContrato(
+  termos: TermosContrato | PropostaTransferencia | Record<string, unknown>,
+): TermosContrato | undefined {
+  if (!termos || typeof termos !== "object") return undefined;
+  const salario = Number((termos as TermosContrato).salario);
+  const duracaoAnos = Number((termos as TermosContrato).duracaoAnos);
+  const papelPrometido = (termos as TermosContrato).papelPrometido;
+  if (
+    !Number.isFinite(salario) ||
+    salario <= 0 ||
+    !Number.isInteger(duracaoAnos) ||
+    duracaoAnos < 1 ||
+    duracaoAnos > 5 ||
+    !PAPEIS_MERCADO.includes(papelPrometido)
+  )
+    return undefined;
+  const clausula = (termos as TermosContrato).clausulaRescisao;
+  return {
+    salario,
+    duracaoAnos,
+    papelPrometido,
+    ...(typeof clausula === "number" && clausula > 0
+      ? { clausulaRescisao: clausula }
+      : {}),
+  };
 }
 
 export function avaliarPedidoSaidaDiretoria(c: EstadoCarreira): {
@@ -146,7 +178,7 @@ export function registrarNegociacao(
   clubeId: string,
   texto: string,
   propostaId?: string,
-  termos?: TermosContrato,
+  termos?: TermosContrato | PropostaTransferencia,
 ) {
   c.mercado ??= criarMercado();
   c.mercado.historico.push({
@@ -155,7 +187,7 @@ export function registrarNegociacao(
     clubeId,
     texto,
     propostaId,
-    termos: termos ? { ...termos } : undefined,
+    termos: termos ? normalizarTermosContrato(termos) : undefined,
   });
   registrarEvento(
     c,
@@ -176,6 +208,9 @@ export function tetoSalario(clube: Clube): number {
 export function precoPedido(c: EstadoCarreira): number {
   const origem = c.clubes.find((cl) => cl.id === c.clubeAtualId)!;
   const importancia = PAPEIS_MERCADO.indexOf(c.jogador.status);
+  const listado =
+    c.mercado?.statusPedidoSaida === "aceito" || c.mercado?.pediuSaida === true;
+  const publico = !!c.mercado?.pedidoPublico;
   const fator =
     0.65 +
     Math.min(3, Math.max(0, diasContrato(c)) / 365) * 0.2 +
@@ -183,7 +218,8 @@ export function precoPedido(c: EstadoCarreira): number {
   const preco =
     c.jogador.valorMercado *
     fator *
-    (c.mercado?.pediuSaida ? 0.85 : 1) *
+    (listado ? 0.85 : 1) *
+    (publico ? 0.95 : 1) *
     (origem.orcamento < c.jogador.valorMercado ? 0.8 : 1);
   return Math.round(
     Math.min(preco, c.jogador.contrato.clausulaRescisao ?? Infinity),
@@ -384,7 +420,8 @@ export type AcaoAgente =
   | "bloquear"
   | "desbloquear"
   | "emprestar"
-  | "cancelar-emprestimo";
+  | "cancelar-emprestimo"
+  | "situacao";
 
 export function conversarAgente(
   estado: EstadoCarreira,
@@ -395,6 +432,41 @@ export function conversarAgente(
   c.mercado ??= criarMercado();
   if (c.aposentado)
     throw new Error("Sua carreira profissional já foi encerrada.");
+
+  if (acao === "situacao") {
+    const h = avaliarHierarquia(c);
+    const janela = resolverJanela(c.dataAtual);
+    const interesses = c.mercado.interesses.filter((i) => i.status !== "encerrado").length;
+    const pedido =
+      c.mercado.statusPedidoSaida === "aceito"
+        ? "Há pedido de saída aceito pela diretoria."
+        : c.mercado.statusPedidoSaida === "recusado"
+          ? "A diretoria recusou seu pedido de saída."
+          : "Não há pedido de transferência ativo.";
+    const papel = h.titular
+      ? "Você está na disputa pela titularidade e tem espaço real."
+      : h.ordem <= 3
+        ? `Você é a ${h.ordem}ª opção. ${h.proximoPasso}`
+        : `Você está atrás na hierarquia. ${h.motivo} ${h.proximoPasso}`;
+    const mercado =
+      interesses > 0
+        ? `${interesses} clube(s) mantêm interesse ativo.`
+        : janela === "fechada"
+          ? "Fora da janela o mercado esfria, mas observação continua possível."
+          : "Ainda não há interesse concreto no mercado.";
+    const texto = [
+      "Seu agente analisou a situação.",
+      papel,
+      pedido,
+      mercado,
+      c.jogador.moral < 45
+        ? "Sua insatisfação está aparente. Podemos falar com a diretoria, buscar empréstimo ou abrir o mercado — diga o caminho."
+        : "Se quiser pressão sobre o clube, peça transferência, empréstimo ou renegociação via contrato.",
+    ].join(" ");
+    registrarNegociacao(c, c.clubeAtualId, texto);
+    c.relacionamentos.agente = limitar(c.relacionamentos.agente + 1);
+    return c;
+  }
 
   if (acao === "bloquear" || acao === "desbloquear") {
     c.mercado.bloquearPropostas = acao === "bloquear";
@@ -435,28 +507,9 @@ export function conversarAgente(
   }
 
   if (acao === "sair" || acao === "publicar" || acao === "permanecer") {
-    if (acao === "publicar" && !c.mercado.pediuSaida)
-      throw new Error("Converse primeiro com o agente sobre sua saída.");
-    if (acao === "publicar" && !c.mercado.pedidoPublico) {
-      c.relacionamentos.diretoria = limitar(c.relacionamentos.diretoria - 12);
-      c.relacionamentos.treinador = limitar(c.relacionamentos.treinador - 6);
-      c.jogador.moral = limitar(c.jogador.moral - 2);
-    }
-    if (acao === "sair" && !c.mercado.pediuSaida) {
-      c.jogador.moral = limitar(c.jogador.moral - 3);
-      const decisao = avaliarPedidoSaidaDiretoria(c);
-      c.mercado.respostaDiretoriaSaida = decisao.resposta;
-      c.mercado.pediuSaida = true;
-      c.mercado.pedidoPublico = false;
-      registrarNegociacao(
-        c,
-        c.clubeAtualId,
-        `Pedido privado de transferência registrado. ${decisao.resposta}`,
-      );
-      return c;
-    }
     if (acao === "permanecer") {
       c.mercado.pediuSaida = false;
+      c.mercado.statusPedidoSaida = "nenhum";
       c.mercado.pedidoPublico = false;
       c.mercado.respostaDiretoriaSaida = undefined;
       registrarNegociacao(
@@ -466,7 +519,44 @@ export function conversarAgente(
       );
       return c;
     }
+    if (acao === "sair") {
+      if (c.mercado.statusPedidoSaida === "aceito") return c;
+      if (c.mercado.statusPedidoSaida === "recusado")
+        throw new Error(
+          "A diretoria já respondeu a este pedido. Retire o pedido ou aguarde para tentar novamente.",
+        );
+      c.jogador.moral = limitar(c.jogador.moral - 3);
+      const decisao = avaliarPedidoSaidaDiretoria(c);
+      c.mercado.respostaDiretoriaSaida = decisao.resposta;
+      c.mercado.pedidoPublico = false;
+      if (decisao.aceitaNegociar) {
+        c.mercado.pediuSaida = true;
+        c.mercado.statusPedidoSaida = "aceito";
+        registrarNegociacao(
+          c,
+          c.clubeAtualId,
+          `Pedido privado de transferência registrado. ${decisao.resposta}`,
+        );
+      } else {
+        c.mercado.pediuSaida = false;
+        c.mercado.statusPedidoSaida = "recusado";
+        registrarNegociacao(
+          c,
+          c.clubeAtualId,
+          `Pedido de transferência analisado. ${decisao.resposta}`,
+        );
+      }
+      return c;
+    }
+    if (c.mercado.statusPedidoSaida !== "aceito")
+      throw new Error("Converse primeiro com o agente sobre sua saída.");
+    if (!c.mercado.pedidoPublico) {
+      c.relacionamentos.diretoria = limitar(c.relacionamentos.diretoria - 12);
+      c.relacionamentos.treinador = limitar(c.relacionamentos.treinador - 6);
+      c.jogador.moral = limitar(c.jogador.moral - 2);
+    }
     c.mercado.pediuSaida = true;
+    c.mercado.statusPedidoSaida = "aceito";
     c.mercado.pedidoPublico = true;
     registrarNegociacao(
       c,
@@ -488,25 +578,27 @@ export function conversarAgente(
   const candidatos =
     acao === "contatar"
       ? c.clubes.filter((cl) => cl.id === clubeId && cl.id !== c.clubeAtualId)
-      : c.clubes
-          .filter(
-            (cl) =>
-              cl.id !== c.clubeAtualId &&
-              atendePreferencias(c, cl, avaliarAlvo(c, cl)),
-          )
-          .sort(
-            (a, b) =>
-              Number(c.mercado.clubesDesejados.includes(b.id)) -
-                Number(c.mercado.clubesDesejados.includes(a.id)) ||
-              avaliarAlvo(c, b).score - avaliarAlvo(c, a).score,
-          )
-          .slice(0, 3);
+      : (() => {
+          const avaliacoes = c.clubes
+            .filter((cl) => cl.id !== c.clubeAtualId)
+            .map((cl) => ({ clube: cl, a: avaliarAlvo(c, cl) }))
+            .filter(({ clube, a }) => atendePreferencias(c, clube, a));
+          return avaliacoes
+            .sort(
+              (x, y) =>
+                Number(c.mercado.clubesDesejados.includes(y.clube.id)) -
+                  Number(c.mercado.clubesDesejados.includes(x.clube.id)) ||
+                y.a.score - x.a.score,
+            )
+            .slice(0, 3)
+            .map((x) => x.clube);
+        })();
   if (!candidatos.length) {
     if (acao === "buscar") {
       registrarNegociacao(
         c,
         c.clubeAtualId,
-        "Não encontrei clubes realmente interessados neste momento.",
+        "Seu agente não encontrou clubes com interesse concreto neste momento.",
       );
       return c;
     }
@@ -515,6 +607,7 @@ export function conversarAgente(
     );
   }
   let abertos = 0;
+  const nomesAbertos: string[] = [];
   for (const clube of candidatos) {
     const anterior = c.mercado.interesses.find((i) => i.clubeId === clube.id);
     if (
@@ -532,15 +625,18 @@ export function conversarAgente(
       (i) => i.clubeId !== clube.id,
     );
     const interesse = observar(c, clube, "agente");
-    if (interesse.status !== "encerrado") abertos++;
+    if (interesse.status !== "encerrado") {
+      abertos++;
+      nomesAbertos.push(clube.nome);
+    }
   }
   if (acao === "buscar") {
     registrarNegociacao(
       c,
       c.clubeAtualId,
       abertos > 0
-        ? `Consegui abrir conversa com ${abertos} clube${abertos > 1 ? "s" : ""}.`
-        : "Não encontrei clubes realmente interessados neste momento.",
+        ? `Seu agente abriu conversa com ${nomesAbertos.join(" e ")}.`
+        : "Seu agente não encontrou clubes com interesse concreto neste momento.",
     );
   }
   return c;
@@ -742,12 +838,29 @@ function negociarClubes(
     termos,
   );
 }
-export function avancarInteresses(c: EstadoCarreira) {
+export function avancarInteresses(
+  c: EstadoCarreira,
+  aleatorio: GeradorAleatorio = new GeradorAleatorio(
+    Math.abs(
+      (c.estadoAleatorio ?? 1) ^
+        Date.parse(c.dataAtual) ^
+        (c.mercado?.interesses.length ?? 0),
+    ),
+  ),
+) {
   c.mercado ??= criarMercado();
   if (c.aposentado || c.jogador.categoria === "base" || temAcordoAtivo(c))
     return;
   const peso = pesoFrequenciaPropostas(c.dataAtual);
-  const limiarEspontaneo = 25 / Math.max(0.15, peso);
+  const boostPublico = c.mercado.pedidoPublico ? 1.55 : 1;
+  const boostListado =
+    c.mercado.statusPedidoSaida === "aceito" || c.mercado.pediuSaida ? 1.2 : 1;
+  const chanceBase = Math.min(0.55, 0.08 * peso * boostPublico * boostListado);
+  const limiar = Math.max(22, LIMIAR_ELEGIBILIDADE - (c.mercado.pedidoPublico ? 8 : 0));
+
+  const candidatosNovos: { clube: Clube; a: ReturnType<typeof avaliarAlvo> }[] =
+    [];
+
   for (const clube of c.clubes) {
     if (clube.id === c.clubeAtualId) continue;
     const a = avaliarAlvo(c, clube);
@@ -758,38 +871,24 @@ export function avancarInteresses(c: EstadoCarreira) {
       i.reabrirEm <= c.dataAtual &&
       a.viavel &&
       a.evidencia &&
-      atendePreferencias(c, clube, a) &&
-      !c.mercado.bloquearPropostas
+      a.score >= limiar
     ) {
+      // Preferências do jogador não impedem o clube de voltar a observar.
       c.mercado.interesses = c.mercado.interesses.filter((x) => x !== i);
       observar(c, clube, i.origem);
       continue;
     }
     if (!i) {
-      if (
-        !c.mercado.bloquearPropostas &&
-        a.viavel &&
-        a.evidencia &&
-        a.score >= limiarEspontaneo &&
-        atendePreferencias(c, clube, a)
-      )
-        observar(
-          c,
-          clube,
-          c.mercado.pediuSaida || c.mercado.clubesDesejados.includes(clube.id)
-            ? "agente"
-            : "clube",
-        );
-      else if (
+      const elegivelEmprestimo =
         c.mercado.disponivelParaEmprestimo &&
-        !c.mercado.bloquearPropostas &&
         a.compativel &&
         !a.saturado &&
         a.nec.nivel !== "baixa" &&
         a.evidencia &&
-        a.score >= limiarEspontaneo * 0.7
-      )
-        observar(c, clube, "clube");
+        a.score >= limiar * 0.85;
+      if (a.viavel && a.evidencia && a.score >= limiar)
+        candidatosNovos.push({ clube, a });
+      else if (elegivelEmprestimo) candidatosNovos.push({ clube, a });
       continue;
     }
     if (
@@ -816,7 +915,8 @@ export function avancarInteresses(c: EstadoCarreira) {
         c.mercado.disponivelParaEmprestimo &&
         a.compativel &&
         !a.saturado &&
-        i.status === "negociando"
+        i.status === "negociando" &&
+        !(c.mercado.bloquearPropostas && i.origem === "clube")
       ) {
         negociarClubes(c, clube, i, a);
         i.resposta = a.resposta;
@@ -852,7 +952,13 @@ export function avancarInteresses(c: EstadoCarreira) {
       ? 1
       : a.nota < 6.2
         ? -8
-        : Math.max(2, Math.min(14, a.score / 5));
+        : Math.max(
+            2,
+            Math.min(
+              14,
+              a.score / 5 + (c.mercado.pedidoPublico && a.viavel ? 2 : 0),
+            ),
+          );
     i.nivelInteresse = limitar(i.nivelInteresse + ganho);
     if (i.nivelInteresse < 20 && i.status !== "observando") {
       i.status = "observando";
@@ -864,8 +970,13 @@ export function avancarInteresses(c: EstadoCarreira) {
         "As últimas atuações esfriaram o interesse. O clube voltou à observação.",
       );
     }
+    const bloqueiaOferta =
+      c.mercado.bloquearPropostas && i.origem === "clube";
     if (i.status === "negociando") {
-      negociarClubes(c, clube, i, a);
+      if (!bloqueiaOferta) negociarClubes(c, clube, i, a);
+      else
+        i.resposta =
+          "O clube mantém interesse interno, mas seu agente está filtrando novas ofertas espontâneas.";
     } else if (
       i.status === "sondagem" &&
       i.nivelInteresse >= 65 &&
@@ -879,14 +990,19 @@ export function avancarInteresses(c: EstadoCarreira) {
         ).length >= 2
       )
         continue;
-      i.status = "negociando";
-      registrarNegociacao(
-        c,
-        clube.id,
-        resolverJanela(c.dataAtual) === "fechada"
-          ? "Interesse sério: o clube quer negociar agora e agendar a mudança para a próxima janela."
-          : "Interesse sério: o clube decidiu abrir a negociação de contratação.",
-      );
+      if (bloqueiaOferta) {
+        i.resposta =
+          "Há sondagem avançada, mas novas propostas espontâneas estão bloqueadas pelo seu agente.";
+      } else {
+        i.status = "negociando";
+        registrarNegociacao(
+          c,
+          clube.id,
+          resolverJanela(c.dataAtual) === "fechada"
+            ? "Interesse sério: o clube quer negociar agora e agendar a mudança para a próxima janela."
+            : "Interesse sério: o clube decidiu abrir a negociação de contratação.",
+        );
+      }
     } else if (i.status === "interessado" && i.nivelInteresse >= 45) {
       i.status = "sondagem";
       registrarNegociacao(
@@ -903,6 +1019,30 @@ export function avancarInteresses(c: EstadoCarreira) {
       );
     }
     i.resposta = a.resposta;
+  }
+
+  candidatosNovos.sort((x, y) => y.a.score - x.a.score);
+  let novos = 0;
+  for (const { clube, a } of candidatosNovos) {
+    if (novos >= MAX_NOVOS_INTERESSES_SEMANA) break;
+    const conhecido =
+      a.viavel &&
+      a.evidencia &&
+      a.score >= 80 &&
+      c.jogador.reputacao >= 75;
+    const fatorScore = Math.min(1.4, a.score / 70);
+    const chance = conhecido ? 1 : chanceBase * fatorScore;
+    if (!aleatorio.chance(chance)) continue;
+    observar(
+      c,
+      clube,
+      c.mercado.statusPedidoSaida === "aceito" ||
+        c.mercado.pediuSaida ||
+        c.mercado.clubesDesejados.includes(clube.id)
+        ? "agente"
+        : "clube",
+    );
+    novos++;
   }
 }
 export function contrapropor(

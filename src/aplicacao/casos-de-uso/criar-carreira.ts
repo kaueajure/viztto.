@@ -1,3 +1,6 @@
+import { aplicarHistoria } from "@/dominio/historia-formacao";
+import type { EscolhasHistoria } from "@/dominio/desenvolvimento";
+import { criarPreparacao, criarAcompanhamento } from "@/dominio/desenvolvimento";
 import { criarMercado } from "@/dominio/mercado";
 import type {
   Clube,
@@ -23,6 +26,7 @@ import { criarTemporadasExternas } from "@/simulacao/mundo/avancar-ligas";
 import { registrarEvento } from "@/simulacao/eventos/eventos";
 
 export interface EntradaCarreira {
+  historia?: EscolhasHistoria;
   identidade: IdentidadeJogador;
   liga: Liga;
   clubes: Clube[];
@@ -85,6 +89,7 @@ export function criarCarreira(entrada: EntradaCarreira): EstadoCarreira {
   const ano = Number(entrada.dataInicio.slice(0, 4));
   const carreira: EstadoCarreira = {
     versao: 2,
+    acompanhamento: criarAcompanhamento(),
     id: entrada.seed,
     seed: entrada.seed,
     estadoAleatorio: 0,
@@ -99,6 +104,8 @@ export function criarCarreira(entrada: EntradaCarreira): EstadoCarreira {
     origem: entrada.origem,
     jogador: {
       ...identidade,
+      perfilFormacao: { origem: "legado" },
+      preparacao: criarPreparacao(),
       atributos,
       desenvolvimento: criarAtributosUniformes(0),
       overall,
@@ -153,40 +160,66 @@ export function criarCarreira(entrada: EntradaCarreira): EstadoCarreira {
     decisoes: [],
     noticias: [],
     eventos: [],
-    objetivos: [
-      {
-        id: "jogos",
-        titulo: "Participar de 5 jogos",
-        meta: 5,
-        progresso: 0,
-        concluido: false,
-      },
-      {
-        id: "gol",
-        titulo: "Marcar o primeiro gol",
-        meta: 1,
-        progresso: 0,
-        concluido: false,
-      },
-      {
-        id: "assistencia",
-        titulo: "Dar a primeira assistência",
-        meta: 1,
-        progresso: 0,
-        concluido: false,
-      },
-      {
-        id: "confianca",
-        titulo: "Conquistar a confiança da comissão",
-        meta: 75,
-        progresso: 50,
-        concluido: false,
-      },
-    ],
+    objetivos: (() => {
+      const pos = identidade.posicao;
+      const base = categoria === "base";
+      const lista = [
+        {
+          id: "jogos",
+          titulo: base
+            ? "Base: participar de 5 jogos da categoria"
+            : "Comissão: conquistar espaço em 5 partidas",
+          meta: 5,
+          progresso: 0,
+          concluido: false,
+        },
+        {
+          id: "treinos",
+          titulo: "Comissão: alcançar 3 bons treinos recentes",
+          meta: 3,
+          progresso: 0,
+          concluido: false,
+        },
+        {
+          id: "minutos",
+          titulo: base
+            ? "Base: disputar 180 minutos"
+            : "Comissão: disputar 90 minutos",
+          meta: base ? 180 : 90,
+          progresso: 0,
+          concluido: false,
+        },
+        {
+          id: "confianca",
+          titulo: "Conquistar a confiança da comissão",
+          meta: 75,
+          progresso: 50,
+          concluido: false,
+        },
+      ];
+      if (["CA", "PD", "PE"].includes(pos))
+        lista.splice(3, 0, {
+          id: "gol",
+          titulo: "Comissão: marcar 2 gols",
+          meta: 2,
+          progresso: 0,
+          concluido: false,
+        });
+      else if (["MEI", "MC", "LD", "LE"].includes(pos))
+        lista.splice(3, 0, {
+          id: "assistencia",
+          titulo: "Comissão: contribuir com 2 assistências",
+          meta: 2,
+          progresso: 0,
+          concluido: false,
+        });
+      return lista;
+    })(),
     registros: [],
     temporadasAnteriores: [],
     ultimaPartidaId: null,
   };
+  if (entrada.historia) aplicarHistoria(carreira.jogador, entrada.seed, entrada.historia);
   carreira.jogador.valorMercado = calcularValorMercado(
     carreira.jogador,
     carreira.liga,

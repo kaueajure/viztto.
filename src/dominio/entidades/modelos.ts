@@ -1,3 +1,4 @@
+import type { PerfilFormacao, PreparacaoJogador, AcompanhamentoCarreira } from "../desenvolvimento";
 import type { MercadoCarreira, TermosContrato } from "../mercado";
 export type Posicao =
   "GOL" | "LD" | "ZAG" | "LE" | "VOL" | "MC" | "MEI" | "PD" | "PE" | "CA";
@@ -283,6 +284,8 @@ export interface IdentidadeJogador {
     | "paredao";
 }
 export interface Jogador extends IdentidadeJogador {
+  perfilFormacao: PerfilFormacao;
+  preparacao: PreparacaoJogador;
   atributos: Atributos;
   desenvolvimento: Atributos;
   overall: number;
@@ -434,6 +437,7 @@ export interface TemporadaArquivada {
   classificacaoBase: LinhaClassificacao[];
 }
 export interface EstadoCarreira {
+  acompanhamento: AcompanhamentoCarreira;
   versao: 2;
   id: string;
   seed: string;

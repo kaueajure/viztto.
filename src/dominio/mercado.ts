@@ -59,11 +59,14 @@ export interface EmprestimoAtivo {
   retornoEm: string;
   percentualSalario: number;
 }
+export type StatusPedidoSaida = "nenhum" | "aceito" | "recusado";
 export interface MercadoCarreira {
   interesses: InteresseClube[];
   clubesDesejados: string[];
   preferencias: PreferenciasCarreira;
+  /** true somente quando a diretoria aceitou negociar / colocar à venda */
   pediuSaida: boolean;
+  statusPedidoSaida: StatusPedidoSaida;
   pedidoPublico: boolean;
   bloquearPropostas: boolean;
   pediuEmprestimo: boolean;
@@ -88,6 +91,7 @@ export function criarMercado(): MercadoCarreira {
       apenasDesejados: false,
     },
     pediuSaida: false,
+    statusPedidoSaida: "nenhum",
     pedidoPublico: false,
     bloquearPropostas: false,
     pediuEmprestimo: false,
