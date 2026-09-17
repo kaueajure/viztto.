@@ -31,7 +31,7 @@ class TransfermarktCompetitionClubs(TransfermarktBase):
         except HTTPException as error:
             if error.status_code != 404:
                 raise
-            # Competições por fases (como a Série C) usam a página de participantes.
+            # Competições por fases usam a página de participantes.
             self.URL = (
                 f"https://www.transfermarkt.com/-/teilnehmer/pokalwettbewerb/{self.competition_id}"
                 f"/saison_id/{self.season_id}" if self.season_id else

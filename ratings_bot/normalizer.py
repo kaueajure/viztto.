@@ -8,6 +8,8 @@ class RatingNormalizer:
         if not isinstance(config.get("version"), str) or not config["version"]:
             raise ValueError("Calibration version required")
         self._validate(config["overall"])
+        if "potential" in config:
+            self._validate(config["potential"])
         for spec in config.get("attributes", {}).values():
             self._validate(spec["curve"])
 

@@ -58,7 +58,7 @@ Provider: mock  Authorization: OK  Calibration: mock-v1  Synthetic: yes
 | Provider | Estado | Motivo |
 | --- | --- | --- |
 | `mock` / `mock-b` | habilitados, sintéticos | Apenas fixtures e testes; provider sintético nunca alimenta publicação oficial. |
-| `sofifa` | desabilitado | Permissão de uso automatizado e redistribuição não estabelecida. |
+| `sofifa` | desabilitado | API REST documentada, mas restrita a uso não comercial; ver seção abaixo. |
 | `efootball` | desabilitado | Exige consentimento prévio por escrito para extração automatizada. |
 | `ea` | desabilitado | Termos restringem robôs e extração automatizada. |
 | `licensed-dataset` | desabilitado | Aguarda licença verificada, procedência e escala de rating documentadas. |
@@ -76,7 +76,7 @@ verificado; "não verificado" significa que os termos não foram lidos.
 | Fonte | OVR | Potencial | Atributos | Cobertura | Termos verificados | Automação / uso comercial | Veredito |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | [EA Sports FC](https://www.ea.com/legal/user-agreement) | sim | sim | sim | as 12 ligas | sim | licença apenas "non-commercial"; extração de dados vedada | rejeitada |
-| [SoFIFA](https://sofifa.com/robots.txt) | sim | sim | sim | as 12 ligas | apenas robots.txt | sem licença; dado derivado da EA | rejeitada |
+| [SoFIFA](https://sofifa.com/) | sim | sim | sim | as 12 ligas | parcial (API + robots) | API REST documentada com limite gratuito; condições documentadas restringem uso a projeto **não comercial** | rejeitada para produção comercial |
 | FUTBIN / FUTWIZ | sim | não | sim | enviesada (FUT) | não | não verificado | rejeitada |
 | Datasets Kaggle "FIFA/EA FC" | sim | sim | sim | as 12 ligas | licença do uploader | derivados de SoFIFA/EA; congelados em 2023; um deles proíbe uso comercial | só protótipo |
 | [Football Manager (FMTU / SortItOutSI)](https://fmtransferupdate.com/disclaimer) | sim (CA) | sim (PA) | sim | as 12 ligas | sim | "personal, non-commercial use"; IP da SEGA/SI | rejeitada |
@@ -92,6 +92,14 @@ Conclusão: **provider real pendente**. As fontes que têm OVR, potencial e
 atributos derivam da propriedade intelectual da EA ou da SEGA/SI e, onde o texto
 foi verificado, restringem uso automatizado ou comercial. As fontes com licença
 comercial viável não expõem esses campos — entregam estatísticas de partida.
+
+### SoFIFA (documentação atualizada)
+
+O SoFIFA mantém uma [API REST documentada](https://sofifa.com/) com limite
+gratuito. As condições documentadas restringem o uso a projetos **não
+comerciais**. Por isso o SoFIFA **não** deve ser provider de produção do Viztto
+se o produto tiver finalidade comercial. Scraping não é alternativa aceitável
+para contornar essa limitação.
 
 O caminho recomendado é inverter a dependência: contratar estatísticas
 licenciadas com cobertura das 12 ligas e derivar OVR, potencial e atributos
@@ -144,7 +152,8 @@ desaparecer, mudar de identidade ou não atingir `exact`/`high`, o mapping vira
 
 OVR de fontes diferentes não é comparável. Cada provider tem curva monotônica
 versionada em `config/ratings-calibration.json`; rating fora da escala
-declarada é rejeitado em vez de extrapolado.
+declarada é rejeitado em vez de extrapolado. O construtor do Normalizer valida
+`overall`, `potential` (se existir) e cada `attributes.*.curve` no preflight.
 
 O resolver ordena as fontes por nome, combina somente `exact`/`high`, e usa a
 média dos ratings normalizados. Divergência acima de 10 pontos entre fontes, ou
@@ -181,15 +190,35 @@ bloqueada, porque uma release feita só com o Rating Engine é uma decisão
 consciente:
 
 ```text
-Nenhum provider externo habilitado. A release não será publicada somente com
-Rating Engine. Use --allow-engine-only para autorizar explicitamente.
-Providers externos habilitados: nenhum
+Providers externos habilitados: nenhum. A release não será publicada somente
+com Rating Engine. Use --allow-engine-only para autorizar explicitamente.
 ```
+
+Com a flag:
+
+```text
+Providers externos habilitados: nenhum. Modo Rating Engine puro autorizado
+explicitamente.
+```
+
+`--allow-engine-only` vale **somente** quando nenhum provider foi configurado.
+Se um provider foi pedido e falhou por completo, a publicação é bloqueada mesmo
+com a flag:
+
+```text
+Provider externo foi configurado, mas falhou. --allow-engine-only só é válido
+quando nenhum provider foi configurado.
+```
+
+Provider saudável com 0 matches confiáveis não é falha técnica automática: a
+política de health (cobertura e regressão) decide. Provider `failed` em todos
+os pedidos bloqueia; se um falhou e outro está `healthy`/`degraded`, o health
+normal avalia.
 
 Opções do robô: `--provider`, `--league`, `--fixture`, `--refresh`,
 `--dry-run`, `--preflight`, `--ttl` (> 0), `--concurrency` (1–8), `--input`,
 `--output`, `--report`, `--cache-dir`. Provider desconhecido, repetido, sem
-calibração ou com curva inválida falha no preflight.
+calibração ou com curva inválida (incluindo `potential`) falha no preflight.
 
 O interpretador é resolvido por `scripts/ratings-python.sh`, que provisiona
 `.venv-ratings` na primeira execução. `RATINGS_PYTHON` sobrescreve essa escolha.
@@ -215,10 +244,12 @@ com `previousCoverage` e `providerStatus`: `not-configured` (nenhum provider),
 liga falharam). Provider ausente não é contabilizado como falha técnica.
 
 O gate genérico (`saude-ratings.ts`) bloqueia a publicação quando há queda
-severa de cobertura externa, falha do bot sobre base já enriquecida, ou zero
-rating externo sem `--allow-engine-only`. Falha do robô nunca sobrescreve um
-snapshot bom; o staging fica preservado para diagnóstico. Detalhes dos limiares
-em [snapshots-futebol.md](snapshots-futebol.md).
+severa de cobertura externa, quando providers configurados falharam por
+completo, ou quando não há provider e falta `--allow-engine-only`. Zero matches
+de um provider saudável segue a política de cobertura/regressão. Falha do robô
+com providers configurados nunca vira Rating Engine puro; o staging fica
+preservado para diagnóstico. Detalhes dos limiares em
+[snapshots-futebol.md](snapshots-futebol.md).
 
 ## Runtime
 

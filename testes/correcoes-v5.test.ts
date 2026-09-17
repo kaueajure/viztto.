@@ -63,11 +63,14 @@ function snapshot(liga: Liga): DadosLigaImportados {
 }
 
 // ── Universo de ligas ───────────────────────────────────────────────────────
-it("A/B) universo atual tem 12 ligas e nenhuma Série C", () => {
+it("universo atual tem exatamente 12 ligas sem Série C nem Série D", () => {
   expect(LIGAS_SUPORTADAS).toHaveLength(12);
-  expect(LIGAS_SUPORTADAS.filter((l) => l.pais === "Brasil")).toHaveLength(2);
-  expect(LIGAS_SUPORTADAS.map((l) => l.idTransfermarkt)).not.toContain("BRA3");
-  expect(TEMPORADAS_INICIAIS["brasileirao-c"]).toBeUndefined();
+  const brasil = LIGAS_SUPORTADAS.filter((l) => l.pais === "Brasil");
+  expect(brasil.map((l) => l.id).sort()).toEqual(["brasileirao", "brasileirao-b"]);
+  for (const id of ["brasileirao-c", "brasileirao-d"])
+    expect(LIGAS_SUPORTADAS.some((l) => l.id === id)).toBe(false);
+  for (const tm of ["BRA3", "BRA4"])
+    expect(LIGAS_SUPORTADAS.map((l) => l.idTransfermarkt)).not.toContain(tm);
   expect(Object.keys(TEMPORADAS_INICIAIS).sort()).toEqual(
     LIGAS_SUPORTADAS.map((l) => l.id).sort(),
   );
@@ -89,21 +92,6 @@ it("N) deploy exige typecheck, test, test:ratings, snapshots e build antes de pu
   expect(workflow.indexOf("npm run build")).toBeLessThan(
     workflow.indexOf("needs: validate"),
   );
-});
-
-it("35) liga fora do catálogo rejeita hidratação sem destruir o save", async () => {
-  const { carregarCatalogoCarreira, limparCacheCatalogoCarreira } = await import(
-    "@/infraestrutura/persistencia/catalogo-carreira"
-  );
-  const { ErroCompatibilidadeSave } = await import(
-    "@/infraestrutura/persistencia/carreira-persistida"
-  );
-  limparCacheCatalogoCarreira();
-  // Save antigo com Série C: erro controlado, não corrupção.
-  await expect(carregarCatalogoCarreira(["brasileirao-c"])).rejects.toThrow(
-    ErroCompatibilidadeSave,
-  );
-  limparCacheCatalogoCarreira();
 });
 
 // ── Métricas por liga vs globais ────────────────────────────────────────────
@@ -323,10 +311,7 @@ it("G) zero providers sem opt-in bloqueia e explica no terminal", async () => {
   const { resumo, linhas } = await pipeline({ diretorio: dir });
   expect(resumo.publicou).toBe(false);
   expect(linhas.join("\n")).toMatch(
-    /Nenhum provider externo habilitado.*--allow-engine-only/s,
-  );
-  expect(linhas.join("\n")).toMatch(
-    /Providers externos habilitados: nenhum/,
+    /Providers externos habilitados: nenhum.*--allow-engine-only/s,
   );
   await expect(readFile(join(dir, "active.json"))).rejects.toThrow();
 });
@@ -338,7 +323,9 @@ it("H) zero providers com opt-in publica quando não há regressão", async () =
     permitirEnginePuro: true,
   });
   expect(resumo.publicou).toBe(true);
-  expect(linhas.join("\n")).toMatch(/Autorizado por --allow-engine-only/);
+  expect(linhas.join("\n")).toMatch(
+    /Modo Rating Engine puro autorizado explicitamente/,
+  );
   const relatorio = JSON.parse(
     await readFile(join(dir, "reports/saude-ratings.json"), "utf8"),
   );

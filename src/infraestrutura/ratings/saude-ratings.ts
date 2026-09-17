@@ -122,10 +122,13 @@ export function avaliarSaudeRatings(
 ) {
   const regressao = quedaSeveraEnriquecimento(m.coverage, m.previousCoverage);
   const semExterno = m.externalRatings === 0;
+  const semProvider = m.providerStatus === "not-configured";
+  // --allow-engine-only só libera o caso sem provider configurado.
+  // Provider configurado e falho (falhaBot) sempre bloqueia.
   const abortarPublicacao =
     regressao ||
-    (falhaBot && m.previousCoverage > 0) ||
-    (semExterno && !permitirEnginePuro);
+    falhaBot ||
+    (semExterno && semProvider && !permitirEnginePuro);
   const status: StatusEnriquecimento = abortarPublicacao
     ? "falha_critica"
     : semExterno
@@ -139,8 +142,10 @@ export function avaliarSaudeRatings(
     metricas: m,
     motivo: regressao
       ? "Queda severa de cobertura externa."
-      : abortarPublicacao
-        ? "Falha de ratings ou fallback puro sem autorização explícita."
-        : undefined,
+      : falhaBot
+        ? "Provider externo foi configurado, mas falhou. --allow-engine-only só é válido quando nenhum provider foi configurado."
+        : abortarPublicacao
+          ? "Nenhum provider externo habilitado. Use --allow-engine-only para autorizar explicitamente."
+          : undefined,
   };
 }

@@ -71,7 +71,7 @@ export const TEMPORADAS_INICIAIS: Record<
 };
 
 export function formatarTemporada(ligaId: string, ano: number): string {
-  // Prefixo cobre as séries brasileiras atuais e as de saves antigos.
+  // Brasileirão A/B usam ano civil; europeias usam ano/ano+1.
   return ligaId.startsWith("brasileirao")
     ? String(ano)
     : `${ano}/${String(ano + 1).slice(2)}`;

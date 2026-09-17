@@ -117,6 +117,28 @@ export function validarResultadoBot(
       lote.players.length
   )
     throw new Error("Identidade canônica duplicada.");
+  const ids = [...canonicos.keys()];
+  const nomesProvider = Object.keys(r.providers);
+  if (
+    nomesProvider.length !== Object.keys(r.diagnostics).length ||
+    nomesProvider.some((nome) => !Object.hasOwn(r.diagnostics, nome)) ||
+    Object.keys(r.diagnostics).some((nome) => !Object.hasOwn(r.providers, nome))
+  )
+    throw new Error(
+      "Contrato ratings: providers e diagnostics devem declarar os mesmos nomes.",
+    );
+  for (const nome of nomesProvider) {
+    const diag = r.diagnostics[nome]!;
+    const chaves = Object.keys(diag);
+    if (
+      chaves.length !== ids.length ||
+      new Set(chaves).size !== ids.length ||
+      ids.some((id) => !Object.hasOwn(diag, id))
+    )
+      throw new Error(
+        `Contrato ratings: ${nome} precisa de exatamente um diagnostic por jogador canônico.`,
+      );
+  }
   const vistos = new Set<string>();
   const usados = new Set<string>();
   for (const p of r.players) {
@@ -125,6 +147,11 @@ export function validarResultadoBot(
     vistos.add(p.id);
     const fontes = new Set<string>();
     for (const s of p.sources) {
+      // Node é segunda barreira: só exact/high entram no snapshot.
+      if (!["exact", "high"].includes(s.confidence))
+        throw new Error(
+          "Contrato ratings: source só pode ser exact ou high.",
+        );
       const chave = `${s.provider}:${s.externalPlayerId}`;
       if (
         !Object.hasOwn(r.providers, s.provider) ||

@@ -31,8 +31,7 @@ essa duplicação até sua remoção. O runtime continua lendo só a release.
 Antes da primeira publicação, o layout legado permanece compatível.
 O commit 46bea9a contém os 12 snapshots legados, sem active.json. Esses dados
 não são migrados: a próxima publicação oficial exige todas as ligas de
-LIGAS_SUPORTADAS — hoje as mesmas 12, já que a Série C saiu do universo.
-Releases históricas não são reescritas nem removidas.
+LIGAS_SUPORTADAS. Releases históricas não são reescritas nem removidas.
 
 ## Fluxo de Git
 

@@ -36,4 +36,4 @@ No `.env` da raiz:
 TRANSFERMARKT_API_URL=http://localhost:8000
 ```
 
-Não há chave de API. Produção e criação de carreira leem somente snapshots locais. O parser aceita páginas de ligas e páginas de participantes (Série C), preservando o identificador interno da edição.
+Não há chave de API. Produção e criação de carreira leem somente snapshots locais. O parser aceita páginas de ligas e, em fallback, páginas de participantes de competições por fases, preservando o identificador interno da edição.

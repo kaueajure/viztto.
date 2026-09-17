@@ -27,8 +27,6 @@ Fontes oficiais: [Série A](https://www.transfermarkt.com/-/startseite/wettbewer
 
 O seletor do Transfermarkt exibe **2026** para o valor interno **2025** nas ligas brasileiras. O importador valida o `seasonId` retornado e registra `temporadaTransfermarkt` separadamente do ano do jogo. As datas de início são âncoras semanais da simulação, não datas oficiais: foram preservadas as existentes e as divisões europeias secundárias compartilham a principal do país.
 
-Histórico: o catálogo já incluiu o Brasileirão Série C (`brasileirao-c`, BRA3), removido do universo do jogo. O parser de páginas de participantes criado para ele continua na API, pois atende competições por fases. Nenhum snapshot oficial chegou a conter essa liga.
-
 ## Publicação e falhas
 
 - A CLI usa `flock`; cada execução prepara todas as ligas em diretório temporário.

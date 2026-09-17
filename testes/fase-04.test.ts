@@ -78,9 +78,10 @@ describe("catálogo de ligas suportadas", () => {
         ["FR2", 2],
       ],
     );
-    // O universo atual são 12 divisões de seis países; a Série C foi removida.
+    // O universo atual são 12 divisões de seis países.
     expect(LIGAS_SUPORTADAS).toHaveLength(12);
     expect(LIGAS_SUPORTADAS.some((l) => l.id === "brasileirao-c")).toBe(false);
+    expect(LIGAS_SUPORTADAS.some((l) => l.id === "brasileirao-d")).toBe(false);
     expect(new Set(LIGAS_SUPORTADAS.map((l) => l.id)).size).toBe(
       LIGAS_SUPORTADAS.length,
     );

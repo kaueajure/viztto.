@@ -99,6 +99,39 @@ class NormalizerCurveTests(unittest.TestCase):
         self.assertNotEqual(a.curve(80, a.config["overall"]),
                             b.curve(80, b.config["overall"]))
 
+    def test_potential_curve_validated_at_construction(self):
+        from ratings_bot.normalizer import RatingNormalizer
+
+        RatingNormalizer(self.curva(potential=[[1, 1], [99, 99]]))
+        invalidos = [
+            [[99, 1], [1, 99]],          # x decrescente
+            [[1, 1], [1, 50]],           # x repetido
+            [[1, 90], [99, 20]],         # y decrescente
+            [[1, 0], [99, 99]],          # y < 1
+            [[1, 1], [99, 100]],         # y > 99
+            [[1, 1], [float("nan"), 99]],
+            [[1, 1], [float("inf"), 99]],
+            [[1, 1]],                    # um ponto
+        ]
+        for potential in invalidos:
+            with self.assertRaises(ValueError, msg=potential):
+                RatingNormalizer(self.curva(potential=potential))
+
+    def test_preflight_rejects_invalid_potential_before_batch(self):
+        from ratings_bot.cli import preflight
+        from ratings_bot.config import Config
+        from ratings_bot.providers.mock import MockRatingsProvider
+        from pathlib import Path
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Config(Path(tmp))
+            provider = MockRatingsProvider()
+            with self.assertRaises(ValueError):
+                preflight([provider], {"mock": self.curva(potential=[[1, 90], [99, 20]])}, config)
+            linhas = preflight([provider], {"mock": self.curva(potential=[[1, 1], [99, 99]])}, config)
+            self.assertIn("Calibration: v1", "\n".join(linhas))
+
 
 class PositionTests(unittest.TestCase):
     def test_short_codes_and_long_labels_share_a_group(self):

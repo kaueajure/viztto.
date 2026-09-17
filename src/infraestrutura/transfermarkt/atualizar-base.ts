@@ -100,16 +100,20 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
   try {
     if (!ligas.length || new Set(ligas.map((l) => l.id)).size !== ligas.length)
       throw new Error("Universo de ligas vazio ou duplicado.");
-    if (!opcoes.providers?.length)
+    const providersPedidos = opcoes.providers ?? [];
+    if (!providersPedidos.length)
       informar(
-        "Nenhum provider externo habilitado. A release não será publicada somente com Rating Engine." +
-          (opcoes.permitirEnginePuro
-            ? " Autorizado por --allow-engine-only."
-            : " Use --allow-engine-only para autorizar explicitamente."),
+        opcoes.permitirEnginePuro
+          ? "Providers externos habilitados: nenhum. Modo Rating Engine puro autorizado explicitamente."
+          : "Providers externos habilitados: nenhum. A release não será publicada somente com Rating Engine. Use --allow-engine-only para autorizar explicitamente.",
+      );
+    else
+      informar(
+        `Providers externos habilitados:\n${providersPedidos.map((p) => `- ${p}`).join("\n")}`,
       );
     // Configuração inválida aborta antes de qualquer request ao Transfermarkt.
     for (const linha of await (opcoes.preflight ?? preflightRatings)(
-      opcoes.providers ?? [],
+      providersPedidos,
       { cacheDir: opcoes.cacheDir },
     ))
       informar(linha);
@@ -164,12 +168,8 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
         dryRun: opcoes.dryRun,
       });
     } catch (erro) {
-      // Contrato inválido/falha completa nunca autoriza substituir base enriquecida.
-      if (
-        !opcoes.permitirEnginePuro ||
-        candidatos.some((c) => taxaEnriquecimento(c.anterior?.clubes) > 0)
-      )
-        throw erro;
+      // --allow-engine-only nunca cobre falha de provider configurado ou do processo.
+      if (providersPedidos.length > 0 || !opcoes.permitirEnginePuro) throw erro;
       falhaBot = true;
       resultado = {
         version: 1,
@@ -192,10 +192,15 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
         "Provider sintético não pode alimentar publicação oficial.",
       );
     const configurados = Object.values(resultado.providers);
-    // Provider ausente não é falha; provider selecionado que falhou inteiro é.
-    falhaBot ||=
-      configurados.length > 0 &&
-      configurados.every((p) => p.status === "failed");
+    // Pedidos mas nenhum respondeu, ou todos failed: falha técnica.
+    const todosFalharam =
+      providersPedidos.length > 0 &&
+      (configurados.length === 0 ||
+        configurados.every((p) => p.status === "failed"));
+    if (todosFalharam)
+      throw new Error(
+        "Provider externo foi configurado, mas falhou. --allow-engine-only só é válido quando nenhum provider foi configurado.",
+      );
     informar(
       configurados.length
         ? `Providers externos: ${Object.entries(resultado.providers)
