@@ -64,6 +64,9 @@ export function CardMiniCalendario({
           })}
         </ul>
       )}
+      <Link href="/carreira/calendario" className="vz-card-link">
+        Calendário completo →
+      </Link>
     </section>
   );
 }

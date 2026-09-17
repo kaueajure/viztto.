@@ -10,6 +10,7 @@
     "start": "next start --hostname 127.0.0.1",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit",
     "formatar": "prettier --write \"src/**/*.{ts,tsx,css}\" \"testes/**/*.ts\"",
     "benchmark:save": "tsx --conditions=react-server scripts/benchmark-save.ts",
@@ -37,6 +38,7 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "22.20.3",
     "@types/react": "19.3.0",

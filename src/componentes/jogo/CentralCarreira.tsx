@@ -1,6 +1,6 @@
 "use client";
 import { useFocoModal } from "@/componentes/interface/useFocoModal";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -58,7 +58,23 @@ const TOP_NAV = [
   ["competicao", "Mundo do Futebol"],
 ] as const;
 
+function rotuloAvancarSemana(
+  c: NonNullable<ReturnType<typeof useJogoStore.getState>["carreira"]>,
+  ocupado: boolean,
+): string {
+  if (c.aposentado) return "Aposentado";
+  if (ocupado) return "Simulando…";
+  if (c.temporada.encerrada) return "Próxima temporada";
+  if (c.jogador.lesao) return "Avançar semana";
+  return "Avançar semana";
+}
+
 export function CentralCarreira({ secao = "" }: { secao?: string }) {
+  if (typeof window !== "undefined") {
+    (
+      window as unknown as { __VZ_JOGO__?: typeof useJogoStore }
+    ).__VZ_JOGO__ = useJogoStore;
+  }
   const {
       carreira: c,
       hidratado,
@@ -74,6 +90,11 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
       excluir,
     } = useJogoStore(),
     roteador = useRouter();
+  useEffect(() => {
+    (
+      window as unknown as { __VZ_JOGO__?: typeof useJogoStore }
+    ).__VZ_JOGO__ = useJogoStore;
+  }, []);
   const [menu, definirMenu] = useState(false),
     [configuracoes, definirConfiguracoes] = useState(false),
     [confirmacao, definirConfirmacao] = useState<
@@ -281,37 +302,30 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
             <time className="data-topo" dateTime={c.dataAtual}>
               {dataCarreiraTopo(c.dataAtual)}
             </time>
+            {c.origem === "demonstracao" && (
+              <span className="vz-badge-demo" title="Clubes fictícios para exploração">
+                Demo
+              </span>
+            )}
             <button
               type="button"
-              className="vz-cta-semana"
+              className="vz-cta-semana vz-cta-desktop"
               onClick={avancarTempo}
               disabled={ocupado || !!c.aposentado}
             >
-              {c.aposentado
-                ? "Aposentado"
-                : ocupado
-                  ? "Simulando…"
-                  : c.temporada.encerrada
-                    ? "Próxima temporada"
-                    : c.jogador.lesao
-                      ? "Avançar (lesão)"
-                      : "Avançar semana"}
+              {rotuloAvancarSemana(c, ocupado)}
               {!c.aposentado && <ArrowRight size={16} />}
             </button>
           </div>
         </header>
-        {c.origem === "demonstracao" && (
-          <div className="faixa-demonstracao">
-            MODO DEMONSTRAÇÃO{" "}
-            <span>Clubes fictícios para exploração.</span>
-          </div>
-        )}
-        <EstadoPersistencia />
-        {erro && (
-          <p className="aviso erro" role="alert">
-            {erro}
-          </p>
-        )}
+        <div className="vz-shell-floats" aria-live="polite">
+          <EstadoPersistencia />
+          {erro && (
+            <p className="aviso erro vz-banner-float" role="alert">
+              {erro}
+            </p>
+          )}
+        </div>
         <main className={`conteudo-jogo${secao === "" ? " conteudo-home" : ""}`}>
           {secao === "" && (
             <InicioCarreira
@@ -348,6 +362,18 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
             />
           )}
         </main>
+        <div className="vz-cta-mobile-bar">
+          <time dateTime={c.dataAtual}>{dataCarreiraTopo(c.dataAtual)}</time>
+          <button
+            type="button"
+            className="vz-cta-semana vz-cta-mobile"
+            onClick={avancarTempo}
+            disabled={ocupado || !!c.aposentado}
+          >
+            {rotuloAvancarSemana(c, ocupado)}
+            {!c.aposentado && <ArrowRight size={16} />}
+          </button>
+        </div>
       </div>
       {resumo && ultima && (
         <ResumoPartida

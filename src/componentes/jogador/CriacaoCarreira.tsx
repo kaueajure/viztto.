@@ -1,7 +1,7 @@
 "use client";
 import { SuaHistoria } from "./SuaHistoria";
 import { CAPITULOS, type EscolhasHistoria } from "@/dominio/desenvolvimento";
-import { sortearHistoria } from "@/dominio/historia-formacao";
+import { resumirHistoria, sortearHistoria } from "@/dominio/historia-formacao";
 import { formatarTemporada } from "@/dominio/constantes/temporadas-iniciais";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -62,13 +62,76 @@ export function CriacaoCarreira() {
     [carregandoLigas, definirCarregandoLigas] = useState(true),
     [confirmando, definirConfirmando] = useState(false),
     [tentativa, definirTentativa] = useState(0),
-    [substituir, definirSubstituir] = useState(false);
+    [substituir, definirSubstituir] = useState(false),
+    [buscaClube, definirBuscaClube] = useState(""),
+    [errosCampo, definirErrosCampo] = useState<Partial<Record<string, string>>>({}),
+    [tocados, definirTocados] = useState<Partial<Record<string, boolean>>>({}),
+    [erroLigas, definirErroLigas] = useState<string | null>(null),
+    [erroClubes, definirErroClubes] = useState<string | null>(null);
   const liga = ligas.find((l) => l.id === ligaId),
     clube = clubes.find((c) => c.id === clubeId);
+  const clubesFiltrados = (() => {
+    const q = buscaClube.trim().toLowerCase();
+    if (!q) return clubes;
+    return clubes.filter(
+      (c) =>
+        c.nome.toLowerCase().includes(q) ||
+        c.codigo.toLowerCase().includes(q),
+    );
+  })();
   const alterar = <Chave extends keyof IdentidadeJogador>(
     chave: Chave,
     valor: IdentidadeJogador[Chave],
-  ) => definirIdentidade((atual) => ({ ...atual, [chave]: valor }));
+  ) => {
+    definirIdentidade((atual) => ({ ...atual, [chave]: valor }));
+    definirErrosCampo((e) => {
+      if (!e[chave]) return e;
+      const n = { ...e };
+      delete n[chave];
+      return n;
+    });
+  };
+  const tocar = (campo: string) =>
+    definirTocados((t) => ({ ...t, [campo]: true }));
+
+  function validarIdentidadeCampos(): boolean {
+    const e: Partial<Record<string, string>> = {};
+    if (identidade.nome.trim().length < 2)
+      e.nome = "Nome precisa ter pelo menos 2 caracteres.";
+    if (identidade.sobrenome.trim().length < 2)
+      e.sobrenome = "Informe seu sobrenome.";
+    if (identidade.nacionalidade.trim().length < 2)
+      e.nacionalidade = "Informe a nacionalidade.";
+    definirErrosCampo(e);
+    definirTocados({ nome: true, sobrenome: true, nacionalidade: true });
+    return Object.keys(e).length === 0;
+  }
+
+  function validarPerfilCampos(): boolean {
+    const e: Partial<Record<string, string>> = {};
+    const parsed = esquemaIdentidade.safeParse(identidade);
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) {
+        const path = String(issue.path[0] ?? "idade");
+        if (!e[path]) e[path] = issue.message;
+      }
+      if (!e.idade && (identidade.idade < 15 || identidade.idade > 40))
+        e.idade = "Idade entre 15 e 40 anos.";
+      if (!e.altura && (identidade.altura < 150 || identidade.altura > 215))
+        e.altura = "Altura entre 150 e 215 cm.";
+      if (!e.peso && (identidade.peso < 45 || identidade.peso > 120))
+        e.peso = "Peso entre 45 e 120 kg.";
+      if (!e.posicao) e.posicao = "Selecione uma posição.";
+    }
+    definirErrosCampo(e);
+    definirTocados({
+      idade: true,
+      altura: true,
+      peso: true,
+      posicao: true,
+    });
+    return Object.keys(e).length === 0;
+  }
 
   useEffect(() => {
     const controle = new AbortController();
@@ -83,7 +146,7 @@ export function CriacaoCarreira() {
         if (!controle.signal.aborted) definirLigas(dados.ligas);
       } catch (falha) {
         if (!controle.signal.aborted)
-          definirErro(
+          definirErroLigas(
             falha instanceof Error
               ? falha.message
               : "Falha ao carregar as ligas.",
@@ -106,7 +169,8 @@ export function CriacaoCarreira() {
       return () => controle.abort();
     }
     definirCarregando(true);
-    definirErro(null);
+    definirErroClubes(null);
+    definirBuscaClube("");
     (async () => {
       try {
         const resposta = await fetch(
@@ -134,7 +198,7 @@ export function CriacaoCarreira() {
         }
       } catch (falha) {
         if (!controle.signal.aborted)
-          definirErro(
+          definirErroClubes(
             falha instanceof Error
               ? falha.message
               : "Falha ao carregar os clubes.",
@@ -147,38 +211,36 @@ export function CriacaoCarreira() {
   }, [ligaId, tentativa]);
   function avancar() {
     definirErro(null);
-    if (
-      etapa === 0 &&
-      (identidade.nome.trim().length < 2 ||
-        identidade.sobrenome.trim().length < 2 ||
-        identidade.nacionalidade.trim().length < 2)
-    ) {
-      definirErro(
-        "Preencha nome, sobrenome e nacionalidade com pelo menos 2 caracteres.",
-      );
-      return;
-    }
-    if (etapa === 1 && !esquemaIdentidade.safeParse(identidade).success) {
-      definirErro(
-        "Confira idade (15–40), altura (150–215 cm) e peso (45–120 kg).",
-      );
-      return;
-    }
-    if (etapa === 3 && (!liga || carregando || clubes.length < 2)) return;
-    if (etapa === 4 && !clube) {
-      definirErro("Selecione seu clube inicial.");
-      return;
+    if (etapa === 0) {
+      if (!validarIdentidadeCampos()) return;
     }
     if (etapa === 1) {
-      if (!seed) definirSeed(crypto.randomUUID());
-      if (seed) {
-        const opcoes = sortearHistoria(seed, identidade.posicao);
-        definirEscolhas(atuais => Object.fromEntries(CAPITULOS.filter(c => opcoes[c].some(o => o.id === atuais[c])).map(c => [c,atuais[c]])));
-      }
+      if (!validarPerfilCampos()) return;
+      const seedAtual = seed || crypto.randomUUID();
+      if (!seed) definirSeed(seedAtual);
+      const opcoes = sortearHistoria(seedAtual, identidade.posicao);
+      definirEscolhas((atuais) =>
+        Object.fromEntries(
+          CAPITULOS.filter((c) =>
+            opcoes[c].some((o) => o.id === atuais[c]),
+          ).map((c) => [c, atuais[c]]),
+        ),
+      );
       definirCapitulo(0);
     }
+    if (etapa === 3 && (!liga || carregando || clubes.length < 2)) {
+      if (!liga) definirErrosCampo({ liga: "Selecione uma liga." });
+      return;
+    }
+    if (etapa === 4 && !clube) {
+      definirErrosCampo({ clube: "Selecione seu clube inicial." });
+      return;
+    }
     if (etapa === 2 && capitulo < 4) {
-      if (!escolhas[CAPITULOS[capitulo]]) { definirErro("Escolha um caminho para continuar."); return; }
+      if (!escolhas[CAPITULOS[capitulo]]) {
+        definirErro("Escolha um caminho para continuar.");
+        return;
+      }
       definirCapitulo(capitulo + 1);
       return;
     }
@@ -329,8 +391,13 @@ export function CriacaoCarreira() {
                   value={identidade.nome}
                   maxLength={30}
                   onChange={(e) => alterar("nome", e.target.value)}
+                  onBlur={() => tocar("nome")}
                   placeholder="Seu nome"
+                  aria-invalid={!!(tocados.nome && errosCampo.nome)}
                 />
+                {errosCampo.nome && (
+                  <span className="vz-campo-erro">{errosCampo.nome}</span>
+                )}
               </label>
               <label>
                 Sobrenome
@@ -338,8 +405,13 @@ export function CriacaoCarreira() {
                   value={identidade.sobrenome}
                   maxLength={40}
                   onChange={(e) => alterar("sobrenome", e.target.value)}
+                  onBlur={() => tocar("sobrenome")}
                   placeholder="Seu sobrenome"
+                  aria-invalid={!!errosCampo.sobrenome}
                 />
+                {errosCampo.sobrenome && (
+                  <span className="vz-campo-erro">{errosCampo.sobrenome}</span>
+                )}
               </label>
               <label className="campo-inteiro">
                 Nacionalidade
@@ -347,7 +419,14 @@ export function CriacaoCarreira() {
                   value={identidade.nacionalidade}
                   maxLength={40}
                   onChange={(e) => alterar("nacionalidade", e.target.value)}
+                  onBlur={() => tocar("nacionalidade")}
+                  aria-invalid={!!errosCampo.nacionalidade}
                 />
+                {errosCampo.nacionalidade && (
+                  <span className="vz-campo-erro">
+                    {errosCampo.nacionalidade}
+                  </span>
+                )}
               </label>
             </div>
           )}
@@ -420,9 +499,10 @@ export function CriacaoCarreira() {
                 ))}
               </div>
 
-              <label>
+              <label className="vz-campo-select">
                 Posição secundária
                 <select
+                  className="vz-select-compacto"
                   value={identidade.posicaoSecundaria}
                   onChange={(e) =>
                     alterar(
@@ -517,6 +597,18 @@ export function CriacaoCarreira() {
               {!carregandoLigas && !ligas.length && (
                 <p className="estado-vazio">Nenhuma liga disponível.</p>
               )}
+              {erroLigas && (
+                <p className="aviso erro" role="alert">
+                  {erroLigas}{" "}
+                  <button
+                    type="button"
+                    className="botao-texto"
+                    onClick={() => window.location.reload()}
+                  >
+                    Tentar novamente
+                  </button>
+                </p>
+              )}
               {aviso && (
                 <p className="aviso" role="status">
                   {aviso}
@@ -539,6 +631,33 @@ export function CriacaoCarreira() {
                     <RefreshCw size={14} /> Recarregar
                   </button>
                 </div>
+                <label className="vz-busca-clube">
+                  <span className="sr-only">Buscar clube</span>
+                  <input
+                    type="search"
+                    placeholder="Buscar clube…"
+                    value={buscaClube}
+                    onChange={(e) => definirBuscaClube(e.target.value)}
+                    disabled={carregando}
+                  />
+                </label>
+                {erroClubes && (
+                  <p className="aviso erro" role="alert">
+                    {erroClubes}{" "}
+                    <button
+                      type="button"
+                      className="botao-texto"
+                      onClick={() => definirTentativa((t) => t + 1)}
+                    >
+                      Tentar novamente
+                    </button>
+                  </p>
+                )}
+                {errosCampo.clube && (
+                  <p className="vz-campo-erro" role="alert">
+                    {errosCampo.clube}
+                  </p>
+                )}
                 {carregando ? (
                   <div className="vz-skel-lista" aria-busy="true">
                     {Array.from({ length: 8 }, (_, i) => (
@@ -547,19 +666,33 @@ export function CriacaoCarreira() {
                   </div>
                 ) : (
                   <div className="vz-clube-scroll">
-                    {clubes.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        aria-pressed={clubeId === c.id}
-                        className={`vz-clube-item${clubeId === c.id ? " selecionada" : ""}`}
-                        onClick={() => definirClube(c.id)}
-                      >
-                        <Escudo clube={c} tamanho={32} />
-                        <span>{c.nome}</span>
-                        <b>{c.forcaGeral}</b>
-                      </button>
-                    ))}
+                    {clubesFiltrados.length === 0 ? (
+                      <p className="vz-empty">Nenhum clube com esse filtro.</p>
+                    ) : (
+                      clubesFiltrados.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          aria-pressed={clubeId === c.id}
+                          className={`vz-clube-item${clubeId === c.id ? " selecionada" : ""}`}
+                          onClick={() => {
+                            definirClube(c.id);
+                            definirErrosCampo((e) => {
+                              const n = { ...e };
+                              delete n.clube;
+                              return n;
+                            });
+                          }}
+                        >
+                          <Escudo clube={c} tamanho={32} />
+                          <span>
+                            {c.nome}
+                            <small>{c.codigo}</small>
+                          </span>
+                          <b>{c.forcaGeral}</b>
+                        </button>
+                      ))
+                    )}
                   </div>
                 )}
               </div>
@@ -626,6 +759,27 @@ export function CriacaoCarreira() {
                   </div>
                 )}
               </div>
+              {CAPITULOS.every((c) => escolhas[c]) && (
+                <div className="vz-confirm-card">
+                  <p className="vz-card-sub">Sua história</p>
+                  <dl className="vz-confirm-hist">
+                    {(["Origem", "Destaque", "Dificuldade", "Chegada"] as const).map(
+                      (rotulo, i) => {
+                        const chave = CAPITULOS[i]!;
+                        const resumo = resumirHistoria(
+                          escolhas as EscolhasHistoria,
+                        );
+                        return (
+                          <div key={chave}>
+                            <dt>{rotulo}</dt>
+                            <dd>{resumo.opcoes[i]?.titulo}</dd>
+                          </div>
+                        );
+                      },
+                    )}
+                  </dl>
+                </div>
+              )}
               <div className="vz-confirm-card">
                 <p className="vz-card-sub">Temporada</p>
                 <p>
@@ -634,16 +788,15 @@ export function CriacaoCarreira() {
                     Number(inicio.slice(0, 4)),
                   )}
                 </p>
-                <p className="texto-suave">Mundo inicial com elencos atualizados</p>
               </div>
               {existente && (
-                <label className="aceite">
+                <label className="vz-confirm-check">
                   <input
                     type="checkbox"
                     checked={substituir}
                     onChange={(e) => definirSubstituir(e.target.checked)}
-                  />{" "}
-                  Substituir minha carreira salva por esta nova carreira.
+                  />
+                  Substituir a carreira atual
                 </label>
               )}
             </div>

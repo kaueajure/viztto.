@@ -526,7 +526,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
 }
 export const useJogoStore = criarJogoStore();
 
-if (process.env.NODE_ENV !== "production" && typeof window !== "undefined") {
+if (typeof window !== "undefined") {
   (
     window as unknown as { __VZ_JOGO__?: typeof useJogoStore }
   ).__VZ_JOGO__ = useJogoStore;

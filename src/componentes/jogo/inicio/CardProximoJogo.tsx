@@ -45,7 +45,7 @@ export function CardProximoJogo({
       ) : c.temporada.encerrada ? (
         <div className="vz-empty-block">
           <p className="vz-empty-title">Temporada encerrada</p>
-          <p>Avance para a próxima temporada no painel inferior.</p>
+          <p>Avance a semana pelo botão no topo ou na barra inferior.</p>
         </div>
       ) : mandante && visitante && proxima ? (
         <div className="vz-proximo-corpo">

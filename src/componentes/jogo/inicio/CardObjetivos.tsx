@@ -3,7 +3,7 @@ import type { EstadoCarreira } from "@/dominio/entidades/modelos";
 import { ChevronRight } from "lucide-react";
 
 export function CardObjetivos({ carreira: c }: { carreira: EstadoCarreira }) {
-  const objetivos = c.objetivos.slice(0, 4);
+  const objetivos = c.objetivos.slice(0, 3);
   return (
     <section className="vz-card vz-objetivos">
       <header className="vz-card-head">
@@ -38,6 +38,9 @@ export function CardObjetivos({ carreira: c }: { carreira: EstadoCarreira }) {
           })}
         </ul>
       )}
+      <Link href="/carreira/objetivos" className="vz-card-link">
+        Ver objetivos →
+      </Link>
     </section>
   );
 }

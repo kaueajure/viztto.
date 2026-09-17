@@ -12,43 +12,21 @@ export function CardMercadoContrato({
 }) {
   const j = c.jogador;
   const livre = estaSemClube(c);
-  const spark = j.notasRecentes.slice(-8);
-  const max = Math.max(...spark, 1);
-  const pontos =
-    spark.length > 1
-      ? spark
-          .map((n, i) => {
-            const x = (i / (spark.length - 1)) * 100;
-            const y = 28 - (n / max) * 24;
-            return `${x},${y}`;
-          })
-          .join(" ")
-      : "";
 
   return (
     <section className="vz-card vz-mercado-contrato">
       <header className="vz-card-head">
         <h3>VALOR DE MERCADO</h3>
         <Link
-          href="/carreira/jogador"
+          href="/carreira/contrato"
           className="vz-card-arrow"
-          aria-label="Abrir perfil"
+          aria-label="Abrir contrato"
         >
           <ChevronRight size={18} />
         </Link>
       </header>
       <div className="vz-valor">
         <strong>{dinheiro(j.valorMercado)}</strong>
-        {pontos && (
-          <svg
-            className="vz-spark"
-            viewBox="0 0 100 32"
-            preserveAspectRatio="none"
-            aria-hidden="true"
-          >
-            <polyline fill="none" strokeWidth="2" points={pontos} />
-          </svg>
-        )}
       </div>
       <div className="vz-contrato-bloco">
         <h4>CONTRATO</h4>

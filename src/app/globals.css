@@ -4325,26 +4325,58 @@ main:has(.formulario) {
 }
 
 
-/* ========== V2 HOME VIEWPORT + WIZARD ========== */
+/* ========== HOME VIEWPORT + SHELL (V3) ========== */
 .vz-shell-home {
   height: 100dvh;
-  overflow: hidden;
+  /* Contenção de layout: o conteúdo deve CABER — E2E valida scrollHeight. */
+  overflow: clip;
 }
 .vz-shell-home .area-jogo {
   height: 100dvh;
   min-height: 0;
-  overflow: hidden;
+  overflow: clip;
+  display: flex;
+  flex-direction: column;
+  position: relative;
 }
 .vz-shell-home .conteudo-home {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow: clip;
   padding: 8px 16px 12px;
   max-width: none;
   display: flex;
   flex-direction: column;
 }
 .vz-shell-home .rodape-jogo { display: none; }
+
+.vz-shell-floats {
+  position: absolute;
+  top: 56px;
+  right: 16px;
+  z-index: 40;
+  max-width: min(360px, 42vw);
+  pointer-events: none;
+}
+.vz-shell-floats > * {
+  pointer-events: auto;
+  margin: 0 0 8px;
+  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.12);
+}
+.vz-banner-float {
+  margin: 0;
+}
+
+.vz-badge-demo {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #eef2ff;
+  color: #3730a3;
+}
 
 .vz-home {
   flex: 1;
@@ -4369,7 +4401,8 @@ main:has(.formulario) {
 .vz-home-grid > * {
   min-height: 0;
   min-width: 0;
-  overflow: hidden;
+  /* Listas internas rolam; o card não corta CTA/links essenciais. */
+  overflow: auto;
 }
 .vz-card {
   padding: 12px 14px;
@@ -4377,20 +4410,28 @@ main:has(.formulario) {
   display: flex;
   flex-direction: column;
 }
-.vz-card-head { margin-bottom: 8px; }
+.vz-card-head { margin-bottom: 8px; flex: 0 0 auto; }
 .vz-card-head h3,
 .vz-card h3 {
   font-size: 13px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
+.vz-card-link {
+  margin-top: auto;
+  flex: 0 0 auto;
+  padding-top: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent, #2563eb);
+}
 
 .vz-rail {
   flex: 0 0 auto;
-  height: 34px;
+  min-height: 34px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   padding: 0 12px;
   border-radius: 10px;
   background: #fff8e8;
@@ -4412,10 +4453,9 @@ main:has(.formulario) {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.vz-rail-cta {
+.vz-rail-cta,
+.vz-rail-mais {
   border: 0;
-  background: var(--navy);
-  color: #fff;
   border-radius: 8px;
   padding: 4px 10px;
   font-size: 11px;
@@ -4423,6 +4463,41 @@ main:has(.formulario) {
   cursor: pointer;
   white-space: nowrap;
   text-decoration: none;
+}
+.vz-rail-cta {
+  background: var(--navy);
+  color: #fff;
+}
+.vz-rail-mais {
+  background: transparent;
+  color: #6b5420;
+  border: 1px solid #ead9a8;
+}
+
+.vz-central-acoes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.vz-central-acoes li {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 12px;
+  align-items: start;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.vz-central-idx {
+  font-weight: 800;
+  color: var(--text-muted);
+}
+.vz-central-acoes p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary);
 }
 
 .vz-cta-semana {
@@ -4444,11 +4519,15 @@ main:has(.formulario) {
 .vz-cta-semana:disabled { opacity: 0.4; }
 .vz-cta-semana:hover:not(:disabled) { background: #2a3140; }
 
+.vz-cta-mobile-bar {
+  display: none;
+}
+
 .vz-save-status {
-  display: block !important;
-  font-size: 9px !important;
+  display: block;
+  font-size: 9px;
   letter-spacing: 0.04em;
-  color: var(--text-muted) !important;
+  color: var(--text-muted);
   margin-top: 2px;
 }
 
@@ -4460,6 +4539,7 @@ main:has(.formulario) {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  flex: 0 0 auto;
 }
 .vz-ultima-placar {
   display: flex;
@@ -4472,6 +4552,97 @@ main:has(.formulario) {
   font-weight: 800;
   margin-left: 4px;
 }
+
+.vz-obj-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+.vz-obj-card {
+  text-align: left;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 14px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.vz-obj-card strong { font-size: 14px; }
+.vz-obj-card span { font-size: 12px; color: var(--text-secondary); }
+.vz-obj-card small { font-size: 11px; color: var(--text-muted); }
+.vz-obj-card.selecionada {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.vz-obj-card:disabled:not(.selecionada) { opacity: 0.55; cursor: not-allowed; }
+.vz-obj-atual { margin-bottom: 16px; }
+
+.vz-liga-select {
+  display: block;
+  margin: 12px 0 4px;
+}
+.vz-liga-select select {
+  width: min(100%, 360px);
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 14px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.vz-campo-erro {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--danger, #b91c1c);
+}
+.vz-busca-clube {
+  display: block;
+  margin: 8px 0;
+}
+.vz-busca-clube input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.vz-clube-item span {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+.vz-clube-item small {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.vz-confirm-hist {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+.vz-confirm-hist div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+.vz-confirm-hist dt { color: var(--text-muted); }
+.vz-confirm-hist dd { margin: 0; font-weight: 600; }
 
 .vz-subnav {
   display: flex;
@@ -4526,7 +4697,12 @@ main:has(.formulario) {
   overflow: auto;
 }
 
-/* Compact height desktop */
+.vz-obj-lista {
+  min-height: 0;
+  overflow: auto;
+}
+
+/* Compact height desktop — densidade, não corte cego */
 @media (max-height: 820px) and (min-width: 1100px) {
   .vz-shell .barra-superior { height: 46px; }
   .vz-top-nav a, .vz-top-nav button { padding: 12px 8px 10px; font-size: 12px; }
@@ -4534,15 +4710,15 @@ main:has(.formulario) {
   .vz-home { gap: 6px; }
   .vz-home-grid {
     gap: 8px;
-    grid-template-rows: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 0.9fr);
+    grid-template-rows: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 0.92fr);
   }
   .vz-card { padding: 8px 10px; }
   .vz-card-head { margin-bottom: 4px; }
   .vz-hero { padding: 10px 14px; }
-  .vz-hero-nome { font-size: 28px; line-height: 0.95; }
+  .vz-hero-nome { font-size: 32px; line-height: 0.95; }
   .vz-hero-meta { font-size: 12px; margin: 2px 0; }
   .vz-hero-detalhes { font-size: 11px; gap: 8px; margin: 4px 0 6px; }
-  .vz-ovr strong { font-size: 42px; }
+  .vz-ovr strong { font-size: 44px; }
   .vz-attr-grid b { font-size: 14px; }
   .vz-hero-tags,
   .vz-hero-script,
@@ -4553,21 +4729,12 @@ main:has(.formulario) {
   .vz-cal-lista li:nth-child(n + 3) { display: none; }
   .vz-obj-lista li:nth-child(n + 3) { display: none; }
   .vz-forma { display: none; }
+  .vz-proximo-meta p:last-child { display: none; }
   .vz-nota-anillo svg { width: 48px; height: 48px; }
   .vz-desemp-nums strong { font-size: 18px; }
   .vz-cta-semana { height: 30px; font-size: 11px; padding: 0 10px; }
-  .vz-rail { height: 28px; font-size: 11px; padding: 0 10px; }
+  .vz-rail { min-height: 28px; font-size: 11px; padding: 0 10px; }
   .vz-ultima-linha { padding-top: 4px; }
-}
-
-.vz-obj-lista {
-  min-height: 0;
-  overflow: auto;
-}
-.vz-desempenho,
-.vz-mercado-contrato,
-.vz-objetivos {
-  overflow: hidden;
 }
 
 @media (max-width: 1100px) {
@@ -4594,7 +4761,45 @@ main:has(.formulario) {
     grid-template-areas:
       "hero" "clube" "proximo" "calendario" "mensagens" "desempenho" "objetivos" "mercado";
   }
-  .vz-cta-semana { display: none; }
+  .vz-cta-desktop { display: none !important; }
+  .vz-cta-mobile-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex: 0 0 auto;
+    position: sticky;
+    bottom: 0;
+    z-index: 30;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: rgba(255, 255, 255, 0.96);
+    border-top: 1px solid var(--border);
+    backdrop-filter: blur(8px);
+  }
+  .vz-cta-mobile-bar time {
+    font-size: 12px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+  .vz-cta-mobile {
+    display: inline-flex;
+    min-height: 44px;
+    flex: 1;
+    justify-content: center;
+  }
+  .vz-shell-home .conteudo-home {
+    padding-bottom: 8px;
+  }
+  .vz-rail {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 34px;
+    padding: 8px 12px;
+  }
+}
+
+@media (min-width: 769px) {
+  .vz-cta-mobile-bar { display: none !important; }
 }
 
 /* Wizard criação */
@@ -4783,6 +4988,18 @@ main:has(.formulario) {
   color: #fff;
 }
 .vz-pos-grid button.ativo span { color: rgba(255,255,255,.7); }
+.vz-campo-select .vz-select-compacto,
+.vz-select-compacto {
+  width: 100%;
+  max-width: 320px;
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0 12px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+}
 .vz-wizard-fisico { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
 .vz-hist-progress {
