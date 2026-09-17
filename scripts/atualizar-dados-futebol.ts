@@ -1,9 +1,12 @@
-import { join } from "node:path";
+import { obterDiretorioImportacao } from "../src/infraestrutura/persistencia/importacao-futebol";
 import { atualizarBaseFutebol } from "../src/infraestrutura/transfermarkt/atualizar-base";
 
 try {
   const resumo = await atualizarBaseFutebol({
-    diretorio: join(process.cwd(), "src/dados/futebol"),
+    diretorio: obterDiretorioImportacao(),
+    permitirBootstrapDegradado: process.argv.includes(
+      "--allow-degraded-bootstrap",
+    ),
   });
   process.exitCode = resumo.temFalhas ? 1 : 0;
 } catch (erro) {

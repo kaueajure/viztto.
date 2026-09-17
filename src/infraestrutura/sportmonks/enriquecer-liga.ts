@@ -8,7 +8,10 @@ import {
   type MapeamentoSportmonksLiga,
   type NivelCoberturaSportmonks,
 } from "@/dominio/constantes/sportmonks-ligas";
-import { temporadaSportmonksCompativel } from "@/dominio/constantes/temporadas-iniciais";
+import {
+  TEMPORADAS_INICIAIS,
+  temporadaSportmonksCompativel,
+} from "@/dominio/constantes/temporadas-iniciais";
 import { ClienteSportmonks, ErroSportmonks, redigirSegredos } from "./cliente";
 import {
   escolherMelhorMatch,
@@ -25,6 +28,7 @@ import {
   type StatsSportmonksNormalizadas,
 } from "./rating-engine";
 import {
+  HEALTH_THRESHOLDS,
   avaliarSaudeEnriquecimento,
   metricasVazias,
   taxaEnriquecimento,
@@ -64,6 +68,7 @@ export interface RelatorioMatchingLiga {
 }
 
 export interface OpcoesEnriquecimento {
+  permitirBootstrapDegradado?: boolean;
   cliente?: ClienteSportmonks;
   mappingPath?: string;
   exigirToken?: boolean;
@@ -88,7 +93,7 @@ export interface ResultadoEnriquecimento {
 export function snapshotEstavaEnriquecido(
   clubes: Clube[] | null | undefined,
 ): boolean {
-  return taxaEnriquecimento(clubes) >= 0.15;
+  return taxaEnriquecimento(clubes) >= HEALTH_THRESHOLDS.enriquecidoMinimo;
 }
 
 type StatusMapping = "ativo" | "stale" | "manual";
@@ -115,7 +120,9 @@ interface MappingPersistido {
 
 function migrarMapping(bruto: MappingPersistido): MappingPersistido {
   if (bruto.versao >= 2 && bruto.entradas) return bruto;
-  const entradas: Record<string, EntradaMapping> = { ...(bruto.entradas ?? {}) };
+  const entradas: Record<string, EntradaMapping> = {
+    ...(bruto.entradas ?? {}),
+  };
   for (const [tm, sm] of Object.entries(bruto.pares ?? {})) {
     if (!entradas[tm]) {
       entradas[tm] = {
@@ -176,7 +183,10 @@ function extrairNacionalidade(p: Record<string, unknown>): string | null {
   return null;
 }
 
-function candidatoDePlayer(p: Record<string, unknown>, teamName?: string): CandidatoSportmonks {
+function candidatoDePlayer(
+  p: Record<string, unknown>,
+  teamName?: string,
+): CandidatoSportmonks {
   return {
     id: Number(p.id),
     nome: String(p.name ?? p.display_name ?? ""),
@@ -282,20 +292,24 @@ async function validarSeasonPertenceLiga(
         league_id?: number;
         league?: { id?: number };
       };
-    }>(`/seasons/${seasonId}`, { include: "league" }, {
-      cacheKey: `season-validate-${seasonId}`,
-      cacheTtlMs: 7 * 86_400_000,
-    });
+    }>(
+      `/seasons/${seasonId}`,
+      { include: "league" },
+      {
+        cacheKey: `season-validate-${seasonId}`,
+        cacheTtlMs: 7 * 86_400_000,
+      },
+    );
     const s = resp.data;
     const leagueId = s?.league_id ?? s?.league?.id;
-    if (leagueId != null && leagueId !== ligaSmId) {
+    if (s?.id !== seasonId || leagueId !== ligaSmId) {
       return {
         ok: false,
         erro: `season ${seasonId} pertence à liga ${leagueId}, esperado ${ligaSmId}`,
       };
     }
     const nome = String(s?.name ?? "");
-    if (nome && !temporadaAnoCompativel(nome, temporadaLabel)) {
+    if (!nome || !temporadaAnoCompativel(nome, temporadaLabel)) {
       return {
         ok: false,
         nome,
@@ -321,13 +335,23 @@ export async function resolverSeasonId(
   cliente: ClienteSportmonks,
   mapa: Pick<
     MapeamentoSportmonksLiga,
-    "idSportmonks" | "nomeTemporadaBusca" | "seasonIdPreferido" | "seasonStrategy"
+    "idSportmonks" | "seasonIdPreferido" | "seasonStrategy"
   >,
   temporadaLabel: string,
 ): Promise<ResultadoResolverSeason> {
+  if (!/^\d{4}(?:\/\d{2,4})?$/.test(temporadaLabel))
+    return {
+      seasonId: null,
+      metodo: "busca",
+      erro: "Label de temporada inválido",
+    };
   const ligaSmId = mapa.idSportmonks;
   if (ligaSmId == null) {
-    return { seasonId: null, metodo: "sem-liga", erro: "liga Sportmonks ausente" };
+    return {
+      seasonId: null,
+      metodo: "sem-liga",
+      erro: "liga Sportmonks ausente",
+    };
   }
 
   const tentarValidar = async (
@@ -365,7 +389,9 @@ export async function resolverSeasonId(
     };
   }
 
-  const nomeBusca = mapa.nomeTemporadaBusca;
+  // API v3 pesquisa o NOME DA TEMPORADA (ex.: 2026/2027), nunca a liga.
+  // https://docs.sportmonks.com/v3/endpoints-and-entities/endpoints/seasons/get-seasons-by-search-by-name
+  const nomeBusca = temporadaLabel;
   if (nomeBusca) {
     try {
       const seasons = await cliente.getJson<{
@@ -405,7 +431,7 @@ export async function resolverSeasonId(
     return {
       seasonId: null,
       metodo: "busca",
-      erro: "nomeTemporadaBusca ausente para strategy=busca",
+      erro: "temporadaLabel ausente para strategy=busca",
     };
   }
 
@@ -416,10 +442,14 @@ export async function resolverSeasonId(
           currentseason?: { id?: number };
           currentSeason?: { id?: number };
         };
-      }>(`/leagues/${ligaSmId}`, { include: "currentSeason" }, {
-        cacheKey: `league-${ligaSmId}-current-${temporadaLabel}`,
-        cacheTtlMs: 7 * 86_400_000,
-      });
+      }>(
+        `/leagues/${ligaSmId}`,
+        { include: "currentSeason" },
+        {
+          cacheKey: `league-${ligaSmId}-current-${temporadaLabel}`,
+          cacheTtlMs: 7 * 86_400_000,
+        },
+      );
       const cur =
         liga.data?.currentSeason?.id ?? liga.data?.currentseason?.id ?? null;
       if (cur) {
@@ -551,6 +581,7 @@ export async function enriquecerLigaComSportmonks(
       taxaAtual,
       taxaAnterior: opcoes.taxaEnriquecimentoAnterior,
       anteriorEnriquecido: opcoes.anteriorEnriquecido,
+      permitirBootstrapDegradado: opcoes.permitirBootstrapDegradado,
     });
     relatorio.metricas = { ...metricas };
     relatorio.saude = avaliacao.saude;
@@ -563,7 +594,10 @@ export async function enriquecerLigaComSportmonks(
 
     // Cobertura D / fallback consciente (ex.: token ausente) nunca aborta por saúde.
     if (mapa.cobertura === "D" || statusPreferido === "fallback_esperado") {
-      status = statusPreferido === "fallback_esperado" ? "fallback_esperado" : "fallback_esperado";
+      status =
+        statusPreferido === "fallback_esperado"
+          ? "fallback_esperado"
+          : "fallback_esperado";
       abortar = false;
       relatorio.saude = "fallback_esperado";
     }
@@ -596,7 +630,12 @@ export async function enriquecerLigaComSportmonks(
     const clubesOut = clubes.map((c) => ({
       ...c,
       elenco: c.elenco.map((j, i) =>
-        enriquecerFallback(j as unknown as JogadorExterno, c, i, c.elenco.length),
+        enriquecerFallback(
+          j as unknown as JogadorExterno,
+          c,
+          i,
+          c.elenco.length,
+        ),
       ) as unknown as Clube["elenco"],
     }));
     relatorio.total = jogadoresTm;
@@ -604,11 +643,18 @@ export async function enriquecerLigaComSportmonks(
   };
 
   if (mapa.cobertura === "D" || mapa.idSportmonks == null) {
-    informar(`  Sportmonks: cobertura ${mapa.cobertura} — fallback Transfermarkt.`);
+    informar(
+      `  Sportmonks: cobertura ${mapa.cobertura} — fallback Transfermarkt.`,
+    );
     const clubesOut = clubes.map((c) => ({
       ...c,
       elenco: c.elenco.map((j, i) =>
-        enriquecerFallback(j as unknown as JogadorExterno, c, i, c.elenco.length),
+        enriquecerFallback(
+          j as unknown as JogadorExterno,
+          c,
+          i,
+          c.elenco.length,
+        ),
       ) as unknown as Clube["elenco"],
     }));
     relatorio.total = jogadoresTm;
@@ -652,7 +698,9 @@ export async function enriquecerLigaComSportmonks(
       informar(`✗ ${bloqueio.erro}`);
       return bloqueio;
     }
-    informar(`  Sportmonks: token ausente — ratings estimados (Transfermarkt).`);
+    informar(
+      `  Sportmonks: token ausente — ratings estimados (Transfermarkt).`,
+    );
     return aplicarFallbackTodos(
       opcoes.anteriorEnriquecido ? "degradado" : "fallback_esperado",
       msg,
@@ -663,21 +711,24 @@ export async function enriquecerLigaComSportmonks(
     const season = await resolverSeasonId(
       cliente,
       mapa,
-      opcoes.temporadaLabel ?? "2026",
+      opcoes.temporadaLabel ??
+        TEMPORADAS_INICIAIS[liga.id]?.temporadaSportmonks ??
+        "",
     );
     relatorio.seasonId = season.seasonId;
     relatorio.seasonMetodo = season.metodo;
     if (!season.seasonId) {
-      const motivo =
-        season.erro ?? "temporada Sportmonks não resolvida";
+      const motivo = season.erro ?? "temporada Sportmonks não resolvida";
       const bloqueio = abortarPorDegradacao(opcoes, mapa, motivo, relatorio);
       if (bloqueio) {
         informar(`✗ ${bloqueio.erro}`);
         return bloqueio;
       }
-      informar(`  Sportmonks: temporada não resolvida — fallback.`);
+      informar(`  Sportmonks: temporada não resolvida — avaliando bloqueio.`);
       return aplicarFallbackTodos(
-        opcoes.anteriorEnriquecido ? "degradado" : "fallback_esperado",
+        mapa.cobertura === "A" || mapa.cobertura === "B" || opcoes.anteriorEnriquecido
+          ? "degradado"
+          : "fallback_esperado",
         motivo,
       );
     }
@@ -867,7 +918,7 @@ export async function enriquecerLigaComSportmonks(
 
         const stats =
           smId && confiancaAceita(match.confianca)
-            ? statsPorSmId.get(smId) ?? null
+            ? (statsPorSmId.get(smId) ?? null)
             : null;
 
         let statsFinais = stats;

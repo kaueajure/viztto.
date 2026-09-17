@@ -2,18 +2,24 @@ import type { NivelCoberturaSportmonks } from "@/dominio/constantes/sportmonks-l
 import type { Clube } from "@/dominio/entidades/modelos";
 import type { RatingMetadata } from "./rating-engine";
 
+export const HEALTH_THRESHOLDS = {
+  enriquecidoMinimo: 0.15,
+  quedaRelativaMaxima: 0.6,
+  quedaAbsolutaMinima: 0.09,
+  quedaAbsolutaMaxima: 0.4,
+  coberturaCritica: 0.25,
+  matchCritico: 0.1,
+  coberturaSaudavel: 0.6,
+  matchSaudavel: 0.35,
+  statsSaudavel: 0.25,
+} as const;
+
 export type StatusEnriquecimento =
-  | "ok"
-  | "fallback_esperado"
-  | "degradado"
-  | "falha_critica";
+  "ok" | "fallback_esperado" | "degradado" | "falha_critica";
 
 /** Saúde agregada do enrichment Sportmonks por liga. */
 export type NivelSaudeEnriquecimento =
-  | "saudavel"
-  | "degradado"
-  | "critico"
-  | "fallback_esperado";
+  "saudavel" | "degradado" | "critico" | "fallback_esperado";
 
 /** Contadores brutos coletados durante o enrichment. */
 export interface MetricasEnriquecimentoLiga {
@@ -49,9 +55,7 @@ export interface AvaliacaoSaudeEnriquecimento {
 }
 
 /** Fração de jogadores com enrichment Sportmonks/hybrid no snapshot. */
-export function taxaEnriquecimento(
-  clubes: Clube[] | null | undefined,
-): number {
+export function taxaEnriquecimento(clubes: Clube[] | null | undefined): number {
   if (!clubes?.length) return 0;
   let total = 0;
   let ricos = 0;
@@ -116,10 +120,14 @@ export function quedaSeveraEnriquecimento(
   atual: number,
   anterior: number | undefined,
 ): boolean {
-  if (anterior === undefined || anterior < 0.4) return false;
-  if (atual < anterior * 0.35) return true;
-  if (anterior - atual >= 0.45 && atual < 0.25) return true;
-  return false;
+  if (anterior === undefined || anterior < HEALTH_THRESHOLDS.enriquecidoMinimo)
+    return false;
+  const queda = anterior - atual;
+  return (
+    queda >= HEALTH_THRESHOLDS.quedaAbsolutaMaxima ||
+    (queda >= HEALTH_THRESHOLDS.quedaAbsolutaMinima &&
+      atual / anterior <= 1 - HEALTH_THRESHOLDS.quedaRelativaMaxima)
+  );
 }
 
 /**
@@ -133,6 +141,7 @@ export function avaliarSaudeEnriquecimento(entrada: {
   taxaAtual: number;
   taxaAnterior?: number;
   anteriorEnriquecido?: boolean;
+  permitirBootstrapDegradado?: boolean;
 }): AvaliacaoSaudeEnriquecimento {
   const coverageHealth = calcularCoverageHealth(
     entrada.metricas,
@@ -157,17 +166,18 @@ export function avaliarSaudeEnriquecimento(entrada: {
   const cobreAb = entrada.cobertura === "A" || entrada.cobertura === "B";
 
   const coberturaCritica =
-    coverageHealth.teamCoverage < 0.25 ||
+    coverageHealth.teamCoverage < HEALTH_THRESHOLDS.coberturaCritica ||
     (entrada.metricas.squadsSolicitados > 0 &&
-      coverageHealth.squadSuccessRate < 0.25) ||
-    (entrada.metricas.jogadoresTm > 0 && coverageHealth.matchRate < 0.1);
+      coverageHealth.squadSuccessRate < HEALTH_THRESHOLDS.coberturaCritica) ||
+    (entrada.metricas.jogadoresTm > 0 &&
+      coverageHealth.matchRate < HEALTH_THRESHOLDS.matchCritico);
 
   const coberturaFraca =
-    coverageHealth.teamCoverage < 0.6 ||
+    coverageHealth.teamCoverage < HEALTH_THRESHOLDS.coberturaSaudavel ||
     (entrada.metricas.squadsSolicitados > 0 &&
-      coverageHealth.squadSuccessRate < 0.6) ||
-    coverageHealth.matchRate < 0.35 ||
-    coverageHealth.playerStatsCoverage < 0.25;
+      coverageHealth.squadSuccessRate < HEALTH_THRESHOLDS.coberturaSaudavel) ||
+    coverageHealth.matchRate < HEALTH_THRESHOLDS.matchSaudavel ||
+    coverageHealth.playerStatsCoverage < HEALTH_THRESHOLDS.statsSaudavel;
 
   if (cobreAb && queda) {
     return {
@@ -190,23 +200,27 @@ export function avaliarSaudeEnriquecimento(entrada: {
     };
   }
 
-  // Bootstrap A/B degradado (não crítico): publica com warning.
-  if (cobreAb && coberturaFraca && !entrada.anteriorEnriquecido) {
+  const anteriorEnriquecido =
+    entrada.anteriorEnriquecido ??
+    (entrada.taxaAnterior !== undefined &&
+      entrada.taxaAnterior >= HEALTH_THRESHOLDS.enriquecidoMinimo);
+  // Bootstrap A/B degradado exige consentimento explícito.
+  if (cobreAb && coberturaFraca && !anteriorEnriquecido) {
     return {
       saude: "degradado",
       coverageHealth,
       status: "degradado",
-      abortarPublicacao: false,
-      motivo: "bootstrap A/B com enrichment parcial — publicação degradada",
+      abortarPublicacao: !entrada.permitirBootstrapDegradado,
+      motivo: "bootstrap A/B parcial exige permitirBootstrapDegradado",
     };
   }
 
-  if (coberturaFraca && entrada.anteriorEnriquecido && cobreAb) {
+  if (coberturaFraca && anteriorEnriquecido && cobreAb) {
     return {
       saude: "degradado",
       coverageHealth,
       status: "degradado",
-      abortarPublicacao: false,
+      abortarPublicacao: true,
       motivo: "métricas Sportmonks abaixo do esperado para cobertura A/B",
     };
   }

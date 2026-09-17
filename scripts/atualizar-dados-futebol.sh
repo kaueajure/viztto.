@@ -59,6 +59,6 @@ else
   fi
 fi
 # react-server mantém as proteções server-only da infraestrutura, sem subir Next.
-setsid node --env-file-if-exists=.env --conditions=react-server --import tsx scripts/atualizar-dados-futebol.ts &
+setsid node --env-file-if-exists=.env --conditions=react-server --import tsx scripts/atualizar-dados-futebol.ts "$@" &
 ATUALIZADOR_PID=$!
 wait "$ATUALIZADOR_PID"

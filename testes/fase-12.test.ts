@@ -27,7 +27,7 @@ import {
   obterDiretorioImportacao,
   lerDadosLiga,
   lerManifestoAtivo,
-  publicarReleaseAtomica,
+  publicarReleaseAtomica as publicarRelease,
   salvarDadosLiga,
   type DadosLigaImportados,
 } from "@/infraestrutura/persistencia/importacao-futebol";
@@ -43,6 +43,9 @@ import {
 } from "@/infraestrutura/sportmonks/saude-enriquecimento";
 import type { RatingMetadata } from "@/dominio/rating-metadata";
 import { exemploCarreira } from "./auxiliar-carreira-persistida";
+
+const publicarReleaseAtomica: typeof publicarRelease = (candidatos, destino, opcoes) =>
+  publicarRelease(candidatos, destino, { ...opcoes, publicacao: { modo: "isolada", ligasEsperadas: candidatos.map(c => c.ligaId) } });
 
 const dirOriginal = obterDiretorioImportacao();
 const limpeza: string[] = [];
@@ -524,7 +527,6 @@ describe("Fase 12 — saúde Sportmonks e season", () => {
       cliente,
       {
         idSportmonks: 648,
-        nomeTemporadaBusca: "Brasileirão",
         seasonIdPreferido: null,
         seasonStrategy: "busca",
       },
@@ -565,7 +567,6 @@ describe("Fase 12 — saúde Sportmonks e season", () => {
       cliente,
       {
         idSportmonks: 648,
-        nomeTemporadaBusca: "Brasileirão",
         seasonIdPreferido: 777,
         seasonStrategy: "busca",
       },
@@ -687,7 +688,7 @@ describe("Fase 12+ — ratingMetadata completo round-trip", () => {
 });
 
 describe("Fase 12+ — point-of-commit da release", () => {
-  it("falha no espelhamento legado após active.json NÃO remove release B", async () => {
+  it("falha na limpeza após active.json NÃO remove release B", async () => {
     const dir = await mkdtemp(join(tmpdir(), "viztto-poc-"));
     limpeza.push(dir);
     const liga = LIGAS_SUPORTADAS[0]!;
@@ -702,7 +703,7 @@ describe("Fase 12+ — point-of-commit da release", () => {
     const { releaseId: idB, manifestoCommitado } = await publicarReleaseAtomica(
       [{ ligaId: liga.id, dados: b }],
       dir,
-      { falharEspelhamentoLegado: true },
+      { falharLimpeza: true },
     );
     expect(manifestoCommitado).toBe(true);
     expect(idB).not.toBe(idA);

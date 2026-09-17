@@ -586,6 +586,7 @@ describe("Enriquecimento + snapshots + atomicidade", () => {
     const resultado = await atualizarBaseFutebol({
       diretorio: dir,
       ligas: [liga],
+      publicacao: { modo: "isolada", ligasEsperadas: [liga.id] },
       informar: () => undefined,
       importar: async (l, op) => {
         const staging = op?.diretorio ?? dir;

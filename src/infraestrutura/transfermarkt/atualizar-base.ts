@@ -52,6 +52,8 @@ export interface ResumoAtualizacaoLiga {
 
 interface OpcoesAtualizacao {
   diretorio?: string;
+  publicacao?: { modo: "isolada"; ligasEsperadas: string[] };
+  permitirBootstrapDegradado?: boolean;
   ligas?: Liga[];
   importar?: typeof importarLiga;
   informar?: (linha: string) => void;
@@ -103,6 +105,8 @@ function classificarLote(
 }
 
 export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
+  if (opcoes.publicacao?.modo === "isolada" && !opcoes.diretorio)
+    throw new Error("Publicação isolada exige diretório explícito.");
   const destino = opcoes.diretorio ?? obterDiretorioImportacao();
   await mkdir(join(destino, ".staging"), { recursive: true });
   const staging = await mkdtemp(join(destino, ".staging", "atualizacao-"));
@@ -162,6 +166,7 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
       const enriquecido = await enriquecer(liga, candidato.clubes, {
         informar,
         exigirToken: opcoes.exigirSportmonks,
+        permitirBootstrapDegradado: opcoes.permitirBootstrapDegradado,
         temporadaLabel,
         anteriorEnriquecido: snapshotEstavaEnriquecido(anteriorOficial?.clubes),
         taxaEnriquecimentoAnterior: taxaEnriquecimento(anteriorOficial?.clubes),
@@ -177,7 +182,11 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
         saude: enriquecido.relatorio.saude,
       };
 
-      if (enriquecido.abortarPublicacao) {
+      if (
+        enriquecido.abortarPublicacao ||
+        enriquecido.status === "falha_critica" ||
+        enriquecido.relatorio.saude === "critico"
+      ) {
         abortarTudo = true;
         motivoAbort =
           enriquecido.erro ??
@@ -206,10 +215,13 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
       await salvarDadosLiga(candidato, staging);
       const pub = validarPublicacaoLiga(liga, candidato, anteriorOficial, {
         clubesEsperados:
-          TEMPORADAS_INICIAIS[liga.id]?.clubesEsperados ?? liga.quantidadeClubes,
+          TEMPORADAS_INICIAIS[liga.id]?.clubesEsperados ??
+          liga.quantidadeClubes,
       });
       if (!pub.ok || !pub.dados)
-        throw new Error(pub.motivo ?? "Snapshot não elegível para publicação oficial.");
+        throw new Error(
+          pub.motivo ?? "Snapshot não elegível para publicação oficial.",
+        );
 
       item.prontoEmStaging = true;
       item.total = resultado.progresso.total;
@@ -256,6 +268,7 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
       const { releaseId } = await publicarReleaseAtomica(
         prontos.map((p) => ({ ligaId: p.liga.id, dados: p.dados })),
         destino,
+        { publicacao: opcoes.publicacao },
       );
       publicou = true;
       for (const p of prontos) p.item.publicado = true;
@@ -264,7 +277,9 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
       abortarTudo = true;
       motivoAbort =
         erro instanceof Error ? erro.message : "Falha na publicação atômica.";
-      informar(`✗ Publicação abortada (release anterior intacta): ${motivoAbort}`);
+      informar(
+        `✗ Publicação abortada (release anterior intacta): ${motivoAbort}`,
+      );
     }
   } else {
     informar(
@@ -348,12 +363,7 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
   }
   return {
     ligas: resumo,
-    temFalhas:
-      !publicou ||
-      statusLote === "atualizacao_degradada" ||
-      resumo.some(
-        (l) => !l.publicado || l.falhas.length > 0 || l.clubes !== l.total,
-      ),
+    temFalhas: !publicou,
     duracaoSegundos,
     abortarTudo,
     publicou,

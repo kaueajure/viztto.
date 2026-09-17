@@ -17,7 +17,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file-if-exists=.env --conditions=react-server scripts/db.mjs migrate",
     "db:studio": "drizzle-kit studio --host=127.0.0.1",
-    "db:check": "node --env-file-if-exists=.env --conditions=react-server scripts/db.mjs check"
+    "db:check": "node --env-file-if-exists=.env --conditions=react-server scripts/db.mjs check",
+    "snapshots:check-git": "tsx --conditions=react-server scripts/validar-snapshots-git.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",

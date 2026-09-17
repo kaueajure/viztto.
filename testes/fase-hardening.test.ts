@@ -176,6 +176,7 @@ describe("Hardening — publicação atômica", () => {
     const r = await atualizarBaseFutebol({
       diretorio: dir,
       ligas,
+      publicacao: { modo: "isolada", ligasEsperadas: ligas.map(l => l.id) },
       informar: () => undefined,
       importar: async (l, op) => {
         const staging = op?.diretorio ?? dir;
@@ -258,6 +259,7 @@ describe("Hardening — publicação atômica", () => {
     await atualizarBaseFutebol({
       diretorio: dir,
       ligas,
+      publicacao: { modo: "isolada", ligasEsperadas: ligas.map(l => l.id) },
       informar: () => undefined,
       importar: async (l, op) => {
         n++;
@@ -319,6 +321,7 @@ describe("Hardening — publicação atômica", () => {
     const r = await atualizarBaseFutebol({
       diretorio: dir,
       ligas: [liga],
+      publicacao: { modo: "isolada", ligasEsperadas: [liga.id] },
       informar: () => undefined,
       importar: async (l, op) => {
         const staging = op?.diretorio ?? dir;

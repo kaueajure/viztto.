@@ -38,7 +38,14 @@ export type ConfiancaRating = z.infer<typeof esquemaConfiancaRating>;
 export function normalizarRatingMetadata(
   valor: unknown,
 ): RatingMetadata | undefined {
-  const r = esquemaRatingMetadata.safeParse(valor);
+  if (!valor || typeof valor !== "object" || Array.isArray(valor))
+    return undefined;
+  const conhecidos = Object.fromEntries(
+    Object.keys(esquemaRatingMetadata.shape)
+      .filter((chave) => Object.hasOwn(valor, chave))
+      .map((chave) => [chave, (valor as Record<string, unknown>)[chave]]),
+  );
+  const r = esquemaRatingMetadata.safeParse(conhecidos);
   return r.success ? r.data : undefined;
 }
 

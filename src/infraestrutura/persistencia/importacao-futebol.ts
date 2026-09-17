@@ -1,4 +1,5 @@
 import "server-only";
+import { LIGAS_SUPORTADAS } from "@/dominio/constantes/ligas";
 import {
   mkdir,
   readFile,
@@ -14,10 +15,7 @@ import type { ErroImportacaoClube } from "@/infraestrutura/transfermarkt/importa
 import { esquemaDadosLigaImportados } from "@/infraestrutura/transfermarkt/esquemas";
 
 export type StatusImportacaoLiga =
-  | "em_andamento"
-  | "parcial"
-  | "completo"
-  | "interrompido";
+  "em_andamento" | "parcial" | "completo" | "interrompido";
 
 export interface ProgressoImportacao {
   total: number;
@@ -111,16 +109,31 @@ export async function lerManifestoAtivo(
  *
  * POINT OF COMMIT = rename do active.json.
  * Antes: falha remove a release candidata; antiga permanece ativa.
- * Depois: espelhamento legado e limpeza são best-effort — nunca apagam a release ativa.
+ * Depois: limpeza é best-effort — nunca apaga a release ativa.
  */
 export async function publicarReleaseAtomica(
   candidatos: Array<{ ligaId: string; dados: DadosLigaImportados }>,
   destinoRaiz: string,
   opcoes?: {
-    /** Hook de teste: falha o espelhamento legado após o commit. */
-    falharEspelhamentoLegado?: boolean;
+    /** O padrão oficial exige o universo completo. Testes devem declarar seu universo. */
+    publicacao?: { modo: "isolada"; ligasEsperadas: string[] };
+    falharLimpeza?: boolean;
   },
 ): Promise<{ releaseId: string; manifestoCommitado: boolean }> {
+  const esperadas =
+    opcoes?.publicacao?.modo === "isolada"
+      ? opcoes.publicacao.ligasEsperadas
+      : LIGAS_SUPORTADAS.map((l) => l.id);
+  const ids = candidatos.map((c) => c.ligaId);
+  if (
+    !esperadas.length ||
+    new Set(esperadas).size !== esperadas.length ||
+    new Set(ids).size !== ids.length ||
+    ids.length !== esperadas.length ||
+    ids.some((id) => !esperadas.includes(id)) ||
+    candidatos.some((c) => c.ligaId !== c.dados.ligaId)
+  )
+    throw new Error("Release incompleta ou universo de ligas inválido.");
   const releaseId = `r-${Date.now()}-${randomUUID().slice(0, 8)}`;
   const releaseDir = caminhoRelease(releaseId, destinoRaiz);
   await mkdir(releaseDir, { recursive: true });
@@ -130,8 +143,7 @@ export async function publicarReleaseAtomica(
     for (const c of candidatos) {
       await salvarDadosLiga(c.dados, releaseDir);
       const lido = await lerDadosLigaEmDiretorio(c.ligaId, releaseDir);
-      if (!lido)
-        throw new Error(`Release inválida após escrita: ${c.ligaId}`);
+      if (!lido) throw new Error(`Release inválida após escrita: ${c.ligaId}`);
     }
 
     const manifesto: ManifestoAtivo = {
@@ -156,20 +168,11 @@ export async function publicarReleaseAtomica(
   }
 
   try {
-    if (opcoes?.falharEspelhamentoLegado)
-      throw new Error("falha simulada no espelhamento legado");
-    for (const c of candidatos) {
-      await salvarDadosLiga(c.dados, destinoRaiz);
-    }
-  } catch (erro) {
-    console.warn(
-      `[viztto] Espelhamento legado falhou após commit da release ${releaseId}:`,
-      erro instanceof Error ? erro.message : erro,
-    );
-  }
-
-  try {
+    if (opcoes?.falharLimpeza) throw new Error("falha simulada na limpeza");
     await limparReleasesAntigas(destinoRaiz, 2);
+    // Migração para release como fonte única. Só após o point-of-commit.
+    for (const c of candidatos)
+      await rm(caminhoArquivo(c.ligaId, destinoRaiz), { force: true });
   } catch (erro) {
     console.warn(
       `[viztto] Limpeza de releases antigas falhou após commit ${releaseId}:`,
