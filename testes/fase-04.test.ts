@@ -32,7 +32,7 @@ import type { Liga } from "@/dominio/entidades/modelos";
 
 let dir: string;
 const original = obterDiretorioImportacao();
-const liga = LIGAS_SUPORTADAS[0]!;
+const liga = { ...LIGAS_SUPORTADAS[0]!, quantidadeClubes: 3 };
 function snapshot(l: Liga = liga): DadosLigaImportados {
   const calendario = TEMPORADAS_INICIAIS[l.id]!;
   return {
@@ -292,6 +292,7 @@ describe("atualização segura", () => {
       diretorio: dir,
       importar,
       informar: () => {},
+      ligas: LIGAS_SUPORTADAS.map((l) => ({ ...l, quantidadeClubes: 3 })),
     });
     expect(ordem).toEqual(LIGAS_SUPORTADAS.map((l) => l.id));
     expect(resumo.temFalhas).toBe(false);

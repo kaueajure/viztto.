@@ -8,6 +8,7 @@ import {
   type MapeamentoSportmonksLiga,
   type NivelCoberturaSportmonks,
 } from "@/dominio/constantes/sportmonks-ligas";
+import { temporadaSportmonksCompativel } from "@/dominio/constantes/temporadas-iniciais";
 import { ClienteSportmonks, ErroSportmonks, redigirSegredos } from "./cliente";
 import {
   escolherMelhorMatch,
@@ -253,23 +254,12 @@ function relancarSeAuth(erro: unknown): void {
   if (erro instanceof ErroSportmonks && erro.codigo === "auth") throw erro;
 }
 
-/** Anos no label TM vs nome da season SM (aceita cruzamento 2025/2026). */
+/** Compat: delega para match exato/normalizado (sem heurística ±1). */
 export function temporadaAnoCompativel(
   nomeSeason: string,
   temporadaLabel: string,
 ): boolean {
-  const anosLabel: string[] = temporadaLabel.match(/\d{4}/g) ?? [];
-  if (!anosLabel.length) return true;
-  const anosSeason: string[] = nomeSeason.match(/\d{4}/g) ?? [];
-  if (!anosSeason.length) return false;
-  return anosLabel.some((ano) => {
-    const n = Number(ano);
-    return (
-      anosSeason.includes(ano) ||
-      anosSeason.includes(String(n - 1)) ||
-      anosSeason.includes(String(n + 1))
-    );
-  });
+  return temporadaSportmonksCompativel(nomeSeason, temporadaLabel);
 }
 
 export interface ResultadoResolverSeason {
@@ -571,9 +561,9 @@ export async function enriquecerLigaComSportmonks(
     let abortar = avaliacao.abortarPublicacao;
     let msg = erro ?? avaliacao.motivo;
 
-    // Cobertura D nunca aborta por saúde.
-    if (mapa.cobertura === "D") {
-      status = "fallback_esperado";
+    // Cobertura D / fallback consciente (ex.: token ausente) nunca aborta por saúde.
+    if (mapa.cobertura === "D" || statusPreferido === "fallback_esperado") {
+      status = statusPreferido === "fallback_esperado" ? "fallback_esperado" : "fallback_esperado";
       abortar = false;
       relatorio.saude = "fallback_esperado";
     }

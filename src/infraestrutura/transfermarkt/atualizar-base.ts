@@ -81,6 +81,14 @@ function classificarLote(
   publicou: boolean,
 ): StatusPublicacaoLote {
   if (abortar || !publicou) return "falha_critica";
+  if (
+    resumo.some(
+      (l) =>
+        l.statusEnriquecimento === "falha_critica" ||
+        l.sportmonks?.saude === "critico",
+    )
+  )
+    return "falha_critica";
   if (resumo.some((l) => l.statusEnriquecimento === "degradado"))
     return "atualizacao_degradada";
   if (
@@ -147,6 +155,7 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
         throw new Error("Snapshot de staging não encontrado após importação.");
 
       const temporadaLabel =
+        TEMPORADAS_INICIAIS[liga.id]?.temporadaSportmonks ??
         TEMPORADAS_INICIAIS[liga.id]?.temporadaTransfermarkt ??
         String(candidato.temporada);
       const anteriorOficial = await lerDadosLiga(liga.id, destino);
@@ -196,7 +205,8 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
 
       await salvarDadosLiga(candidato, staging);
       const pub = validarPublicacaoLiga(liga, candidato, anteriorOficial, {
-        clubesEsperados: TEMPORADAS_INICIAIS[liga.id]?.clubesEsperados,
+        clubesEsperados:
+          TEMPORADAS_INICIAIS[liga.id]?.clubesEsperados ?? liga.quantidadeClubes,
       });
       if (!pub.ok || !pub.dados)
         throw new Error(pub.motivo ?? "Snapshot não elegível para publicação oficial.");

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { FORMACOES } from "@/dominio/formacao";
+import { esquemaRatingMetadata } from "@/dominio/rating-metadata";
 
 export const esquemaJogadorExterno = z
   .object({
@@ -56,24 +57,7 @@ export const esquemaJogadorExterno = z
       })
       .optional(),
     atributos: z.record(z.string(), z.number()).optional(),
-    ratingMetadata: z
-      .object({
-        source: z.enum([
-          "sportmonks",
-          "hybrid",
-          "transfermarkt-estimated",
-          "generated",
-        ]),
-        confidence: z.enum(["high", "medium", "low"]),
-        minutes: z.number().optional(),
-        appearances: z.number().optional(),
-        season: z.string().optional(),
-        sportmonksPlayerId: z.number().optional(),
-        matchConfidence: z.string().optional(),
-        estimatedAttributes: z.array(z.string()).optional(),
-        coverageLevel: z.enum(["A", "B", "C", "D"]).optional(),
-      })
-      .optional(),
+    ratingMetadata: esquemaRatingMetadata.optional(),
   })
   .passthrough();
 

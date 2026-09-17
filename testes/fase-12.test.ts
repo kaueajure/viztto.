@@ -10,7 +10,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import { LIGAS_SUPORTADAS } from "@/dominio/constantes/ligas";
-import { TEMPORADAS_INICIAIS } from "@/dominio/constantes/temporadas-iniciais";
+import {
+  TEMPORADAS_INICIAIS,
+  normalizarLabelTemporadaSportmonks,
+  temporadaSportmonksCompativel,
+} from "@/dominio/constantes/temporadas-iniciais";
 import { SPORTMONKS_LIGAS } from "@/dominio/constantes/sportmonks-ligas";
 import { criarAtributosUniformes } from "@/dominio/regras/jogador";
 import { NOMES_ATRIBUTOS, type Clube, type JogadorMundo } from "@/dominio/entidades/modelos";
@@ -37,6 +41,7 @@ import {
   avaliarSaudeEnriquecimento,
   metricasVazias,
 } from "@/infraestrutura/sportmonks/saude-enriquecimento";
+import type { RatingMetadata } from "@/dominio/rating-metadata";
 import { exemploCarreira } from "./auxiliar-carreira-persistida";
 
 const dirOriginal = obterDiretorioImportacao();
@@ -225,7 +230,7 @@ describe("Fase 12 — gate de publicação oficial", () => {
     const novo18 = snapshotCompleto(liga.id, 18);
     const pub18 = validarPublicacaoLiga(liga, novo18, anterior);
     expect(pub18.ok).toBe(false);
-    expect(pub18.motivo).toMatch(/Regressão|cobertura/i);
+    expect(pub18.motivo).toMatch(/Esperados|Regressão|cobertura/i);
 
     const novo20 = snapshotCompleto(liga.id, 20);
     expect(validarPublicacaoLiga(liga, novo20, anterior).ok).toBe(true);
@@ -481,6 +486,16 @@ describe("Fase 12 — saúde Sportmonks e season", () => {
           }),
         };
       }
+      if (String(url).includes("/seasons/222")) {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          json: async () => ({
+            data: { id: 222, name: "2026", league_id: 648 },
+          }),
+        };
+      }
       if (String(url).includes("/seasons/111")) {
         return {
           ok: true,
@@ -513,9 +528,9 @@ describe("Fase 12 — saúde Sportmonks e season", () => {
         seasonIdPreferido: null,
         seasonStrategy: "busca",
       },
-      "2025",
+      "2026",
     );
-    expect(season.seasonId).toBe(111);
+    expect(season.seasonId).toBe(222);
     expect(season.metodo).toBe("busca");
     expect(calls.some((u) => u.includes("/leagues/"))).toBe(false);
     expect(calls.some((u) => u.includes("/seasons/search/"))).toBe(true);
@@ -529,7 +544,7 @@ describe("Fase 12 — saúde Sportmonks e season", () => {
           status: 200,
           headers: new Headers(),
           json: async () => ({
-            data: { id: 777, name: "2025", league_id: 648 },
+            data: { id: 777, name: "2026", league_id: 648 },
           }),
         };
       }
@@ -554,7 +569,7 @@ describe("Fase 12 — saúde Sportmonks e season", () => {
         seasonIdPreferido: 777,
         seasonStrategy: "busca",
       },
-      "2025",
+      "2026",
     );
     expect(r.seasonId).toBe(777);
     expect(r.metodo).toBe("preferido");
@@ -574,7 +589,7 @@ describe("Fase 12 — manifesto corrompido / legado", () => {
     expect(lido!.clubes[0]!.elenco[0]!.overall).toBe(55);
   });
 
-  it("release referenciada inexistente cai no legado", async () => {
+  it("release referenciada inexistente NÃO mistura legado", async () => {
     const dir = await mkdtemp(join(tmpdir(), "viztto-f12-miss-"));
     limpeza.push(dir);
     const liga = LIGAS_SUPORTADAS[0]!;
@@ -591,8 +606,179 @@ describe("Fase 12 — manifesto corrompido / legado", () => {
       }),
       "utf8",
     );
-    expect((await lerDadosLiga(liga.id, dir))!.clubes[0]!.elenco[0]!.overall).toBe(
-      44,
+    const { ErroReleaseInvalida: E } = await import(
+      "@/infraestrutura/persistencia/importacao-futebol"
     );
+    await expect(lerDadosLiga(liga.id, dir)).rejects.toBeInstanceOf(E);
+  });
+});
+
+describe("Fase 12+ — ratingMetadata completo round-trip", () => {
+  const fontes: RatingMetadata["source"][] = [
+    "sportmonks",
+    "hybrid",
+    "transfermarkt-estimated",
+    "generated",
+  ];
+
+  for (const source of fontes) {
+    it(`metadata ${source} serializa e hidrata completa`, () => {
+      const { carreira, catalogo } = exemploCarreira();
+      const j = carreira.clubes[0]!.elenco[0]!;
+      const meta: RatingMetadata = {
+        source,
+        confidence: "high",
+        minutes: 2500,
+        appearances: 30,
+        season: "2026",
+        sportmonksPlayerId: 12345,
+        matchConfidence: "exact",
+        estimatedAttributes: ["velocidade", "forca"],
+        coverageLevel: "A",
+      };
+      j.ratingMetadata = meta;
+      j.atributos = criarAtributosUniformes(70);
+      const h = hidratarCarreira(serializarCarreira(carreira), catalogo);
+      const j2 = h.clubes[0]!.elenco.find((x) => x.id === j.id)!;
+      expect(j2.ratingMetadata).toEqual(meta);
+    });
+  }
+
+  it("snapshot B não altera metadata A do save", () => {
+    const { carreira, catalogo } = exemploCarreira();
+    const j = carreira.clubes[0]!.elenco[0]!;
+    const metaA: RatingMetadata = {
+      source: "sportmonks",
+      confidence: "high",
+      minutes: 2500,
+      appearances: 30,
+      season: "A",
+      sportmonksPlayerId: 111,
+      matchConfidence: "exact",
+      estimatedAttributes: ["velocidade"],
+      coverageLevel: "A",
+    };
+    j.overall = 78;
+    j.atributos = criarAtributosUniformes(70);
+    j.atributos.finalizacao = 80;
+    j.ratingMetadata = metaA;
+    const save = serializarCarreira(carreira);
+    const catB = structuredClone(catalogo);
+    for (const c of catB.clubes)
+      for (const nj of c.elenco)
+        if (nj.id === j.id) {
+          nj.overall = 99;
+          nj.ratingMetadata = {
+            source: "hybrid",
+            confidence: "low",
+            minutes: 1,
+            appearances: 1,
+            season: "B",
+            sportmonksPlayerId: 999,
+            coverageLevel: "D",
+          };
+        }
+    const h = hidratarCarreira(save, catB);
+    const jh = h.clubes.flatMap((c) => c.elenco).find((x) => x.id === j.id)!;
+    expect(jh.overall).toBe(78);
+    expect(jh.atributos?.finalizacao).toBe(80);
+    expect(jh.ratingMetadata).toEqual(metaA);
+  });
+});
+
+describe("Fase 12+ — point-of-commit da release", () => {
+  it("falha no espelhamento legado após active.json NÃO remove release B", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "viztto-poc-"));
+    limpeza.push(dir);
+    const liga = LIGAS_SUPORTADAS[0]!;
+    const a = snapshotCompleto(liga.id, 2);
+    a.clubes[0]!.elenco[0]!.overall = 50;
+    const { releaseId: idA } = await publicarReleaseAtomica(
+      [{ ligaId: liga.id, dados: a }],
+      dir,
+    );
+    const b = snapshotCompleto(liga.id, 2);
+    b.clubes[0]!.elenco[0]!.overall = 91;
+    const { releaseId: idB, manifestoCommitado } = await publicarReleaseAtomica(
+      [{ ligaId: liga.id, dados: b }],
+      dir,
+      { falharEspelhamentoLegado: true },
+    );
+    expect(manifestoCommitado).toBe(true);
+    expect(idB).not.toBe(idA);
+    expect((await lerManifestoAtivo(dir))!.releaseId).toBe(idB);
+    expect((await lerDadosLiga(liga.id, dir))!.clubes[0]!.elenco[0]!.overall).toBe(
+      91,
+    );
+  });
+
+  it("falha antes do manifesto preserva A", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "viztto-pre-"));
+    limpeza.push(dir);
+    const liga = LIGAS_SUPORTADAS[0]!;
+    const a = snapshotCompleto(liga.id, 2);
+    a.clubes[0]!.elenco[0]!.overall = 40;
+    const { releaseId: idA } = await publicarReleaseAtomica(
+      [{ ligaId: liga.id, dados: a }],
+      dir,
+    );
+    await expect(
+      publicarReleaseAtomica(
+        [
+          {
+            ligaId: liga.id,
+            dados: {
+              ...snapshotCompleto(liga.id, 2),
+              ligaId: "!!!invalido!!!",
+            } as DadosLigaImportados,
+          },
+        ],
+        dir,
+      ),
+    ).rejects.toThrow();
+    expect((await lerManifestoAtivo(dir))!.releaseId).toBe(idA);
+    expect((await lerDadosLiga(liga.id, dir))!.clubes[0]!.elenco[0]!.overall).toBe(
+      40,
+    );
+  });
+});
+
+describe("Fase 12+ — clubes esperados e temporada SM", () => {
+  it("usa liga.quantidadeClubes por padrão", () => {
+    const bra = LIGAS_SUPORTADAS.find((l) => l.id === "brasileirao")!;
+    const cha = LIGAS_SUPORTADAS.find((l) => l.id === "championship")!;
+    const bun = LIGAS_SUPORTADAS.find((l) => l.id === "bundesliga")!;
+    expect(
+      validarPublicacaoLiga(bra, snapshotCompleto(bra.id, 20), null).ok,
+    ).toBe(true);
+    expect(
+      validarPublicacaoLiga(cha, snapshotCompleto(cha.id, 24), null).ok,
+    ).toBe(true);
+    expect(
+      validarPublicacaoLiga(bun, snapshotCompleto(bun.id, 18), null).ok,
+    ).toBe(true);
+    expect(
+      validarPublicacaoLiga(bra, snapshotCompleto(bra.id, 18), null).ok,
+    ).toBe(false);
+  });
+
+  it("override de temporada vence quantidade padrão", () => {
+    const bra = LIGAS_SUPORTADAS.find((l) => l.id === "brasileirao")!;
+    expect(
+      validarPublicacaoLiga(bra, snapshotCompleto(bra.id, 18), null, {
+        clubesEsperados: 18,
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("labels Sportmonks Brasil/Europa", () => {
+    expect(TEMPORADAS_INICIAIS.brasileirao!.temporadaSportmonks).toBe("2026");
+    expect(TEMPORADAS_INICIAIS.brasileirao!.temporadaTransfermarkt).toBe("2025");
+    expect(TEMPORADAS_INICIAIS["premier-league"]!.temporadaSportmonks).toBe(
+      "2026/2027",
+    );
+    expect(normalizarLabelTemporadaSportmonks("2026/27")).toBe("2026/2027");
+    expect(temporadaSportmonksCompativel("2026/27", "2026/2027")).toBe(true);
+    expect(temporadaSportmonksCompativel("2025", "2026")).toBe(false);
   });
 });

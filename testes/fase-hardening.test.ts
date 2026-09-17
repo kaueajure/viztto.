@@ -169,7 +169,10 @@ describe("Hardening — publicação atômica", () => {
   it("publica todas as ligas só no final", async () => {
     const dir = await mkdtemp(join(tmpdir(), "viztto-atom-ok-"));
     limpeza.push(dir);
-    const ligas = LIGAS_SUPORTADAS.slice(0, 2);
+    const ligas = LIGAS_SUPORTADAS.slice(0, 2).map((l) => ({
+      ...l,
+      quantidadeClubes: 2,
+    }));
     const r = await atualizarBaseFutebol({
       diretorio: dir,
       ligas,
@@ -245,7 +248,10 @@ describe("Hardening — publicação atômica", () => {
   it("falha na última liga não altera oficiais anteriores", async () => {
     const dir = await mkdtemp(join(tmpdir(), "viztto-atom-fail-"));
     limpeza.push(dir);
-    const ligas = LIGAS_SUPORTADAS.slice(0, 2);
+    const ligas = LIGAS_SUPORTADAS.slice(0, 2).map((l) => ({
+      ...l,
+      quantidadeClubes: 2,
+    }));
     await salvarOficial(dir, ligas[0]!.id, true);
     const antes = await readFile(join(dir, `${ligas[0]!.id}.json`), "utf8");
     let n = 0;
@@ -865,6 +871,28 @@ describe("Hardening — saúde / season / mapping Sportmonks", () => {
     expect(r.saude).toBe("critico");
   });
 
+  it("bootstrap A/B crítico (5%) NÃO publica e NÃO é sucesso", () => {
+    const r = avaliarSaudeEnriquecimento({
+      cobertura: "A",
+      metricas: metricasVazias({
+        timesEsperados: 20,
+        timesEncontrados: 2,
+        squadsSolicitados: 20,
+        squadsObtidos: 2,
+        jogadoresTm: 500,
+        matches: 25,
+        comStats: 25,
+        fallback: 475,
+      }),
+      taxaAtual: 0.05,
+      taxaAnterior: undefined,
+      anteriorEnriquecido: false,
+    });
+    expect(r.saude).toBe("critico");
+    expect(r.status).toBe("falha_critica");
+    expect(r.abortarPublicacao).toBe(true);
+  });
+
   it("cobertura D é fallback esperado, nunca aborta por métricas", () => {
     const r = avaliarSaudeEnriquecimento({
       cobertura: "D",
@@ -878,10 +906,12 @@ describe("Hardening — saúde / season / mapping Sportmonks", () => {
     expect(r.status).toBe("fallback_esperado");
   });
 
-  it("temporadaAnoCompativel aceita cruzamento europeu", () => {
-    expect(temporadaAnoCompativel("2025/2026", "2026")).toBe(true);
-    expect(temporadaAnoCompativel("2025", "2025")).toBe(true);
-    expect(temporadaAnoCompativel("2023", "2026")).toBe(false);
+  it("temporadaSportmonksCompativel: Europa normaliza; sem ±1", () => {
+    expect(temporadaAnoCompativel("2026/2027", "2026/2027")).toBe(true);
+    expect(temporadaAnoCompativel("2026/27", "2026/2027")).toBe(true);
+    expect(temporadaAnoCompativel("2025", "2026")).toBe(false);
+    expect(temporadaAnoCompativel("2025/2026", "2026/2027")).toBe(false);
+    expect(temporadaAnoCompativel("2027/2028", "2026/2027")).toBe(false);
   });
 
   it("mapping automático stale se ID ausente dos candidatos atuais", () => {

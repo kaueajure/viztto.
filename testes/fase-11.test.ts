@@ -543,7 +543,7 @@ describe("Enriquecimento + snapshots + atomicidade", () => {
   it("atualizar-base publica após enrichment mock", async () => {
     const dir = await mkdtemp(join(tmpdir(), "viztto-f11-upd-"));
     limpeza.push(dir);
-    const liga = LIGAS_SUPORTADAS[0]!;
+    const liga = { ...LIGAS_SUPORTADAS[0]!, quantidadeClubes: 2 };
     const agora = new Date().toISOString();
     const clubeFactory = (n: number): Clube =>
       ({

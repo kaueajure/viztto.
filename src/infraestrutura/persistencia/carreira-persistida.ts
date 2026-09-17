@@ -9,6 +9,7 @@ import type {
 } from "@/dominio/entidades/modelos";
 import { FORMACOES } from "@/dominio/formacao";
 import { NOMES_ATRIBUTOS } from "@/dominio/entidades/modelos";
+import { esquemaRatingMetadata, normalizarRatingMetadata } from "@/dominio/rating-metadata";
 import { prepararClubesParaMundo } from "@/dominio/mundo-futebol";
 import { esquemaCarreira, validarSave } from "./validar-save";
 import { migrarMercadoPersistido } from "./migrar-mercado";
@@ -61,20 +62,6 @@ const esquemaAtributosNpc = z
       Object.keys(NOMES_ATRIBUTOS).map((chave) => [chave, nivel]),
     ) as Record<keyof typeof NOMES_ATRIBUTOS, typeof nivel>,
   )
-  .strict();
-const esquemaRatingMetadata = z
-  .object({
-    source: z.enum([
-      "sportmonks",
-      "hybrid",
-      "transfermarkt-estimated",
-      "generated",
-    ]),
-    confidence: z.enum(["high", "medium", "low"]),
-    minutes: numero.optional(),
-    appearances: numero.optional(),
-    season: z.string().max(40).optional(),
-  })
   .strict();
 // Identidade de NPC gerado pertence ao save, não ao catálogo. Prefixo reservado evita
 // transformar um jogador Transfermarkt ausente em gerado como fallback silencioso.
@@ -440,7 +427,12 @@ export function serializarCarreira(
         overall: j.overall,
         potencial: j.potencial,
         ...(j.atributos ? { atributos: j.atributos } : {}),
-        ...(j.ratingMetadata ? { ratingMetadata: j.ratingMetadata } : {}),
+        ...(j.ratingMetadata
+          ? {
+              ratingMetadata:
+                normalizarRatingMetadata(j.ratingMetadata) ?? undefined,
+            }
+          : {}),
         forma: j.forma,
         moral: j.moral,
         condicionamento: j.condicionamento,

@@ -5,28 +5,16 @@ import { mapearPosicaoPrincipal } from "@/dominio/jogador-mundo";
 import { GeradorAleatorio, gerarSeedNumerica } from "@/utilitarios/aleatorio";
 import { limitar } from "@/utilitarios/formatacao";
 import type { NivelCoberturaSportmonks } from "@/dominio/constantes/sportmonks-ligas";
+import type {
+  ConfiancaRating,
+  FonteRating,
+  RatingMetadata,
+} from "@/dominio/rating-metadata";
+
+export type { ConfiancaRating, FonteRating, RatingMetadata };
+export { esquemaRatingMetadata, normalizarRatingMetadata } from "@/dominio/rating-metadata";
 
 const LISTA_ATRIBUTOS = Object.keys(NOMES_ATRIBUTOS) as Atributo[];
-
-export type FonteRating =
-  | "sportmonks"
-  | "hybrid"
-  | "transfermarkt-estimated"
-  | "generated";
-
-export type ConfiancaRating = "high" | "medium" | "low";
-
-export interface RatingMetadata {
-  source: FonteRating;
-  confidence: ConfiancaRating;
-  minutes: number;
-  appearances: number;
-  season: string;
-  sportmonksPlayerId?: number;
-  matchConfidence?: string;
-  estimatedAttributes?: Atributo[];
-  coverageLevel?: NivelCoberturaSportmonks;
-}
 
 /** Stats normalizadas (por 90 quando aplicável). Ausentes = undefined. */
 export interface StatsSportmonksNormalizadas {

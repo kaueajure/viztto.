@@ -179,7 +179,8 @@ export function avaliarSaudeEnriquecimento(entrada: {
     };
   }
 
-  if (cobreAb && coberturaCritica && entrada.anteriorEnriquecido) {
+  // A/B crítico: NUNCA publicar — inclusive no primeiro bootstrap.
+  if (cobreAb && coberturaCritica) {
     return {
       saude: "critico",
       coverageHealth,
@@ -189,16 +190,34 @@ export function avaliarSaudeEnriquecimento(entrada: {
     };
   }
 
-  if (coberturaCritica || (cobreAb && coberturaFraca && entrada.anteriorEnriquecido)) {
+  // Bootstrap A/B degradado (não crítico): publica com warning.
+  if (cobreAb && coberturaFraca && !entrada.anteriorEnriquecido) {
     return {
-      saude: coberturaCritica ? "critico" : "degradado",
+      saude: "degradado",
       coverageHealth,
-      status: coberturaCritica ? "falha_critica" : "degradado",
-      // Sem base anterior rica: degrada mas não aborta (permite bootstrap).
+      status: "degradado",
       abortarPublicacao: false,
-      motivo: coberturaCritica
-        ? "métricas Sportmonks críticas"
-        : "métricas Sportmonks abaixo do esperado para cobertura A/B",
+      motivo: "bootstrap A/B com enrichment parcial — publicação degradada",
+    };
+  }
+
+  if (coberturaFraca && entrada.anteriorEnriquecido && cobreAb) {
+    return {
+      saude: "degradado",
+      coverageHealth,
+      status: "degradado",
+      abortarPublicacao: false,
+      motivo: "métricas Sportmonks abaixo do esperado para cobertura A/B",
+    };
+  }
+
+  if (entrada.cobertura === "C" && coberturaCritica) {
+    return {
+      saude: "degradado",
+      coverageHealth,
+      status: "degradado",
+      abortarPublicacao: false,
+      motivo: "cobertura C crítica tolerada",
     };
   }
 

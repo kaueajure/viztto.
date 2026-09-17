@@ -1,5 +1,6 @@
 import type { PerfilFormacao, PreparacaoJogador, AcompanhamentoCarreira } from "../desenvolvimento";
 import type { MercadoCarreira, TermosContrato } from "../mercado";
+import type { RatingMetadata } from "@/dominio/rating-metadata";
 export type Posicao =
   "GOL" | "LD" | "ZAG" | "LE" | "VOL" | "MC" | "MEI" | "PD" | "PE" | "CA";
 export type FocoTreino =
@@ -92,13 +93,8 @@ export interface JogadorMundo {
   potencial: number;
   /** Atributos detalhados do Rating Engine (opcional; saves antigos sem isso). */
   atributos?: Atributos;
-  ratingMetadata?: {
-    source: string;
-    confidence: string;
-    minutes?: number;
-    appearances?: number;
-    season?: string;
-  };
+  /** Metadata unificada (Rating Engine / snapshot / save). */
+  ratingMetadata?: RatingMetadata;
   forma: number;
   moral: number;
   condicionamento: number;

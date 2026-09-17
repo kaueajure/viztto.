@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "formatar": "prettier --write \"src/**/*.{ts,tsx,css}\" \"testes/**/*.ts\"",
+    "benchmark:save": "tsx --conditions=react-server scripts/benchmark-save.ts",
     "atualizar-dados-futebol": "bash scripts/atualizar-dados-futebol.sh",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file-if-exists=.env --conditions=react-server scripts/db.mjs migrate",

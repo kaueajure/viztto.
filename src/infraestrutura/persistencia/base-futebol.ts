@@ -86,12 +86,13 @@ export function validarPublicacaoLiga(
       motivo: `Cobertura incompleta: ${base.clubes.length}/${base.progresso.total} clubes.`,
     };
 
-  const cal = TEMPORADAS_INICIAIS[liga.id] as
-    | { clubesEsperados?: number }
-    | undefined;
-  const esperados = opcoes?.clubesEsperados ?? cal?.clubesEsperados;
+  const cal = TEMPORADAS_INICIAIS[liga.id];
+  const esperados =
+    opcoes?.clubesEsperados ??
+    cal?.clubesEsperados ??
+    liga.quantidadeClubes;
 
-  if (esperados != null && base.clubes.length !== esperados)
+  if (base.clubes.length !== esperados)
     return {
       ok: false,
       motivo: `Esperados ${esperados} clubes, obtidos ${base.clubes.length}.`,
@@ -99,7 +100,8 @@ export function validarPublicacaoLiga(
 
   if (anteriorOficial) {
     const prev = clubesProntosParaJogo(anteriorOficial).length;
-    if (base.clubes.length < prev && esperados == null)
+    // Com esperados explícitos, mudança consciente de formato já foi validada acima.
+    if (base.clubes.length < prev && opcoes?.clubesEsperados == null && cal?.clubesEsperados == null)
       return {
         ok: false,
         motivo: `Regressão de cobertura: oficial tinha ${prev} clubes, novo tem ${base.clubes.length}.`,

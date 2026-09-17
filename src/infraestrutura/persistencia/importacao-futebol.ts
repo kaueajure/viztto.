@@ -106,25 +106,109 @@ export async function lerManifestoAtivo(
 }
 
 /**
+ * Publica release completa: escreve todos os JSON em releases/<id>/,
+ * valida, depois troca UM active.json atomicamente.
+ *
+ * POINT OF COMMIT = rename do active.json.
+ * Antes: falha remove a release candidata; antiga permanece ativa.
+ * Depois: espelhamento legado e limpeza são best-effort — nunca apagam a release ativa.
+ */
+export async function publicarReleaseAtomica(
+  candidatos: Array<{ ligaId: string; dados: DadosLigaImportados }>,
+  destinoRaiz: string,
+  opcoes?: {
+    /** Hook de teste: falha o espelhamento legado após o commit. */
+    falharEspelhamentoLegado?: boolean;
+  },
+): Promise<{ releaseId: string; manifestoCommitado: boolean }> {
+  const releaseId = `r-${Date.now()}-${randomUUID().slice(0, 8)}`;
+  const releaseDir = caminhoRelease(releaseId, destinoRaiz);
+  await mkdir(releaseDir, { recursive: true });
+  let manifestoCommitado = false;
+
+  try {
+    for (const c of candidatos) {
+      await salvarDadosLiga(c.dados, releaseDir);
+      const lido = await lerDadosLigaEmDiretorio(c.ligaId, releaseDir);
+      if (!lido)
+        throw new Error(`Release inválida após escrita: ${c.ligaId}`);
+    }
+
+    const manifesto: ManifestoAtivo = {
+      versao: 1,
+      releaseId,
+      atualizadoEm: new Date().toISOString(),
+      ligas: candidatos.map((c) => c.ligaId),
+    };
+    const manifestoPath = caminhoManifestoAtivo(destinoRaiz);
+    const tmp = join(destinoRaiz, `active-${randomUUID()}.tmp`);
+    await mkdir(destinoRaiz, { recursive: true });
+    await writeFile(tmp, JSON.stringify(manifesto, null, 2), "utf8");
+    await rename(tmp, manifestoPath);
+    manifestoCommitado = true;
+  } catch (erro) {
+    if (!manifestoCommitado) {
+      await rm(releaseDir, { recursive: true, force: true }).catch(
+        () => undefined,
+      );
+    }
+    throw erro;
+  }
+
+  try {
+    if (opcoes?.falharEspelhamentoLegado)
+      throw new Error("falha simulada no espelhamento legado");
+    for (const c of candidatos) {
+      await salvarDadosLiga(c.dados, destinoRaiz);
+    }
+  } catch (erro) {
+    console.warn(
+      `[viztto] Espelhamento legado falhou após commit da release ${releaseId}:`,
+      erro instanceof Error ? erro.message : erro,
+    );
+  }
+
+  try {
+    await limparReleasesAntigas(destinoRaiz, 2);
+  } catch (erro) {
+    console.warn(
+      `[viztto] Limpeza de releases antigas falhou após commit ${releaseId}:`,
+      erro instanceof Error ? erro.message : erro,
+    );
+  }
+
+  return { releaseId, manifestoCommitado };
+}
+
+export class ErroReleaseInvalida extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ErroReleaseInvalida";
+  }
+}
+
+/**
  * Resolve o diretório de leitura da liga:
- * 1) release apontada por active.json (se existir e válida);
- * 2) layout legado plano `diretorio/<liga>.json`.
+ * - sem active.json / manifesto corrompido → layout legado;
+ * - active.json válido → SOMENTE a release ativa (sem mistura com legado).
  */
 export async function resolverDiretorioLeituraLiga(
   ligaId: string,
   diretorio = diretorioBase,
 ): Promise<string> {
   const ativo = await lerManifestoAtivo(diretorio);
-  if (ativo) {
-    const releaseDir = caminhoRelease(ativo.releaseId, diretorio);
-    try {
-      await readFile(caminhoArquivo(ligaId, releaseDir));
-      return releaseDir;
-    } catch {
-      /* release quebrada → legado */
-    }
+  if (!ativo) return diretorio;
+
+  const releaseDir = caminhoRelease(ativo.releaseId, diretorio);
+  // Manifesto válido: nunca mistura com legado.
+  try {
+    await readFile(caminhoArquivo(ligaId, releaseDir));
+    return releaseDir;
+  } catch {
+    throw new ErroReleaseInvalida(
+      `Release ativa "${ativo.releaseId}" não contém a liga "${ligaId}". Layout legado NÃO será usado.`,
+    );
   }
-  return diretorio;
 }
 
 export async function lerDadosLiga(
@@ -138,6 +222,7 @@ export async function lerDadosLiga(
       JSON.parse(bruto),
     ) as DadosLigaImportados;
   } catch (erro) {
+    if (erro instanceof ErroReleaseInvalida) throw erro;
     if (
       erro instanceof SyntaxError ||
       (erro instanceof Error && erro.name === "ZodError") ||
@@ -179,56 +264,6 @@ export async function salvarDadosLiga(
   const temporario = join(diretorio, `${validado.ligaId}-${randomUUID()}.tmp`);
   await writeFile(temporario, JSON.stringify(validado, null, 2), "utf8");
   await rename(temporario, destino);
-}
-
-/**
- * Publica release completa: escreve todos os JSON em releases/<id>/,
- * valida, depois troca UM active.json atomicamente.
- * Morte do processo antes da troca do manifesto → release antiga permanece ativa.
- */
-export async function publicarReleaseAtomica(
-  candidatos: Array<{ ligaId: string; dados: DadosLigaImportados }>,
-  destinoRaiz: string,
-): Promise<{ releaseId: string }> {
-  const releaseId = `r-${Date.now()}-${randomUUID().slice(0, 8)}`;
-  const releaseDir = caminhoRelease(releaseId, destinoRaiz);
-  await mkdir(releaseDir, { recursive: true });
-
-  try {
-    for (const c of candidatos) {
-      await salvarDadosLiga(c.dados, releaseDir);
-      const lido = await lerDadosLigaEmDiretorio(c.ligaId, releaseDir);
-      if (!lido)
-        throw new Error(`Release inválida após escrita: ${c.ligaId}`);
-    }
-
-    const manifesto: ManifestoAtivo = {
-      versao: 1,
-      releaseId,
-      atualizadoEm: new Date().toISOString(),
-      ligas: candidatos.map((c) => c.ligaId),
-    };
-    const manifestoPath = caminhoManifestoAtivo(destinoRaiz);
-    const tmp = join(
-      destinoRaiz,
-      `active-${randomUUID()}.tmp`,
-    );
-    await mkdir(destinoRaiz, { recursive: true });
-    await writeFile(tmp, JSON.stringify(manifesto, null, 2), "utf8");
-    // Troca única atômica do ponteiro — até aqui a release antiga (ou legado) permanece.
-    await rename(tmp, manifestoPath);
-
-    // Espelha no layout legado para ferramentas/inspeção (não é a fonte de verdade).
-    for (const c of candidatos) {
-      await salvarDadosLiga(c.dados, destinoRaiz);
-    }
-
-    await limparReleasesAntigas(destinoRaiz, 2);
-    return { releaseId };
-  } catch (erro) {
-    await rm(releaseDir, { recursive: true, force: true }).catch(() => undefined);
-    throw erro;
-  }
 }
 
 /** Mantém a release ativa + a anterior; remove o resto. */
