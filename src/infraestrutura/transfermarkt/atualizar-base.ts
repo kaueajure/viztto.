@@ -1,20 +1,23 @@
 import "server-only";
-import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
 import { LIGAS_SUPORTADAS } from "@/dominio/constantes/ligas";
 import { TEMPORADAS_INICIAIS } from "@/dominio/constantes/temporadas-iniciais";
 import type { Liga } from "@/dominio/entidades/modelos";
-import { validarDisponibilidadeLiga } from "@/infraestrutura/persistencia/base-futebol";
+import { validarPublicacaoLiga } from "@/infraestrutura/persistencia/base-futebol";
 import {
+  clubesProntosParaJogo,
   lerDadosLiga,
+  lerDadosLigaEmDiretorio,
   salvarDadosLiga,
   obterDiretorioImportacao,
+  publicarReleaseAtomica,
   type DadosLigaImportados,
 } from "@/infraestrutura/persistencia/importacao-futebol";
 import {
   enriquecerLigaComSportmonks,
   snapshotEstavaEnriquecido,
+  taxaEnriquecimento,
   type RelatorioMatchingLiga,
   type StatusEnriquecimento,
 } from "@/infraestrutura/sportmonks/enriquecer-liga";
@@ -43,6 +46,7 @@ export interface ResumoAtualizacaoLiga {
     ambiguous: number;
     requests: number;
     cobertura: string;
+    saude?: string;
   };
 }
 
@@ -62,53 +66,13 @@ interface CandidatoStaging {
   item: ResumoAtualizacaoLiga;
 }
 
-/**
- * Publica o lote de staging → destino de forma controlada.
- * Escreve todos os .tmp primeiro; só então renomeia. Em falha no meio dos renames,
- * tenta rollback dos já publicados a partir do backup em `rollbackDir`.
- */
+/** @deprecated Preferir publicarReleaseAtomica — mantido para testes unitários do rename. */
 export async function publicarLoteAtomico(
   candidatos: Array<{ ligaId: string; dados: DadosLigaImportados }>,
   destino: string,
-  rollbackDir: string,
+  _rollbackDir?: string,
 ): Promise<void> {
-  await mkdir(destino, { recursive: true });
-  await mkdir(rollbackDir, { recursive: true });
-  const preparados: Array<{ ligaId: string; tmp: string; final: string; backup?: string }> =
-    [];
-
-  for (const c of candidatos) {
-    const anterior = await lerDadosLiga(c.ligaId, destino);
-    if (anterior) {
-      await salvarDadosLiga(anterior, rollbackDir);
-    }
-    const final = join(destino, `${c.ligaId}.json`);
-    const tmp = join(destino, `${c.ligaId}-${randomUUID()}.tmp`);
-    await writeFile(tmp, JSON.stringify(c.dados, null, 2), "utf8");
-    preparados.push({
-      ligaId: c.ligaId,
-      tmp,
-      final,
-      backup: anterior ? join(rollbackDir, `${c.ligaId}.json`) : undefined,
-    });
-  }
-
-  const publicados: typeof preparados = [];
-  try {
-    for (const p of preparados) {
-      await rename(p.tmp, p.final);
-      publicados.push(p);
-    }
-  } catch (erro) {
-    for (const p of publicados.reverse()) {
-      if (p.backup) await rename(p.backup, p.final);
-      else await rm(p.final, { force: true });
-    }
-    for (const p of preparados) {
-      await rm(p.tmp, { force: true }).catch(() => undefined);
-    }
-    throw erro;
-  }
+  await publicarReleaseAtomica(candidatos, destino);
 }
 
 function classificarLote(
@@ -134,7 +98,6 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
   const destino = opcoes.diretorio ?? obterDiretorioImportacao();
   await mkdir(join(destino, ".staging"), { recursive: true });
   const staging = await mkdtemp(join(destino, ".staging", "atualizacao-"));
-  const rollbackDir = await mkdtemp(join(destino, ".staging", "rollback-"));
   const importar = opcoes.importar ?? importarLiga;
   const enriquecer = opcoes.enriquecer ?? enriquecerLigaComSportmonks;
   const informar = opcoes.informar ?? console.log;
@@ -147,7 +110,7 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
   let motivoAbort = "";
 
   informar(
-    "════════════════════════════════════════\nVIZTTO — ATUALIZAÇÃO DA BASE DE FUTEBOL\nTransfermarkt + Sportmonks (enrichment)\nLote atômico: nada oficial até validar tudo\n════════════════════════════════════════",
+    "════════════════════════════════════════\nVIZTTO — ATUALIZAÇÃO DA BASE DE FUTEBOL\nTransfermarkt + Sportmonks (enrichment)\nRelease atômica: ponteiro active.json\n════════════════════════════════════════",
   );
 
   for (const [indice, liga] of ligas.entries()) {
@@ -179,7 +142,7 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
         },
       });
       item.falhas = resultado.erros;
-      const candidato = await lerDadosLiga(liga.id, staging);
+      const candidato = await lerDadosLigaEmDiretorio(liga.id, staging);
       if (!candidato)
         throw new Error("Snapshot de staging não encontrado após importação.");
 
@@ -192,6 +155,7 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
         exigirToken: opcoes.exigirSportmonks,
         temporadaLabel,
         anteriorEnriquecido: snapshotEstavaEnriquecido(anteriorOficial?.clubes),
+        taxaEnriquecimentoAnterior: taxaEnriquecimento(anteriorOficial?.clubes),
       });
       relatoriosMatching.push(enriquecido.relatorio);
       item.statusEnriquecimento = enriquecido.status;
@@ -201,6 +165,7 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
         ambiguous: enriquecido.relatorio.ambiguous.length,
         requests: enriquecido.relatorio.requests,
         cobertura: enriquecido.relatorio.cobertura,
+        saude: enriquecido.relatorio.saude,
       };
 
       if (enriquecido.abortarPublicacao) {
@@ -215,30 +180,37 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
       }
 
       candidato.clubes = enriquecido.clubes;
-      const validado = validarDisponibilidadeLiga(liga, candidato);
-      if (!validado)
-        throw new Error(
-          resultado.motivoInterrupcao ??
-            "Snapshot sem pelo menos dois clubes válidos ou com edição/status incompatível.",
-        );
-      validado.progresso = {
+      candidato.progresso = {
         total: resultado.progresso.total,
-        importados: validado.clubes.length,
+        importados: clubesProntosParaJogo(candidato).length,
         falhas: resultado.erros.length,
         clubeAtual: null,
       };
-      // Persiste apenas no staging — oficial intacto até o lote fechar.
-      await salvarDadosLiga(validado, staging);
+      // Ajusta status bruto antes do gate de publicação.
+      if (
+        resultado.erros.length === 0 &&
+        candidato.progresso.importados === candidato.progresso.total
+      )
+        candidato.status = "completo";
+      else candidato.status = "parcial";
+
+      await salvarDadosLiga(candidato, staging);
+      const pub = validarPublicacaoLiga(liga, candidato, anteriorOficial, {
+        clubesEsperados: TEMPORADAS_INICIAIS[liga.id]?.clubesEsperados,
+      });
+      if (!pub.ok || !pub.dados)
+        throw new Error(pub.motivo ?? "Snapshot não elegível para publicação oficial.");
+
       item.prontoEmStaging = true;
       item.total = resultado.progresso.total;
-      item.clubes = validado.clubes.length;
-      item.jogadores = validado.clubes.reduce(
+      item.clubes = pub.dados.clubes.length;
+      item.jogadores = pub.dados.clubes.reduce(
         (total, clube) => total + clube.elenco.length,
         0,
       );
-      prontos.push({ liga, dados: validado, item });
+      prontos.push({ liga, dados: pub.dados, item });
       informar(
-        `${item.falhas.length ? "⚠" : "✓"} ${liga.nome}: staging OK · ${item.clubes}/${item.total} clubes · ${item.statusEnriquecimento ?? "ok"}`,
+        `✓ ${liga.nome}: staging OK · ${item.clubes}/${item.total} clubes · ${item.statusEnriquecimento ?? "ok"}`,
       );
     } catch (erro) {
       abortarTudo = true;
@@ -268,20 +240,21 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
   let publicou = false;
   if (!abortarTudo && prontos.length === ligas.length) {
     try {
-      informar(`\nPublicando lote atômico (${prontos.length} ligas)…`);
-      await publicarLoteAtomico(
+      informar(
+        `\nPublicando release atômica (${prontos.length} ligas) via active.json…`,
+      );
+      const { releaseId } = await publicarReleaseAtomica(
         prontos.map((p) => ({ ligaId: p.liga.id, dados: p.dados })),
         destino,
-        rollbackDir,
       );
       publicou = true;
       for (const p of prontos) p.item.publicado = true;
-      informar("✓ Lote publicado. Base oficial atualizada.");
+      informar(`✓ Release ${releaseId} ativa. Base oficial atualizada.`);
     } catch (erro) {
       abortarTudo = true;
       motivoAbort =
         erro instanceof Error ? erro.message : "Falha na publicação atômica.";
-      informar(`✗ Publicação abortada/revertida: ${motivoAbort}`);
+      informar(`✗ Publicação abortada (release anterior intacta): ${motivoAbort}`);
     }
   } else {
     informar(
@@ -299,17 +272,30 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
           geradoEm: new Date().toISOString(),
           statusLote: classificarLote(resumo, abortarTudo, publicou),
           motivoAbort: motivoAbort || null,
-          ligas: relatoriosMatching.map((r) => ({
-            ligaId: r.ligaId,
-            cobertura: r.cobertura,
-            total: r.total,
-            matched: r.matched.length,
-            unmatched: r.unmatched.length,
-            ambiguous: r.ambiguous.length,
-            requests: r.requests,
-            amostrasUnmatched: r.unmatched.slice(0, 20),
-            amostrasAmbiguous: r.ambiguous.slice(0, 20),
-          })),
+          ligas: relatoriosMatching.map((r) => {
+            const item = resumo.find((l) => l.ligaId === r.ligaId);
+            return {
+              ligaId: r.ligaId,
+              cobertura: r.cobertura,
+              total: r.total,
+              matched: r.matched.length,
+              unmatched: r.unmatched.length,
+              ambiguous: r.ambiguous.length,
+              requests: r.requests,
+              saude: r.saude,
+              motivoSaude: r.motivoSaude,
+              metricas: r.metricas,
+              coverageHealth: r.coverageHealth,
+              seasonId: r.seasonId,
+              seasonStrategy: r.seasonStrategy,
+              seasonMetodo: r.seasonMetodo,
+              mappingsStale: r.mappingsStale,
+              publicado: item?.publicado ?? false,
+              motivoBloqueio: item?.erro ?? null,
+              amostrasUnmatched: r.unmatched.slice(0, 20),
+              amostrasAmbiguous: r.ambiguous.slice(0, 20),
+            };
+          }),
         },
         null,
         2,
@@ -347,7 +333,6 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
   );
   if (publicou && !abortarTudo) {
     await rm(staging, { recursive: true, force: true });
-    await rm(rollbackDir, { recursive: true, force: true });
   } else {
     informar(`Diagnóstico: staging=${staging}`);
   }

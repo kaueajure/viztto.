@@ -140,10 +140,11 @@ export function CentralSemana({ carreira: c }: { carreira: EstadoCarreira }) {
   const clube = livre
     ? undefined
     : c.clubes.find((cl) => cl.id === c.clubeAtualId);
-  const partidas =
-    categoriaPartidaDaSemana(c) === "base"
-      ? c.temporada.partidasBase
-      : c.temporada.partidas;
+  const categoriaPartida = categoriaPartidaDaSemana(c);
+  const jogaBaseNestaSemana = categoriaPartida === "base";
+  const partidas = jogaBaseNestaSemana
+    ? c.temporada.partidasBase
+    : c.temporada.partidas;
   const proxima =
     clube &&
     partidas.find(

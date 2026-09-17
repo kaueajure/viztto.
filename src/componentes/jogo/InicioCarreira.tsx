@@ -31,12 +31,16 @@ export function InicioCarreira({
 }) {
   const j = c.jogador,
     livre = estaSemClube(c),
-    base = categoriaPartidaDaSemana(c) === "base",
+    ehDaBase = j.categoria === "base",
+    categoriaPartida = categoriaPartidaDaSemana(c),
+    jogaBaseNestaSemana = categoriaPartida === "base",
     clube = livre
       ? undefined
       : c.clubes.find((cl) => cl.id === c.clubeAtualId);
   const ultimoClube = c.clubes.find((cl) => cl.id === c.ultimoClubeId);
-  const partidas = base ? c.temporada.partidasBase : c.temporada.partidas,
+  const partidas = jogaBaseNestaSemana
+      ? c.temporada.partidasBase
+      : c.temporada.partidas,
     proxima =
       !livre && clube
         ? partidas.find(
@@ -47,7 +51,7 @@ export function InicioCarreira({
         : undefined;
   const mandante = c.clubes.find((cl) => cl.id === proxima?.mandanteId),
     visitante = c.clubes.find((cl) => cl.id === proxima?.visitanteId);
-  const tabela = base
+  const tabela = jogaBaseNestaSemana
       ? c.temporada.classificacaoBase
       : c.temporada.classificacao,
     indice = clube
@@ -92,7 +96,7 @@ export function InicioCarreira({
           <p className="sobretitulo">
             {livre
               ? "AGENTE LIVRE"
-              : base
+              : ehDaBase
                 ? "DESENVOLVIMENTO / BASE"
                 : "CENTRAL DA CARREIRA"}
           </p>
@@ -124,7 +128,7 @@ export function InicioCarreira({
           <div className="campo-miniatura" aria-hidden="true" />
           <p className="competicao-proxima">
             {c.liga.nome}
-            {base ? " / Sub-20" : ""}
+            {jogaBaseNestaSemana ? " / Sub-20" : ""}
           </p>
           {livre ? (
             <div className="fim-temporada">
@@ -144,13 +148,13 @@ export function InicioCarreira({
                 <div>
                   <Escudo clube={mandante} tamanho={76} />
                   <h2 title={mandante.nome}>{mandante.nome}</h2>
-                  {base && <span>SUB-20</span>}
+                  {jogaBaseNestaSemana && <span>SUB-20</span>}
                 </div>
                 <b>VS</b>
                 <div>
                   <Escudo clube={visitante} tamanho={76} />
                   <h2 title={visitante.nome}>{visitante.nome}</h2>
-                  {base && <span>SUB-20</span>}
+                  {jogaBaseNestaSemana && <span>SUB-20</span>}
                 </div>
               </div>
               <p className="local-partida">
@@ -228,7 +232,7 @@ export function InicioCarreira({
             <span className="rotulo">
               {livre
                 ? "AGENTE LIVRE"
-                : base
+                : ehDaBase
                   ? "PROMESSA DA BASE"
                   : "SEU JOGADOR"}
             </span>
@@ -314,7 +318,7 @@ export function InicioCarreira({
           <p className="texto-suave avaliacao">
             {livre
               ? "“Você está no mercado. Cada semana sem clube conta — mantenha o ritmo e pressione o agente.”"
-              : base
+              : ehDaBase
                 ? "“Busque regularidade. A comissão acompanha sua evolução antes de decidir pela promoção.”"
                 : "“Seu lugar no time é conquistado a cada semana.”"}
           </p>

@@ -4,7 +4,13 @@
  */
 export const TEMPORADAS_INICIAIS: Record<
   string,
-  { ano: number; inicio: string; temporadaTransfermarkt: string }
+  {
+    ano: number;
+    inicio: string;
+    temporadaTransfermarkt: string;
+    /** Se definido, publicação exige exatamente este número de clubes. */
+    clubesEsperados?: number;
+  }
 > = {
   brasileirao: {
     ano: 2026,

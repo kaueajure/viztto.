@@ -3,6 +3,14 @@ import type { Liga } from "@/dominio/entidades/modelos";
 /** Nível de cobertura Sportmonks por competição. */
 export type NivelCoberturaSportmonks = "A" | "B" | "C" | "D";
 
+/**
+ * Como resolver a temporada Sportmonks.
+ * - preferido: exige seasonIdPreferido (sem fallback silencioso)
+ * - busca: preferido se houver, senão /seasons/search — nunca currentSeason
+ * - current: só quando configurado conscientemente; currentSeason é último recurso
+ */
+export type EstrategiaTemporadaSportmonks = "preferido" | "busca" | "current";
+
 export interface MapeamentoSportmonksLiga {
   ligaId: string;
   /** ID da liga no Sportmonks Football API v3. */
@@ -14,6 +22,8 @@ export interface MapeamentoSportmonksLiga {
   nomeTemporadaBusca: string | null;
   /** Season ID conhecido (opcional; se null, resolve via busca). */
   seasonIdPreferido: number | null;
+  /** Estratégia de resolução — Brasil/Europa usam "busca" por padrão. */
+  seasonStrategy: EstrategiaTemporadaSportmonks;
   cobertura: NivelCoberturaSportmonks;
   notas?: string;
 }
@@ -29,6 +39,7 @@ export const SPORTMONKS_LIGAS: Record<string, MapeamentoSportmonksLiga> = {
     idSportmonks: 648,
     nomeTemporadaBusca: "Brasileirão",
     seasonIdPreferido: null,
+    seasonStrategy: "busca",
     cobertura: "A",
     notas: "Stats individuais tipicamente ricos na Série A.",
   },
@@ -37,6 +48,7 @@ export const SPORTMONKS_LIGAS: Record<string, MapeamentoSportmonksLiga> = {
     idSportmonks: 651,
     nomeTemporadaBusca: "Brasil Serie B",
     seasonIdPreferido: null,
+    seasonStrategy: "busca",
     cobertura: "B",
   },
   "brasileirao-c": {
@@ -44,6 +56,7 @@ export const SPORTMONKS_LIGAS: Record<string, MapeamentoSportmonksLiga> = {
     idSportmonks: null,
     nomeTemporadaBusca: null,
     seasonIdPreferido: null,
+    seasonStrategy: "busca",
     cobertura: "D",
     notas: "Cobertura individual limitada/ausente; usar fallback Transfermarkt.",
   },
@@ -52,6 +65,7 @@ export const SPORTMONKS_LIGAS: Record<string, MapeamentoSportmonksLiga> = {
     idSportmonks: 8,
     nomeTemporadaBusca: "Premier League",
     seasonIdPreferido: null,
+    seasonStrategy: "busca",
     cobertura: "A",
   },
   championship: {
@@ -59,6 +73,7 @@ export const SPORTMONKS_LIGAS: Record<string, MapeamentoSportmonksLiga> = {
     idSportmonks: 9,
     nomeTemporadaBusca: "Championship",
     seasonIdPreferido: null,
+    seasonStrategy: "busca",
     cobertura: "A",
   },
   "la-liga": {
@@ -66,6 +81,7 @@ export const SPORTMONKS_LIGAS: Record<string, MapeamentoSportmonksLiga> = {
     idSportmonks: 564,
     nomeTemporadaBusca: "La Liga",
     seasonIdPreferido: null,
+    seasonStrategy: "busca",
     cobertura: "A",
   },
   "la-liga-2": {
@@ -73,6 +89,7 @@ export const SPORTMONKS_LIGAS: Record<string, MapeamentoSportmonksLiga> = {
     idSportmonks: 567,
     nomeTemporadaBusca: "La Liga 2",
     seasonIdPreferido: null,
+    seasonStrategy: "busca",
     cobertura: "B",
   },
   "serie-a": {
@@ -80,6 +97,7 @@ export const SPORTMONKS_LIGAS: Record<string, MapeamentoSportmonksLiga> = {
     idSportmonks: 384,
     nomeTemporadaBusca: "Serie A",
     seasonIdPreferido: null,
+    seasonStrategy: "busca",
     cobertura: "A",
   },
   "serie-b": {
@@ -87,6 +105,7 @@ export const SPORTMONKS_LIGAS: Record<string, MapeamentoSportmonksLiga> = {
     idSportmonks: 387,
     nomeTemporadaBusca: "Serie B",
     seasonIdPreferido: null,
+    seasonStrategy: "busca",
     cobertura: "B",
   },
   bundesliga: {
@@ -94,6 +113,7 @@ export const SPORTMONKS_LIGAS: Record<string, MapeamentoSportmonksLiga> = {
     idSportmonks: 82,
     nomeTemporadaBusca: "Bundesliga",
     seasonIdPreferido: null,
+    seasonStrategy: "busca",
     cobertura: "A",
   },
   "bundesliga-2": {
@@ -101,6 +121,7 @@ export const SPORTMONKS_LIGAS: Record<string, MapeamentoSportmonksLiga> = {
     idSportmonks: 85,
     nomeTemporadaBusca: "2. Bundesliga",
     seasonIdPreferido: null,
+    seasonStrategy: "busca",
     cobertura: "B",
   },
   "ligue-1": {
@@ -108,6 +129,7 @@ export const SPORTMONKS_LIGAS: Record<string, MapeamentoSportmonksLiga> = {
     idSportmonks: 301,
     nomeTemporadaBusca: "Ligue 1",
     seasonIdPreferido: null,
+    seasonStrategy: "busca",
     cobertura: "A",
   },
   "ligue-2": {
@@ -115,6 +137,7 @@ export const SPORTMONKS_LIGAS: Record<string, MapeamentoSportmonksLiga> = {
     idSportmonks: 304,
     nomeTemporadaBusca: "Ligue 2",
     seasonIdPreferido: null,
+    seasonStrategy: "busca",
     cobertura: "B",
   },
 };
@@ -126,6 +149,7 @@ export function mapeamentoSportmonks(liga: Pick<Liga, "id">): MapeamentoSportmon
       idSportmonks: null,
       nomeTemporadaBusca: null,
       seasonIdPreferido: null,
+      seasonStrategy: "busca",
       cobertura: "D",
       notas: "Liga sem mapeamento Sportmonks.",
     }

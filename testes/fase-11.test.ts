@@ -112,6 +112,12 @@ describe("Sportmonks — configuração de ligas", () => {
     }
     expect(SPORTMONKS_LIGAS["brasileirao-c"]!.cobertura).toBe("D");
     expect(SPORTMONKS_LIGAS.brasileirao!.cobertura).toBe("A");
+    expect(SPORTMONKS_LIGAS.brasileirao!.seasonStrategy).toBe("busca");
+    expect(SPORTMONKS_LIGAS["premier-league"]!.seasonStrategy).toBe("busca");
+    // currentSeason só quando configurado conscientemente — default é busca.
+    for (const m of Object.values(SPORTMONKS_LIGAS)) {
+      expect(m.seasonStrategy).not.toBe("current");
+    }
   });
 });
 

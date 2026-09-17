@@ -241,13 +241,21 @@ describe("atualização segura", () => {
     expect(resumo.ligas.every((l) => !l.publicado)).toBe(true);
     expect(await lerDadosLiga(liga.id)).toEqual(anterior);
   });
-  it("não publica staging inválido e remove falhos do resultado parcial", async () => {
+  it("não publica snapshot parcial (falhas de clube) — oficiais intactos", async () => {
+    const anterior = snapshot();
+    await salvarDadosLiga(anterior);
     const importar: typeof importarLiga = async (l, opcoes) => {
       const dados = snapshot(l);
       dados.status = "parcial";
       dados.erros = [
         { clubeId: dados.clubes[0]!.id, nome: "Falhou", motivo: "Falha" },
       ];
+      dados.progresso = {
+        total: 3,
+        importados: 2,
+        falhas: 1,
+        clubeAtual: null,
+      };
       await salvarDadosLiga(dados, opcoes?.diretorio);
       return {
         ...dados,
@@ -261,8 +269,9 @@ describe("atualização segura", () => {
       informar: () => {},
     });
     expect(resumo.temFalhas).toBe(true);
-    expect(resumo.ligas[0]!.publicado).toBe(true);
-    expect((await lerDadosLiga(liga.id))!.clubes).toHaveLength(2);
+    expect(resumo.ligas[0]!.publicado).toBe(false);
+    expect(resumo.publicou).toBe(false);
+    expect(await lerDadosLiga(liga.id)).toEqual(anterior);
   });
   it("processa todas as 13 ligas por padrão sem acessar a rede", async () => {
     const ordem: string[] = [];

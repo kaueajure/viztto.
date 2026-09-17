@@ -144,24 +144,34 @@ function pesosSetor(posicao: Posicao): {
   return { ataque: 0.12, meio: 0.16, defesa: 0.24 }; // laterais
 }
 
+export type ParceiroSlot = {
+  overall: number;
+  atributos?: Atributos;
+  posicao?: Posicao;
+};
+
 /**
  * Contribuição setorial ponderada por minutos no slot.
- * Titular A 60' + reserva B 30' ≈ A*(60/90) + B*(30/90).
+ * slot = titular*(minutosTitular/90) + substituto*(minutosSubstituto/90)
  *
- * `substituido`: jogador NPC que saiu (overall/attrs); se omitido no banco,
- * usa a média do setor do clube como proxy do titular removido.
+ * `parceiroNoSlot`:
+ * - titular que sai cedo → reserva entrante (via aproximarReservaEntrante);
+ * - reserva que entra → titular substituído (via aproximarTitularSubstituido);
+ * - omitido → proxy `clube.forcaGeral`.
+ *
+ * Baseline embutida na força do clube: overall do usuário (titular) ou do
+ * parceiro (banco). Evita double-counting: só um parceiro por ajuste.
  */
 export function ajustarClubePeloJogador(
   clube: Clube,
   jogador: Jogador,
   minutos: number,
   jaNaEscalacao: boolean,
-  substituido?: { overall: number; atributos?: Atributos; posicao?: Posicao } | null,
+  parceiroNoSlot?: ParceiroSlot | null,
 ): Clube {
   if (minutos <= 0 && !jaNaEscalacao) return clube;
 
   const prop = limitar(minutos / 90, 0, 1);
-  const propRestante = 1 - prop;
   const fator = fatorEstadoJogador(jogador);
   const q = qualidadeSetorialJogador(jogador);
   const pesos = pesosSetor(jogador.posicao);
@@ -170,39 +180,49 @@ export function ajustarClubePeloJogador(
   const defesaUser = q.defesa * fator;
   const refUser = jogador.overall * fator;
 
-  let dAtaque: number;
-  let dMeio: number;
-  let dDefesa: number;
+  const { ataque, meio, defesa, overall } = resolverContribuicaoSlot(
+    { ataque: ataqueUser, meio: meioUser, defesa: defesaUser },
+    prop,
+    parceiroNoSlot,
+    jogador.posicao,
+    clube.forcaGeral,
+  );
 
-  if (jaNaEscalacao) {
-    // Já embutido com overall×90': troca por qualidade×minutos (tempo fora sai do slot).
-    dAtaque = (ataqueUser * prop - refUser) * pesos.ataque;
-    dMeio = (meioUser * prop - refUser) * pesos.meio;
-    dDefesa = (defesaUser * prop - refUser) * pesos.defesa;
-  } else {
-    // Banco: força ainda contém o titular substituído por 90'.
-    // Slot efetivo = substituído*(1-prop) + usuário*prop.
-    const ovSub = substituido?.overall ?? clube.forcaGeral;
-    const qSub = substituido?.atributos
-      ? qualidadeSetorialDeAtributos(
-          substituido.atributos,
-          substituido.posicao ?? jogador.posicao,
-          ovSub,
-        )
-      : { ataque: ovSub, meio: ovSub, defesa: ovSub };
-    const ataqueSlot = qSub.ataque * propRestante + ataqueUser * prop;
-    const meioSlot = qSub.meio * propRestante + meioUser * prop;
-    const defesaSlot = qSub.defesa * propRestante + defesaUser * prop;
-    dAtaque = (ataqueSlot - ovSub) * pesos.ataque;
-    dMeio = (meioSlot - ovSub) * pesos.meio;
-    dDefesa = (defesaSlot - ovSub) * pesos.defesa;
-  }
+  // Titular: clube já embute overall×90' do usuário.
+  // Banco: clube ainda embute o titular substituído (parceiro) por 90'.
+  const baseline = jaNaEscalacao ? refUser : overall;
 
   return {
     ...clube,
-    forcaAtaque: limitar(clube.forcaAtaque + dAtaque, 35, 99),
-    forcaMeio: limitar(clube.forcaMeio + dMeio, 35, 99),
-    forcaDefesa: limitar(clube.forcaDefesa + dDefesa, 35, 99),
+    forcaAtaque: limitar(clube.forcaAtaque + (ataque - baseline) * pesos.ataque, 35, 99),
+    forcaMeio: limitar(clube.forcaMeio + (meio - baseline) * pesos.meio, 35, 99),
+    forcaDefesa: limitar(clube.forcaDefesa + (defesa - baseline) * pesos.defesa, 35, 99),
+  };
+}
+
+/** Slot efetivo = user*prop + parceiro*(1-prop). */
+export function resolverContribuicaoSlot(
+  user: { ataque: number; meio: number; defesa: number },
+  propMinutos: number,
+  parceiro: ParceiroSlot | null | undefined,
+  posicaoFallback: Posicao,
+  ovFallback: number,
+): { ataque: number; meio: number; defesa: number; overall: number } {
+  const prop = limitar(propMinutos, 0, 1);
+  const resto = 1 - prop;
+  const ovParceiro = parceiro?.overall ?? ovFallback;
+  const qParceiro = parceiro?.atributos
+    ? qualidadeSetorialDeAtributos(
+        parceiro.atributos,
+        parceiro.posicao ?? posicaoFallback,
+        ovParceiro,
+      )
+    : { ataque: ovParceiro, meio: ovParceiro, defesa: ovParceiro };
+  return {
+    ataque: user.ataque * prop + qParceiro.ataque * resto,
+    meio: user.meio * prop + qParceiro.meio * resto,
+    defesa: user.defesa * prop + qParceiro.defesa * resto,
+    overall: ovParceiro,
   };
 }
 
@@ -222,7 +242,7 @@ function qualidadeSetorialDeAtributos(
 export function aproximarTitularSubstituido(
   clube: Clube,
   posicao: Posicao,
-): { overall: number; atributos?: Atributos; posicao?: Posicao } | null {
+): ParceiroSlot | null {
   const ids = [
     ...(clube.goleiroTitularId ? [clube.goleiroTitularId] : []),
     ...clube.titularesIds,
@@ -236,6 +256,32 @@ export function aproximarTitularSubstituido(
     (j) => j!.posicaoPrincipal === posicao || j!.posicoesSecundarias.includes(posicao),
   );
   const escolhido = (mesmoGrupo[0] ?? candidatos[0])!;
+  return {
+    overall: escolhido.overall,
+    atributos: escolhido.atributos,
+    posicao: escolhido.posicaoPrincipal,
+  };
+}
+
+/**
+ * NPC reserva plausível para cobrir o slot quando o usuário (titular) sai.
+ * Ordem determinística: principal → secundária → resto do banco.
+ */
+export function aproximarReservaEntrante(
+  clube: Clube,
+  posicao: Posicao,
+): ParceiroSlot | null {
+  const ids = (clube.bancoIds ?? []).filter((id) => id !== "usuario");
+  const elenco = clube.elenco;
+  const candidatos = ids
+    .map((id) => elenco.find((j) => j.id === id))
+    .filter(Boolean);
+  if (!candidatos.length) return null;
+  const principal = candidatos.filter((j) => j!.posicaoPrincipal === posicao);
+  const secundaria = candidatos.filter((j) =>
+    j!.posicoesSecundarias.includes(posicao),
+  );
+  const escolhido = (principal[0] ?? secundaria[0] ?? candidatos[0])!;
   return {
     overall: escolhido.overall,
     atributos: escolhido.atributos,
@@ -422,15 +468,19 @@ export function simularPartida(
     const jaNaEscalacao =
       clube.titularesIds.includes("usuario") ||
       clube.goleiroTitularId === "usuario";
-    const substituido = !jaNaEscalacao
-      ? aproximarTitularSubstituido(clube, jogador.posicao)
-      : null;
+    // Titular que sai cedo: reserva cobre o resto. Banco: titular que saiu.
+    // Nunca ambos — evita double-counting no slot.
+    const parceiroNoSlot = jaNaEscalacao
+      ? minutos < 90
+        ? aproximarReservaEntrante(clube, jogador.posicao)
+        : null
+      : aproximarTitularSubstituido(clube, jogador.posicao);
     const clubeAjustado = ajustarClubePeloJogador(
       clube,
       jogador,
       minutos,
       jaNaEscalacao,
-      substituido,
+      parceiroNoSlot,
     );
     if (clubeJogadorId === mandante.id) mandanteEfetivo = clubeAjustado;
     else visitanteEfetivo = clubeAjustado;

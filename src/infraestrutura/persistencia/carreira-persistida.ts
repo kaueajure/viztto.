@@ -8,6 +8,7 @@ import type {
   Liga,
 } from "@/dominio/entidades/modelos";
 import { FORMACOES } from "@/dominio/formacao";
+import { NOMES_ATRIBUTOS } from "@/dominio/entidades/modelos";
 import { prepararClubesParaMundo } from "@/dominio/mundo-futebol";
 import { esquemaCarreira, validarSave } from "./validar-save";
 import { migrarMercadoPersistido } from "./migrar-mercado";
@@ -53,6 +54,28 @@ const posicao = z.enum([
   "PE",
   "CA",
 ]);
+/** Atributos do Rating Engine — causais na simulação; opcionais p/ saves legados. */
+const esquemaAtributosNpc = z
+  .object(
+    Object.fromEntries(
+      Object.keys(NOMES_ATRIBUTOS).map((chave) => [chave, nivel]),
+    ) as Record<keyof typeof NOMES_ATRIBUTOS, typeof nivel>,
+  )
+  .strict();
+const esquemaRatingMetadata = z
+  .object({
+    source: z.enum([
+      "sportmonks",
+      "hybrid",
+      "transfermarkt-estimated",
+      "generated",
+    ]),
+    confidence: z.enum(["high", "medium", "low"]),
+    minutes: numero.optional(),
+    appearances: numero.optional(),
+    season: z.string().max(40).optional(),
+  })
+  .strict();
 // Identidade de NPC gerado pertence ao save, não ao catálogo. Prefixo reservado evita
 // transformar um jogador Transfermarkt ausente em gerado como fallback silencioso.
 const esquemaIdentidadeGerada = z
@@ -83,6 +106,9 @@ export const esquemaNpcDinamico = z
     idade: numero.int().min(0).max(150),
     overall: nivel,
     potencial: nivel,
+    /** Congela atributos da carreira; ausência = fallback do catálogo na 1ª hidratação. */
+    atributos: esquemaAtributosNpc.optional(),
+    ratingMetadata: esquemaRatingMetadata.optional(),
     forma: nivel,
     moral: nivel,
     condicionamento: nivel,
@@ -413,6 +439,8 @@ export function serializarCarreira(
         idade: j.idade,
         overall: j.overall,
         potencial: j.potencial,
+        ...(j.atributos ? { atributos: j.atributos } : {}),
+        ...(j.ratingMetadata ? { ratingMetadata: j.ratingMetadata } : {}),
         forma: j.forma,
         moral: j.moral,
         condicionamento: j.condicionamento,
@@ -471,6 +499,8 @@ export function hidratarCarreira(
       if (vistos.has(j.id) || j.clubeId !== delta.id)
         throw new Error("Vínculo de jogador inválido.");
       vistos.add(j.id);
+      // Delta do save sobrescreve o catálogo. Atributos ausentes no save legado
+      // caem no catálogo só nesta hidratação; o próximo serialize congela.
       return { ...cadastro, ...j };
     });
     return { ...base, ...delta, elenco, tamanhoElenco: elenco.length };

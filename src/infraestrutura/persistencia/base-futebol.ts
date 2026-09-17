@@ -9,7 +9,7 @@ import {
   type DadosLigaImportados,
 } from "./importacao-futebol";
 
-/** Política única para leitura pública e publicação da base oficial. */
+/** Política para leitura pública (aceita parcial utilizável). */
 export function validarDisponibilidadeLiga(
   liga: Liga,
   dados: DadosLigaImportados | null,
@@ -36,6 +36,79 @@ export function validarDisponibilidadeLiga(
       : "parcial";
   return { ...dados, clubes, status } as DadosLigaImportados & {
     status: "completo" | "parcial";
+  };
+}
+
+export interface ResultadoValidacaoPublicacao {
+  ok: boolean;
+  motivo?: string;
+  dados?: DadosLigaImportados & { status: "completo" };
+}
+
+/**
+ * Gate estrito para SUBSTITUIR snapshot oficial.
+ * Parcial / regressão de clubes NÃO publica.
+ */
+export function validarPublicacaoLiga(
+  liga: Liga,
+  candidato: DadosLigaImportados | null,
+  anteriorOficial: DadosLigaImportados | null,
+  opcoes?: {
+    /** Quantidade esperada consciente (mudança de formato entre temporadas). */
+    clubesEsperados?: number;
+  },
+): ResultadoValidacaoPublicacao {
+  const base = validarDisponibilidadeLiga(liga, candidato);
+  if (!base)
+    return { ok: false, motivo: "Snapshot inválido para o calendário da liga." };
+
+  if (base.status !== "completo")
+    return {
+      ok: false,
+      motivo: `Snapshot parcial (${base.clubes.length}/${base.progresso.total}) não substitui base oficial.`,
+    };
+
+  if (base.erros.length > 0)
+    return {
+      ok: false,
+      motivo: `${base.erros.length} clube(s) com falha — publicação oficial bloqueada.`,
+    };
+
+  if (base.progresso.falhas > 0)
+    return {
+      ok: false,
+      motivo: `Progresso com ${base.progresso.falhas} falha(s) — publicação bloqueada.`,
+    };
+
+  if (base.clubes.length !== base.progresso.total)
+    return {
+      ok: false,
+      motivo: `Cobertura incompleta: ${base.clubes.length}/${base.progresso.total} clubes.`,
+    };
+
+  const cal = TEMPORADAS_INICIAIS[liga.id] as
+    | { clubesEsperados?: number }
+    | undefined;
+  const esperados = opcoes?.clubesEsperados ?? cal?.clubesEsperados;
+
+  if (esperados != null && base.clubes.length !== esperados)
+    return {
+      ok: false,
+      motivo: `Esperados ${esperados} clubes, obtidos ${base.clubes.length}.`,
+    };
+
+  if (anteriorOficial) {
+    const prev = clubesProntosParaJogo(anteriorOficial).length;
+    if (base.clubes.length < prev && esperados == null)
+      return {
+        ok: false,
+        motivo: `Regressão de cobertura: oficial tinha ${prev} clubes, novo tem ${base.clubes.length}.`,
+      };
+  }
+
+  return {
+    ok: true,
+    dados: { ...base, status: "completo" },
   };
 }
 
