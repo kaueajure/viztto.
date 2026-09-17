@@ -17,7 +17,7 @@ jobs:
   validate:
     name: Barreira obrigatória de validação
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
 
     steps:
       - uses: actions/checkout@v4
@@ -34,13 +34,32 @@ jobs:
       - name: Instalar dependências
         run: npm ci
 
-      # Ordem coerente: qualquer falha aqui impede o deploy.
+      # Ordem: build uma vez → E2E contra next start. Falha E2E bloqueia deploy.
       - run: npm run snapshots:check-git
       - run: npm run typecheck
       - run: npm test
-      # Provisiona .venv-ratings na primeira execução; nada é instalado globalmente.
       - run: npm run test:ratings
       - run: npm run build
+
+      - name: Instalar Chromium (Playwright)
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E (produção local)
+        run: npm run test:e2e
+        env:
+          CI: true
+
+      - name: Upload artefatos Playwright (falha)
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-failure
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
 
   deploy:
     name: Deploy to viztto.site

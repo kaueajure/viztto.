@@ -27,7 +27,7 @@ export function FaixaAtencao({ carreira: c }: { carreira: EstadoCarreira }) {
   const extras = Math.max(0, acoes.length - 1);
   const [painel, definirPainel] = useState<Painel>(null);
   const tituloId = useId();
-  useFocoModal(!!painel, () => definirPainel(null));
+  useFocoModal(!!painel, () => definirPainel(null), painel ?? "fechado");
 
   if (!principal) return null;
 

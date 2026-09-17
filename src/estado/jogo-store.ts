@@ -526,7 +526,11 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
 }
 export const useJogoStore = criarJogoStore();
 
-if (typeof window !== "undefined") {
+/** Exposição só em desenvolvimento — nunca em build de produção. */
+if (
+  typeof window !== "undefined" &&
+  process.env.NODE_ENV !== "production"
+) {
   (
     window as unknown as { __VZ_JOGO__?: typeof useJogoStore }
   ).__VZ_JOGO__ = useJogoStore;

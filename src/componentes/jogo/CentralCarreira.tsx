@@ -1,6 +1,6 @@
 "use client";
 import { useFocoModal } from "@/componentes/interface/useFocoModal";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -70,11 +70,6 @@ function rotuloAvancarSemana(
 }
 
 export function CentralCarreira({ secao = "" }: { secao?: string }) {
-  if (typeof window !== "undefined") {
-    (
-      window as unknown as { __VZ_JOGO__?: typeof useJogoStore }
-    ).__VZ_JOGO__ = useJogoStore;
-  }
   const {
       carreira: c,
       hidratado,
@@ -90,11 +85,6 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
       excluir,
     } = useJogoStore(),
     roteador = useRouter();
-  useEffect(() => {
-    (
-      window as unknown as { __VZ_JOGO__?: typeof useJogoStore }
-    ).__VZ_JOGO__ = useJogoStore;
-  }, []);
   const [menu, definirMenu] = useState(false),
     [configuracoes, definirConfiguracoes] = useState(false),
     [confirmacao, definirConfirmacao] = useState<
@@ -310,6 +300,7 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
             <button
               type="button"
               className="vz-cta-semana vz-cta-desktop"
+              data-testid="advance-week"
               onClick={avancarTempo}
               disabled={ocupado || !!c.aposentado}
             >
@@ -367,6 +358,7 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
           <button
             type="button"
             className="vz-cta-semana vz-cta-mobile"
+            data-testid="advance-week-mobile"
             onClick={avancarTempo}
             disabled={ocupado || !!c.aposentado}
           >

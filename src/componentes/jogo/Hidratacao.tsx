@@ -4,9 +4,6 @@ import { useJogoStore } from "@/estado/jogo-store";
 
 export function Hidratacao() {
   useEffect(() => {
-    (
-      window as unknown as { __VZ_JOGO__?: typeof useJogoStore }
-    ).__VZ_JOGO__ = useJogoStore;
     void useJogoStore.getState().carregar();
     const antesDeSair = (evento: BeforeUnloadEvent) => {
       const estado = useJogoStore.getState();

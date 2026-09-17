@@ -47,7 +47,7 @@ export function InicioCarreira({
   return (
     <div className="vz-home">
       <FaixaAtencao carreira={c} />
-      <div className="vz-home-grid">
+      <div className="vz-home-grid" data-testid="home-dashboard">
         <HeroJogador carreira={c} />
         <CardMeuClube carreira={c} linha={linha} />
         <CardProximoJogo

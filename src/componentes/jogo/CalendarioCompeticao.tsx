@@ -1,7 +1,7 @@
 "use client";
 import { formatarTemporada } from "@/dominio/constantes/temporadas-iniciais";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { EstadoCarreira, Temporada } from "@/dominio/entidades/modelos";
 import { TabelaLiga } from "@/componentes/partida/TabelaLiga";
 import { Escudo } from "@/componentes/clube/Escudo";
@@ -29,23 +29,36 @@ export function CalendarioCompeticao({
   const ligaSel = c.ligas.find((l) => l.id === ligaId) ?? c.liga;
   const ehMinhaLiga = ligaSel.id === c.liga.id;
 
-  const temporada: Temporada = useMemo(() => {
+  /** Liga externa sem temporada: nunca cair na temporada da liga atual. */
+  const temporada: Temporada | null = useMemo(() => {
     if (ehMinhaLiga) return c.temporada;
-    return c.temporadasExternas[ligaSel.id] ?? c.temporada;
+    return c.temporadasExternas[ligaSel.id] ?? null;
   }, [c.temporada, c.temporadasExternas, ehMinhaLiga, ligaSel.id]);
+
+  useEffect(() => {
+    if (!temporada) return;
+    definirRodada((r) => Math.min(Math.max(1, r), temporada.totalRodadas));
+  }, [temporada]);
 
   const temBase =
     ehMinhaLiga &&
+    !!temporada &&
     temporada.partidasBase.length > 0 &&
     temporada.classificacaoBase.length > 0;
 
-  const categoriaEfetiva =
-    !temBase || categoria !== "base" ? "profissional" : "base";
+  const categoriaEfetiva: "profissional" | "base" =
+    temBase && categoria === "base" ? "base" : "profissional";
 
   const partidas =
-      categoriaEfetiva === "base" ? temporada.partidasBase : temporada.partidas,
-    tabela =
-      categoriaEfetiva === "base"
+    temporada == null
+      ? []
+      : categoriaEfetiva === "base"
+        ? temporada.partidasBase
+        : temporada.partidas;
+  const tabela =
+    temporada == null
+      ? []
+      : categoriaEfetiva === "base"
         ? temporada.classificacaoBase
         : temporada.classificacao;
 
@@ -53,11 +66,11 @@ export function CalendarioCompeticao({
 
   if (secao === "calendario") {
     const partidasCal =
-      c.jogador.categoria === "base" && c.temporada.partidasBase.length
+      categoria === "base" && c.temporada.partidasBase.length > 0
         ? c.temporada.partidasBase
         : c.temporada.partidas;
     return (
-      <div className="vz-pagina">
+      <div className="vz-pagina" data-testid="pagina-calendario">
         <header className="vz-page-head linha-titulo">
           <div>
             <p className="vz-card-sub">
@@ -67,14 +80,18 @@ export function CalendarioCompeticao({
           </div>
           <div className="alternador">
             <button
+              type="button"
               className={categoria === "profissional" ? "ativo" : ""}
+              aria-pressed={categoria === "profissional"}
               onClick={() => definirCategoria("profissional")}
             >
               Profissional
             </button>
             {c.temporada.partidasBase.length > 0 && (
               <button
+                type="button"
                 className={categoria === "base" ? "ativo" : ""}
+                aria-pressed={categoria === "base"}
                 onClick={() => definirCategoria("base")}
               >
                 Base
@@ -88,7 +105,7 @@ export function CalendarioCompeticao({
             <label className="seletor-rodada">
               Rodada
               <select
-                value={rodada}
+                value={Math.min(rodada, c.temporada.totalRodadas)}
                 onChange={(e) => definirRodada(Number(e.target.value))}
               >
                 {Array.from({ length: c.temporada.totalRodadas }, (_, i) => (
@@ -101,12 +118,8 @@ export function CalendarioCompeticao({
           </div>
           <ListaJogos
             carreira={c}
-            partidas={
-              categoria === "base" && c.temporada.partidasBase.length
-                ? c.temporada.partidasBase
-                : partidasCal
-            }
-            rodada={rodada}
+            partidas={partidasCal}
+            rodada={Math.min(rodada, c.temporada.totalRodadas)}
           />
         </section>
       </div>
@@ -114,7 +127,7 @@ export function CalendarioCompeticao({
   }
 
   return (
-    <div className="vz-pagina">
+    <div className="vz-pagina" data-testid="pagina-mundo">
       <header className="vz-page-head">
         <p className="vz-card-sub">COMPETIÇÕES</p>
         <h1>Mundo do futebol</h1>
@@ -128,6 +141,7 @@ export function CalendarioCompeticao({
               definirCategoria("profissional");
             }}
             aria-label="Selecionar competição"
+            data-testid="mundo-liga-select"
           >
             {c.ligas.map((l) => (
               <option key={l.id} value={l.id}>
@@ -137,109 +151,127 @@ export function CalendarioCompeticao({
             ))}
           </select>
         </label>
-        <p className="texto-suave">
-          {formatarTemporada(ligaSel.id, temporada.ano)}
-          {ehMinhaLiga ? " · Sua competição" : " · Liga externa"}
-        </p>
+        {temporada && (
+          <p className="texto-suave">
+            {formatarTemporada(ligaSel.id, temporada.ano)}
+            {ehMinhaLiga ? " · Sua competição" : " · Liga externa"}
+          </p>
+        )}
       </header>
 
-      {temBase && (
-        <div className="alternador espaco">
-          <button
-            className={categoriaEfetiva === "profissional" ? "ativo" : ""}
-            onClick={() => definirCategoria("profissional")}
-          >
-            Profissional
-          </button>
-          <button
-            className={categoriaEfetiva === "base" ? "ativo" : ""}
-            onClick={() => definirCategoria("base")}
-          >
-            Base
-          </button>
-        </div>
-      )}
-
-      <nav className="vz-subnav" aria-label="Mundo do futebol">
-        {(
-          [
-            ["classificacao", "Classificação"],
-            ["resultados", "Resultados"],
-            ["clubes", "Clubes"],
-          ] as const
-        ).map(([id, nome]) => (
-          <button
-            key={id}
-            type="button"
-            className={aba === id ? "ativo" : ""}
-            onClick={() => definirAba(id)}
-          >
-            {nome}
-          </button>
-        ))}
-        {ehMinhaLiga && (
-          <Link href="/carreira/calendario" className="vz-subnav-link">
-            Calendário completo →
-          </Link>
-        )}
-      </nav>
-
-      {aba === "classificacao" && (
-        <section className="painel">
-          <TabelaLiga
-            linhas={tabela}
-            clubes={clubesLiga}
-            clubeAtualId={ehMinhaLiga ? c.clubeAtualId : null}
-          />
+      {!temporada ? (
+        <section className="painel" role="status" data-testid="mundo-indisponivel">
+          <p className="vz-empty-title">Dados indisponíveis</p>
+          <p className="vz-empty">
+            Dados desta competição não estão disponíveis nesta carreira.
+          </p>
         </section>
-      )}
-
-      {aba === "resultados" && (
-        <section className="painel">
-          <div className="linha-titulo">
-            <h2>Rodada</h2>
-            <label className="seletor-rodada">
-              <select
-                value={Math.min(rodada, temporada.totalRodadas)}
-                onChange={(e) => definirRodada(Number(e.target.value))}
+      ) : (
+        <>
+          {temBase && (
+            <div className="alternador espaco">
+              <button
+                type="button"
+                className={categoriaEfetiva === "profissional" ? "ativo" : ""}
+                aria-pressed={categoriaEfetiva === "profissional"}
+                onClick={() => definirCategoria("profissional")}
               >
-                {Array.from({ length: temporada.totalRodadas }, (_, i) => (
-                  <option value={i + 1} key={i}>
-                    {String(i + 1).padStart(2, "0")}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <ListaJogos
-            carreira={c}
-            partidas={partidas}
-            rodada={Math.min(rodada, temporada.totalRodadas)}
-          />
-        </section>
-      )}
+                Profissional
+              </button>
+              <button
+                type="button"
+                className={categoriaEfetiva === "base" ? "ativo" : ""}
+                aria-pressed={categoriaEfetiva === "base"}
+                onClick={() => definirCategoria("base")}
+              >
+                Base
+              </button>
+            </div>
+          )}
 
-      {aba === "clubes" && (
-        <section className="painel">
-          <ul className="vz-lista-clubes">
-            {clubesLiga.map((cl) => {
-              const pos = tabela.find((l) => l.clubeId === cl.id);
-              return (
-                <li key={cl.id}>
-                  <Escudo clube={cl} tamanho={28} />
-                  <div>
-                    <b>{cl.nome}</b>
-                    <span>{cl.estadio}</span>
-                  </div>
-                  <span className="vz-lista-meta">
-                    Força {cl.forcaGeral}
-                    {pos ? ` · ${pos.posicao}º` : ""}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
+          <nav className="vz-subnav" aria-label="Mundo do futebol">
+            {(
+              [
+                ["classificacao", "Classificação"],
+                ["resultados", "Resultados"],
+                ["clubes", "Clubes"],
+              ] as const
+            ).map(([id, nome]) => (
+              <button
+                key={id}
+                type="button"
+                className={aba === id ? "ativo" : ""}
+                onClick={() => definirAba(id)}
+              >
+                {nome}
+              </button>
+            ))}
+            {ehMinhaLiga && (
+              <Link href="/carreira/calendario" className="vz-subnav-link">
+                Calendário completo →
+              </Link>
+            )}
+          </nav>
+
+          {aba === "classificacao" && (
+            <section className="painel">
+              <TabelaLiga
+                linhas={tabela}
+                clubes={clubesLiga}
+                clubeAtualId={ehMinhaLiga ? c.clubeAtualId : null}
+              />
+            </section>
+          )}
+
+          {aba === "resultados" && (
+            <section className="painel">
+              <div className="linha-titulo">
+                <h2>Rodada</h2>
+                <label className="seletor-rodada">
+                  <select
+                    value={Math.min(rodada, temporada.totalRodadas)}
+                    onChange={(e) => definirRodada(Number(e.target.value))}
+                    data-testid="mundo-rodada"
+                  >
+                    {Array.from({ length: temporada.totalRodadas }, (_, i) => (
+                      <option value={i + 1} key={i}>
+                        {String(i + 1).padStart(2, "0")}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <ListaJogos
+                carreira={c}
+                partidas={partidas}
+                rodada={Math.min(rodada, temporada.totalRodadas)}
+              />
+            </section>
+          )}
+
+          {aba === "clubes" && (
+            <section className="painel">
+              <ul className="vz-lista-clubes">
+                {clubesLiga.map((cl) => {
+                  const pos = tabela.find((l) => l.clubeId === cl.id);
+                  return (
+                    <li key={cl.id}>
+                      <Escudo clube={cl} tamanho={28} />
+                      <div>
+                        <b>{cl.nome}</b>
+                        <span>{cl.estadio}</span>
+                      </div>
+                      <span className="vz-lista-meta">
+                        Força {cl.forcaGeral}
+                        {pos ? ` · ${pos.posicao}º` : ""}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
+        </>
       )}
     </div>
   );
@@ -258,7 +290,7 @@ function ListaJogos({
   if (jogos.length === 0)
     return <p className="vz-empty">Nenhum jogo nesta rodada.</p>;
   return (
-    <ul className="lista-jogos">
+    <ul className="lista-jogos" data-testid="lista-jogos">
       {jogos.map((p) => {
         const m = c.clubes.find((cl) => cl.id === p.mandanteId);
         const v = c.clubes.find((cl) => cl.id === p.visitanteId);
@@ -268,7 +300,7 @@ function ListaJogos({
             ? `${p.golsMandante} × ${p.golsVisitante}`
             : "×";
         return (
-          <li key={p.id}>
+          <li key={p.id} data-partida-id={p.id}>
             <time>{formatarData(p.data)}</time>
             <Escudo clube={m} tamanho={24} />
             <span>{m.codigo}</span>

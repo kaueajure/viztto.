@@ -62,6 +62,7 @@ export function CriacaoCarreira() {
     [carregandoLigas, definirCarregandoLigas] = useState(true),
     [confirmando, definirConfirmando] = useState(false),
     [tentativa, definirTentativa] = useState(0),
+    [tentativaLigas, definirTentativaLigas] = useState(0),
     [substituir, definirSubstituir] = useState(false),
     [buscaClube, definirBuscaClube] = useState(""),
     [errosCampo, definirErrosCampo] = useState<Partial<Record<string, string>>>({}),
@@ -135,6 +136,8 @@ export function CriacaoCarreira() {
 
   useEffect(() => {
     const controle = new AbortController();
+    definirCarregandoLigas(true);
+    definirErroLigas(null);
     (async () => {
       try {
         const resposta = await fetch("/api/futebol/ligas", {
@@ -143,7 +146,10 @@ export function CriacaoCarreira() {
         if (!resposta.ok)
           throw new Error("Não foi possível carregar as ligas disponíveis.");
         const dados = esquemaLigasDisponiveis.parse(await resposta.json());
-        if (!controle.signal.aborted) definirLigas(dados.ligas);
+        if (!controle.signal.aborted) {
+          definirLigas(dados.ligas);
+          definirErroLigas(null);
+        }
       } catch (falha) {
         if (!controle.signal.aborted)
           definirErroLigas(
@@ -156,11 +162,15 @@ export function CriacaoCarreira() {
       }
     })();
     return () => controle.abort();
-  }, []);
+  }, [tentativaLigas]);
+
+  useEffect(() => {
+    definirClube("");
+    definirBuscaClube("");
+  }, [ligaId]);
 
   useEffect(() => {
     const controle = new AbortController();
-    definirClube("");
     definirClubes([]);
     definirInicio("");
     definirAviso(null);
@@ -170,7 +180,6 @@ export function CriacaoCarreira() {
     }
     definirCarregando(true);
     definirErroClubes(null);
-    definirBuscaClube("");
     (async () => {
       try {
         const resposta = await fetch(
@@ -195,6 +204,7 @@ export function CriacaoCarreira() {
           definirClubes(dados.clubes as Clube[]);
           definirInicio(dados.inicio);
           definirAviso(dados.aviso);
+          definirErroClubes(null);
         }
       } catch (falha) {
         if (!controle.signal.aborted)
@@ -441,7 +451,12 @@ export function CriacaoCarreira() {
                   max={40}
                   value={identidade.idade}
                   onChange={(e) => alterar("idade", Number(e.target.value))}
+                  onBlur={() => tocar("idade")}
+                  aria-invalid={!!(tocados.idade && errosCampo.idade)}
                 />
+                {tocados.idade && errosCampo.idade && (
+                  <span className="vz-campo-erro">{errosCampo.idade}</span>
+                )}
               </label>
               <div className="vz-segmented" role="group" aria-label="Pé dominante">
                 {(
@@ -497,6 +512,11 @@ export function CriacaoCarreira() {
                     </div>
                   </div>
                 ))}
+                {errosCampo.posicao && (
+                  <span className="vz-campo-erro" role="alert">
+                    {errosCampo.posicao}
+                  </span>
+                )}
               </div>
 
               <label className="vz-campo-select">
@@ -510,6 +530,8 @@ export function CriacaoCarreira() {
                       e.target.value as IdentidadeJogador["posicaoSecundaria"],
                     )
                   }
+                  onBlur={() => tocar("posicaoSecundaria")}
+                  aria-invalid={!!errosCampo.posicaoSecundaria}
                 >
                   <option value="">Nenhuma</option>
                   {Object.entries(POSICOES)
@@ -520,6 +542,11 @@ export function CriacaoCarreira() {
                       </option>
                     ))}
                 </select>
+                {errosCampo.posicaoSecundaria && (
+                  <span className="vz-campo-erro">
+                    {errosCampo.posicaoSecundaria}
+                  </span>
+                )}
               </label>
 
               <div className="vz-wizard-fisico">
@@ -531,7 +558,12 @@ export function CriacaoCarreira() {
                     max={215}
                     value={identidade.altura}
                     onChange={(e) => alterar("altura", Number(e.target.value))}
+                    onBlur={() => tocar("altura")}
+                    aria-invalid={!!(tocados.altura && errosCampo.altura)}
                   />
+                  {tocados.altura && errosCampo.altura && (
+                    <span className="vz-campo-erro">{errosCampo.altura}</span>
+                  )}
                 </label>
                 <label>
                   Peso (kg)
@@ -541,7 +573,12 @@ export function CriacaoCarreira() {
                     max={120}
                     value={identidade.peso}
                     onChange={(e) => alterar("peso", Number(e.target.value))}
+                    onBlur={() => tocar("peso")}
+                    aria-invalid={!!(tocados.peso && errosCampo.peso)}
                   />
+                  {tocados.peso && errosCampo.peso && (
+                    <span className="vz-campo-erro">{errosCampo.peso}</span>
+                  )}
                 </label>
               </div>
             </div>
@@ -603,10 +640,15 @@ export function CriacaoCarreira() {
                   <button
                     type="button"
                     className="botao-texto"
-                    onClick={() => window.location.reload()}
+                    onClick={() => definirTentativaLigas((t) => t + 1)}
                   >
                     Tentar novamente
                   </button>
+                </p>
+              )}
+              {errosCampo.liga && (
+                <p className="vz-campo-erro" role="alert">
+                  {errosCampo.liga}
                 </p>
               )}
               {aviso && (

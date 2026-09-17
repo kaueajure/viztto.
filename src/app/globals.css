@@ -3302,17 +3302,7 @@ details[open] summary {
   border-bottom: 1px solid #ead9a8;
 }
 
-/* ---- Home grid (reference layout) ---- */
-.vz-home-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(0, 0.85fr) minmax(0, 0.95fr);
-  grid-template-areas:
-    "hero hero clube"
-    "proximo calendario mensagens"
-    "desempenho objetivos mercado";
-  gap: 16px;
-}
-
+/* ---- Home grid areas (layout densificado no bloco shell-home abaixo) ---- */
 .vz-hero { grid-area: hero; }
 .vz-clube { grid-area: clube; }
 .vz-proximo { grid-area: proximo; }
@@ -4391,17 +4381,26 @@ main:has(.formulario) {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1.55fr) minmax(0, 0.85fr) minmax(0, 0.95fr);
-  grid-template-rows: minmax(0, 1.45fr) minmax(0, 1fr) minmax(0, 0.95fr);
+  grid-template-rows: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 1.08fr);
   grid-template-areas:
     "hero hero clube"
     "proximo calendario mensagens"
     "desempenho objetivos mercado";
-  gap: 12px;
+  gap: 10px;
 }
 .vz-home-grid > * {
   min-height: 0;
   min-width: 0;
-  /* Listas internas rolam; o card não corta CTA/links essenciais. */
+  overflow: hidden;
+}
+.vz-hero {
+  /* Decoração pode estourar; conteúdo essencial fica no fluxo. */
+  overflow: hidden;
+}
+.vz-msg-lista,
+.vz-cal-lista,
+.vz-obj-lista {
+  min-height: 0;
   overflow: auto;
 }
 .vz-card {
@@ -4697,22 +4696,21 @@ main:has(.formulario) {
   overflow: auto;
 }
 
-.vz-obj-lista {
-  min-height: 0;
-  overflow: auto;
-}
-
 /* Compact height desktop — densidade, não corte cego */
-@media (max-height: 820px) and (min-width: 1100px) {
+@media (max-height: 920px) and (min-width: 1100px) {
   .vz-shell .barra-superior { height: 46px; }
   .vz-top-nav a, .vz-top-nav button { padding: 12px 8px 10px; font-size: 12px; }
   .vz-shell-home .conteudo-home { padding: 6px 12px 8px; }
   .vz-home { gap: 6px; }
   .vz-home-grid {
     gap: 8px;
-    grid-template-rows: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 0.92fr);
+    grid-template-rows: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1.05fr);
   }
   .vz-card { padding: 8px 10px; }
+  .vz-valor strong { font-size: 22px; }
+  .vz-contrato-dl { font-size: 11px; gap: 4px; }
+  .vz-contrato-bloco h4 { margin: 4px 0; font-size: 11px; }
+  .vz-mercado-contrato .vz-card-link { padding-top: 4px; }
   .vz-card-head { margin-bottom: 4px; }
   .vz-hero { padding: 10px 14px; }
   .vz-hero-nome { font-size: 32px; line-height: 0.95; }
@@ -4761,7 +4759,7 @@ main:has(.formulario) {
     grid-template-areas:
       "hero" "clube" "proximo" "calendario" "mensagens" "desempenho" "objetivos" "mercado";
   }
-  .vz-cta-desktop { display: none !important; }
+  .vz-cta-desktop { display: none; }
   .vz-cta-mobile-bar {
     display: flex;
     align-items: center;
@@ -4799,7 +4797,7 @@ main:has(.formulario) {
 }
 
 @media (min-width: 769px) {
-  .vz-cta-mobile-bar { display: none !important; }
+  .vz-cta-mobile-bar { display: none; }
 }
 
 /* Wizard criação */

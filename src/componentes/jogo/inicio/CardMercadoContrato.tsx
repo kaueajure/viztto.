@@ -42,12 +42,6 @@ export function CardMercadoContrato({
               <dt>Fim do contrato</dt>
               <dd>{mesContrato(j.contrato.dataTermino)}</dd>
             </div>
-            {j.contrato.clausulaRescisao != null && (
-              <div>
-                <dt>Cláusula de rescisão</dt>
-                <dd>{dinheiro(j.contrato.clausulaRescisao)}</dd>
-              </div>
-            )}
           </dl>
         )}
         <Link href="/carreira/contrato" className="vz-card-link">

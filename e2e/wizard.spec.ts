@@ -156,4 +156,53 @@ test.describe("Wizard criação", () => {
     await page.locator(".vz-busca-clube input").fill("");
     await expect(page.locator(".vz-clube-item")).toHaveCount(24);
   });
+
+  test("Retry de ligas preserva identidade e história", async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    let ligasHits = 0;
+    await page.route("**/api/carreira", async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({ status: 404, body: "{}" });
+        return;
+      }
+      await route.fulfill({ status: 200, body: "{}" });
+    });
+    await page.route("**/api/futebol/ligas", async (route) => {
+      ligasHits += 1;
+      if (ligasHits === 1) {
+        await route.fulfill({ status: 500, body: "erro" });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto("/nova-carreira");
+    await page.getByPlaceholder("Seu nome").fill("Kaue");
+    await page.getByPlaceholder("Seu sobrenome").fill("Santos");
+    await page.getByRole("button", { name: /Continuar/ }).click();
+    await page.locator('input[type="number"]').first().fill("16");
+    await page.getByRole("button", { name: "PD" }).first().click();
+    await page.getByRole("button", { name: /Continuar/ }).click();
+    for (let i = 0; i < 4; i++) {
+      await page.locator(".vz-hist-card").first().click();
+      await page.locator(".vz-wizard-foot button").last().click();
+      await page.waitForTimeout(120);
+    }
+    if (
+      await page.getByRole("heading", { name: /História concluída/i }).count()
+    ) {
+      await page.locator(".vz-wizard-foot button").last().click();
+    }
+
+    await expect(page.getByText(/Não foi possível carregar as ligas/i)).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.getByRole("button", { name: /Tentar novamente/i }).click();
+    await expect(
+      page.getByRole("heading", { name: /Escolha a liga/i }),
+    ).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator(".vz-wizard-preview")).toContainText(/Kaue/i);
+    await expect(page.locator(".vz-liga-card").first()).toBeVisible();
+    expect(ligasHits).toBeGreaterThanOrEqual(2);
+  });
 });

@@ -7,7 +7,7 @@ function ler(rel: string) {
   return readFileSync(join(raiz, rel), "utf8");
 }
 
-describe("fase-12 UX v3 — regressões", () => {
+describe("fase-12 UX v3 — regressões estruturais", () => {
   it("objetivos pessoais podem ser escolhidos na página Objetivos", () => {
     const painel = ler("src/componentes/jogo/PainelObjetivos.tsx");
     expect(painel).toMatch(/escolherObjetivo/);
@@ -28,10 +28,12 @@ describe("fase-12 UX v3 — regressões", () => {
   it("alerta de contrato aponta para /carreira/contrato", () => {
     const atencao = ler("src/componentes/jogo/AtencaoCarreira.tsx");
     expect(atencao).toMatch(/href: "\/carreira\/contrato"/);
-    expect(atencao).not.toMatch(/id: "contrato"[\s\S]*href: "\/carreira\/jogador"/);
+    expect(atencao).not.toMatch(
+      /id: "contrato"[\s\S]*href: "\/carreira\/jogador"/,
+    );
   });
 
-  it("CTA desktop e mobile existem e não compartilham a mesma regra de hide total", () => {
+  it("CTA desktop e mobile existem sem !important duplicado", () => {
     const central = ler("src/componentes/jogo/CentralCarreira.tsx");
     expect(central).toMatch(/vz-cta-desktop/);
     expect(central).toMatch(/vz-cta-mobile-bar/);
@@ -39,6 +41,40 @@ describe("fase-12 UX v3 — regressões", () => {
     const css = ler("src/app/globals.css");
     expect(css).toMatch(/\.vz-cta-desktop\s*\{\s*display:\s*none/);
     expect(css).toMatch(/\.vz-cta-mobile-bar/);
+    expect(css).not.toMatch(
+      /\.vz-cta-desktop\s*\{\s*display:\s*none\s*!important/,
+    );
+  });
+
+  it("produção não expõe window.__VZ_JOGO__ sem guarda de NODE_ENV", () => {
+    const store = ler("src/estado/jogo-store.ts");
+    expect(store).toMatch(/NODE_ENV\s*!==\s*["']production["']/);
+    const hid = ler("src/componentes/jogo/Hidratacao.tsx");
+    expect(hid).not.toMatch(/__VZ_JOGO__/);
+    const central = ler("src/componentes/jogo/CentralCarreira.tsx");
+    expect(central).not.toMatch(/__VZ_JOGO__/);
+  });
+
+  it("calendário não usa categoria do jogador após seleção manual", () => {
+    const cal = ler("src/componentes/jogo/CalendarioCompeticao.tsx");
+    expect(cal).not.toMatch(
+      /partidasCal\s*=\s*\n?\s*c\.jogador\.categoria\s*===\s*"base"/,
+    );
+    expect(cal).toMatch(/categoria === "base"/);
+  });
+
+  it("mundo não faz fallback silencioso para temporada da liga atual", () => {
+    const mundo = ler("src/componentes/jogo/CalendarioCompeticao.tsx");
+    expect(mundo).not.toMatch(
+      /temporadasExternas\[ligaSel\.id\]\s*\?\?\s*c\.temporada/,
+    );
+    expect(mundo).toMatch(/mundo-indisponivel|não estão disponíveis/);
+  });
+
+  it("retry de ligas não usa location.reload", () => {
+    const criacao = ler("src/componentes/jogador/CriacaoCarreira.tsx");
+    expect(criacao).not.toMatch(/location\.reload/);
+    expect(criacao).toMatch(/tentativaLigas/);
   });
 
   it("Mundo do Futebol usa temporadasExternas e seletor de liga", () => {
