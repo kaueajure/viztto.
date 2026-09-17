@@ -211,19 +211,30 @@ export function CriacaoCarreira() {
         definirEtapa(4);
         return;
       }
-      for (const outra of ligas) {
-        if (outra.id === liga.id) continue;
-        const resposta = await fetch(
-          `/api/futebol?liga=${encodeURIComponent(outra.id)}`,
+      // Carrega ligas do mundo em paralelo com concorrência limitada (evita dezenas de requests).
+      const CONCORRENCIA = 4;
+      const outras = ligas.filter((l) => l.id !== liga.id);
+      for (let i = 0; i < outras.length; i += CONCORRENCIA) {
+        const lote = outras.slice(i, i + CONCORRENCIA);
+        const resultados = await Promise.all(
+          lote.map(async (outra) => {
+            const resposta = await fetch(
+              `/api/futebol?liga=${encodeURIComponent(outra.id)}`,
+            );
+            if (resposta.status === 404) return null;
+            if (!resposta.ok)
+              throw new Error(
+                `Não foi possível carregar ${outra.nome}. Tente novamente.`,
+              );
+            const dados = esquemaImportacao.parse(await resposta.json());
+            return { liga: outra, clubes: dados.clubes as Clube[] };
+          }),
         );
-        if (resposta.status === 404) continue;
-        if (!resposta.ok)
-          throw new Error(
-            `Não foi possível carregar ${outra.nome}. Tente novamente.`,
-          );
-        const dados = esquemaImportacao.parse(await resposta.json());
-        ligasMundo.push(outra);
-        clubesMundo.push(...(dados.clubes as Clube[]));
+        for (const r of resultados) {
+          if (!r) continue;
+          ligasMundo.push(r.liga);
+          clubesMundo.push(...r.clubes);
+        }
       }
       const criada = await iniciar(
         {

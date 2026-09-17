@@ -1,11 +1,18 @@
 import { atualizarVinculoAcompanhamento, atualizarObjetivoPessoal } from "../carreira/acompanhamento";
 import {
+  estaSemClube,
+  limparEstadoAgenteLivre,
+  podeRegistrarAgenteLivreImediato,
+  tornarAgenteLivre,
+} from "../carreira/agente-livre";
+import {
   avancarInteresses,
   processarContrapropostas,
   avaliarPapelPrometido,
   registrarNegociacao,
   tetoSalario,
 } from "./mercado-progressivo";
+import { aplicarAssinaturaContrato } from "./contratos";
 import { criarMercado } from "@/dominio/mercado";
 import type {
   EstadoCarreira,
@@ -89,6 +96,20 @@ export function processarRetornoEmprestimo(carreira: EstadoCarreira): void {
     return;
   }
   const deId = carreira.clubeAtualId;
+  // Contrato de origem já acabou: encerra empréstimo sem restaurar vínculo inexistente.
+  if (carreira.jogador.contrato.dataTermino < carreira.dataAtual) {
+    delete carreira.mercado.emprestimo;
+    carreira.mercado.disponivelParaEmprestimo = false;
+    carreira.mercado.pediuEmprestimo = false;
+    if (!estaSemClube(carreira))
+      tornarAgenteLivre(carreira, "fim_emprestimo_sem_contrato");
+    registrarNegociacao(
+      carreira,
+      origem.id,
+      `O empréstimo encerrou e o contrato com o ${origem.nome} já havia terminado. Você está sem clube.`,
+    );
+    return;
+  }
   sincronizarLigaAoClube(carreira, origem.id);
   carreira.clubeAtualId = origem.id;
   delete carreira.mercado.emprestimo;
@@ -284,6 +305,8 @@ export function avaliarMercado(
     .filter((p) => p.tipo === "renovacao")
     .at(-1);
   if (
+    !estaSemClube(carreira) &&
+    carreira.clubeAtualId &&
     !carreira.mercado.pediuSaida &&
     !carreira.mercado.emprestimo &&
     !temAcordoAgendado(carreira) &&
@@ -422,15 +445,13 @@ export function responderProposta(
     )!;
     if (carreira.mercado.emprestimo || proposta.clubeId !== j.contrato.clubeId || proposta.clubeId !== atual.id || proposta.salario > tetoSalario(atual))
       throw new Error("A renovação não cabe na folha do clube atual.");
+    const bonusGol = proposta.bonusGol ?? j.contrato.bonusGol;
+    const luvas = proposta.luvas;
+    aplicarAssinaturaContrato(carreira, proposta);
     j.contrato = {
       ...j.contrato,
-      salario: proposta.salario,
-      dataInicio: carreira.dataAtual,
-      dataTermino: somarDias(carreira.dataAtual, proposta.duracaoAnos * 365),
-      papelEsperado: proposta.papelPrometido ?? j.status,
-      clausulaRescisao: proposta.clausulaRescisao,
-      bonusGol: proposta.bonusGol ?? j.contrato.bonusGol,
-      luvas: proposta.luvas,
+      bonusGol,
+      ...(luvas !== undefined ? { luvas } : {}),
     };
     carreira.relacionamentos.diretoria = limitar(
       carreira.relacionamentos.diretoria + 5,
@@ -455,6 +476,7 @@ export function responderProposta(
   const destino = carreira.clubes.find((c) => c.id === proposta.clubeId);
   if (!destino) throw new Error("Clube da proposta não encontrado.");
   if (
+    !estaSemClube(carreira) &&
     proposta.clubeOrigemId &&
     proposta.clubeOrigemId !== carreira.clubeAtualId &&
     !carreira.mercado.emprestimo
@@ -462,12 +484,19 @@ export function responderProposta(
     throw new Error("Esta negociação pertence ao seu clube anterior.");
 
   const janelaFechada = resolverJanela(carreira.dataAtual) === "fechada";
+  const livre = podeRegistrarAgenteLivreImediato(carreira);
+  const contratoExpirado = j.contrato.dataTermino < carreira.dataAtual;
+  // Agente livre ou contrato já encerrado: registro imediato (centraliza exceção de janela).
   const agendar =
     janelaFechada &&
     !proposta.preContrato &&
+    !livre &&
+    !contratoExpirado &&
     (proposta.tipo === "transferencia" || proposta.tipo === "emprestimo");
 
   if (proposta.tipo === "emprestimo") {
+    if (livre)
+      throw new Error("Empréstimo exige vínculo com um clube proprietário.");
     if (carreira.mercado.emprestimo)
       throw new Error("Você já está em um período de empréstimo.");
     const percentual = proposta.percentualSalario ?? 0.5;
@@ -495,7 +524,10 @@ export function responderProposta(
     return efetivarEmprestimoUsuario(carreira, proposta, destino);
   }
 
-  const valor = proposta.valorTransferencia ?? Math.round(j.valorMercado * 0.5);
+  // Transferência: agente livre = taxa 0; clube ainda pode rejeitar por folha/orçamento.
+  const valor = livre
+    ? 0
+    : (proposta.valorTransferencia ?? Math.round(j.valorMercado * 0.5));
   if (
     valor + proposta.salario * 52 + (proposta.luvas ?? 0) > destino.orcamento ||
     proposta.salario > tetoSalario(destino)
@@ -531,13 +563,31 @@ export function responderProposta(
   proposta.etapa = "aceite";
   destino.orcamento -= valor + (proposta.luvas ?? 0);
   sincronizarLigaAoClube(carreira, destino.id);
-  const origem = carreira.clubes.find((c) => c.id === carreira.clubeAtualId);
+  const origem = carreira.clubeAtualId
+    ? carreira.clubes.find((c) => c.id === carreira.clubeAtualId)
+    : undefined;
   if (origem) {
     origem.orcamento += valor;
     reescalarClube(origem);
     sincronizarForcaClube(origem);
   }
+  if (origem && !livre) {
+    carreira.historicoContratos = [
+      ...carreira.historicoContratos,
+      {
+        clubeId: j.contrato.clubeId,
+        salario: j.contrato.salario,
+        dataInicio: j.contrato.dataInicio,
+        dataTermino: carreira.dataAtual,
+        papelEsperado: j.contrato.papelEsperado,
+        tipo: j.contrato.tipo,
+        motivoSaida: "transferencia" as const,
+      },
+    ].slice(-20);
+  }
   carreira.clubeAtualId = destino.id;
+  carreira.ultimoClubeId = origem?.id ?? carreira.ultimoClubeId;
+  limparEstadoAgenteLivre(carreira);
   j.contrato = {
     clubeId: destino.id,
     salario: proposta.salario,
@@ -552,11 +602,12 @@ export function responderProposta(
   j.status = proposta.papelPrometido ?? "rotacao";
   j.confianca = 55;
   carreira.relacionamentos.treinador = 50;
+  carreira.relacionamentos.diretoria = 50;
   carreira.transferenciasRecentes.unshift({
     id: `user-${proposta.id}`,
     jogadorId: "usuario",
     nomeJogador: `${j.nome} ${j.sobrenome}`,
-    deClubeId: origem?.id ?? carreira.clubeInicialId,
+    deClubeId: origem?.id ?? carreira.ultimoClubeId ?? carreira.clubeInicialId,
     paraClubeId: destino.id,
     valor,
     salario: proposta.salario,
@@ -568,26 +619,35 @@ export function responderProposta(
   });
   proposta.etapa = "concluida";
   proposta.acordoFuturo = false;
+  proposta.valorTransferencia = valor;
   encerrarNegociacoesIncompativeis(carreira, destino.id, proposta.id);
   carreira.mercado.pediuSaida = false;
   carreira.mercado.statusPedidoSaida = "nenhum";
   carreira.mercado.pedidoPublico = false;
   carreira.mercado.pediuEmprestimo = false;
   carreira.mercado.disponivelParaEmprestimo = false;
+  carreira.mercado.respostaDiretoriaSaida = undefined;
+  carreira.mercado.respostaDiretoriaEmprestimo = undefined;
+  carreira.mercado.respostaSaidaLida = true;
+  carreira.mercado.respostaEmprestimoLida = true;
   carreira.mercado.ultimaCobrancaPapel = undefined;
   delete carreira.mercado.emprestimo;
   registrarNegociacao(
     carreira,
     destino.id,
-    "Transferência concluída. Contrato assinado.",
+    livre
+      ? "Contrato assinado como agente livre. Sem taxa de transferência."
+      : "Transferência concluída. Contrato assinado.",
     proposta.id,
     proposta,
   );
   registrarEvento(
     carreira,
-    "transferencia",
+    livre ? "novo-clube" : "transferencia",
     `${j.nome} assina com o ${destino.nome}`,
-    `Papel prometido: ${proposta.papelPrometido}.`,
+    livre
+      ? `Agente livre. Papel prometido: ${proposta.papelPrometido}. Taxa: €0.`
+      : `Papel prometido: ${proposta.papelPrometido}.`,
     "Agente",
   );
   atualizarVinculoAcompanhamento(carreira, origem?.pais);
@@ -604,6 +664,8 @@ function efetivarEmprestimoUsuario(
   proposta: NonNullable<EstadoCarreira["propostas"][number]>,
   destino: NonNullable<EstadoCarreira["clubes"][number]>,
 ): EstadoCarreira {
+  if (!carreira.clubeAtualId)
+    throw new Error("Empréstimo exige vínculo com um clube proprietário.");
   const origemId = carreira.clubeAtualId;
   const percentual = proposta.percentualSalario ?? 0.5;
   const retornoEm =
@@ -679,7 +741,9 @@ export function efetivarPreContratos(estado: EstadoCarreira): EstadoCarreira {
     oferta.etapa = "proposta_jogador";
     oferta.validade = copia.dataAtual;
     oferta.acordoFuturo = false;
-    if (!oferta.preContrato) delete oferta.efetivarEm;
+    // Ao efetivar, vira contratação imediata (agente livre ou transferência).
+    oferta.preContrato = false;
+    delete oferta.efetivarEm;
     try {
       c = responderProposta(copia, p.id, true);
     } catch {
@@ -704,7 +768,7 @@ export function aposentarJogador(estado: EstadoCarreira): EstadoCarreira {
   carreira.aposentado = true;
   carreira.dataAposentadoria = carreira.dataAtual;
   carreira.idadeAposentadoria = carreira.jogador.idade;
-  carreira.clubeFinalId = carreira.clubeAtualId;
+  carreira.clubeFinalId = carreira.clubeAtualId ?? carreira.ultimoClubeId ?? undefined;
   for (const p of carreira.propostas) {
     if (p.status === "pendente") {
       p.status = "expirada";
@@ -714,14 +778,14 @@ export function aposentarJogador(estado: EstadoCarreira): EstadoCarreira {
   for (const i of carreira.mercado.interesses) i.status = "encerrado";
   registrarNegociacao(
     carreira,
-    carreira.clubeAtualId,
+    carreira.clubeAtualId ?? carreira.ultimoClubeId ?? carreira.clubeInicialId,
     "Você confirmou a aposentadoria. Sua carreira profissional foi encerrada.",
   );
   registrarEvento(
     carreira,
     "aposentadoria",
     `${carreira.jogador.nome} se aposenta`,
-    `Aos ${carreira.jogador.idade} anos, no ${carreira.clubes.find((c) => c.id === carreira.clubeAtualId)?.nome ?? "clube"}. O histórico permanece disponível.`,
+    `Aos ${carreira.jogador.idade} anos, no ${carreira.clubes.find((c) => c.id === (carreira.clubeAtualId ?? carreira.ultimoClubeId))?.nome ?? "clube"}. O histórico permanece disponível.`,
     "Agente",
   );
   return carreira;

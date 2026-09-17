@@ -84,6 +84,8 @@ export const esquemaMercado = z
     disponivelParaEmprestimo: z.boolean().default(false),
     respostaDiretoriaSaida: z.string().optional(),
     respostaDiretoriaEmprestimo: z.string().optional(),
+    respostaSaidaLida: z.boolean().default(true),
+    respostaEmprestimoLida: z.boolean().default(true),
     emprestimo: z
       .object({
         clubeOrigemId: z.string(),

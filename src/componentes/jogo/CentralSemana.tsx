@@ -2,8 +2,10 @@
 import Link from "next/link";
 import type { EstadoCarreira } from "@/dominio/entidades/modelos";
 import { NOMES_ATRIBUTOS } from "@/dominio/entidades/modelos";
-import { OBJETIVOS_PESSOAIS } from "@/simulacao/carreira/acompanhamento";
+import { OBJETIVOS_PESSOAIS, atributosTecnicaPosicao, objetivoBloqueadoPorCooldown } from "@/simulacao/carreira/acompanhamento";
 import type { ObjetivoPessoalTipo } from "@/dominio/desenvolvimento";
+import { categoriaPartidaDaSemana } from "@/simulacao/base/formacao";
+import { estaSemClube } from "@/simulacao/carreira/agente-livre";
 import { avaliarHierarquia } from "@/simulacao/elenco/hierarquia";
 import { obterSituacaoJanela } from "@/simulacao/transferencias/necessidade";
 import { useJogoStore } from "@/estado/jogo-store";
@@ -16,7 +18,6 @@ type Prioridade = "urgente" | "importante" | "informativo";
 function cardsSemana(c: EstadoCarreira) {
   const m = c.mercado ?? criarMercado();
   const resumo = c.acompanhamento.resumoSemanal;
-  const h = avaliarHierarquia(c);
   const cards: {
     id: string;
     prioridade: Prioridade;
@@ -81,14 +82,16 @@ function cardsSemana(c: EstadoCarreira) {
         .map((e) => `${NOMES_ATRIBUTOS[e.atributo]} ${e.antes}→${e.depois}`)
         .join(" · "),
     });
-  cards.push({
-    id: "elenco",
-    prioridade: "importante",
-    titulo: "ELENCO",
-    texto: `${h.ordem}ª opção. ${h.motivo}`,
-    href: "/carreira/clube",
-    cta: "Ver hierarquia",
-  });
+  if (resumo?.mudancaElenco) {
+    cards.push({
+      id: "elenco",
+      prioridade: "importante",
+      titulo: "ELENCO",
+      texto: resumo.mudancaElenco.texto,
+      href: "/carreira/clube",
+      cta: "Ver hierarquia",
+    });
+  }
   const conversa = c.acompanhamento.conversas.at(-1);
   if (conversa && conversa.data === (resumo?.data ?? c.dataAtual))
     cards.push({
@@ -133,14 +136,21 @@ export function CentralSemana({ carreira: c }: { carreira: EstadoCarreira }) {
   const h = avaliarHierarquia(c);
   const o = c.acompanhamento.objetivoPessoal;
   const escolher = useJogoStore((s) => s.escolherObjetivo);
-  const clube = c.clubes.find((cl) => cl.id === c.clubeAtualId)!;
+  const livre = estaSemClube(c);
+  const clube = livre
+    ? undefined
+    : c.clubes.find((cl) => cl.id === c.clubeAtualId);
   const partidas =
-    c.jogador.categoria === "base" ? c.temporada.partidasBase : c.temporada.partidas;
-  const proxima = partidas.find(
-    (p) =>
-      p.golsMandante === null &&
-      [p.mandanteId, p.visitanteId].includes(clube.id),
-  );
+    categoriaPartidaDaSemana(c) === "base"
+      ? c.temporada.partidasBase
+      : c.temporada.partidas;
+  const proxima =
+    clube &&
+    partidas.find(
+      (p) =>
+        p.golsMandante === null &&
+        [p.mandanteId, p.visitanteId].includes(clube.id),
+    );
   const mandante = c.clubes.find((cl) => cl.id === proxima?.mandanteId);
   const visitante = c.clubes.find((cl) => cl.id === proxima?.visitanteId);
   const janela = obterSituacaoJanela(c.dataAtual);
@@ -159,11 +169,21 @@ export function CentralSemana({ carreira: c }: { carreira: EstadoCarreira }) {
           </h2>
         </div>
         <span className="rotulo">
-          JANELA {janela.aberta ? "ABERTA" : "FECHADA"}
+          {livre ? "SEM CLUBE" : `JANELA ${janela.aberta ? "ABERTA" : "FECHADA"}`}
         </span>
       </div>
 
-      {proxima && mandante && visitante && (
+      {livre && (
+        <div className="mercado-vinculo">
+          <div>
+            <span className="rotulo">AGENTE LIVRE</span>
+            <p>Sem partida de clube nesta semana.</p>
+            <p className="texto-suave">{h.proximoPasso}</p>
+          </div>
+        </div>
+      )}
+
+      {!livre && proxima && mandante && visitante && (
         <div className="mercado-vinculo">
           <Escudo clube={mandante} tamanho={36} />
           <div>
@@ -209,18 +229,22 @@ export function CentralSemana({ carreira: c }: { carreira: EstadoCarreira }) {
         <label>
           OBJETIVO PESSOAL
           <select
-            value={o?.tipo ?? ""}
+            value={o && !o.concluido ? o.tipo : ""}
             onChange={(e) => {
               if (e.target.value)
                 escolher(e.target.value as ObjetivoPessoalTipo);
             }}
           >
             <option value="">Escolha seu foco</option>
-            {Object.entries(OBJETIVOS_PESSOAIS).map(([id, nome]) => (
-              <option key={id} value={id}>
-                {nome}
-              </option>
-            ))}
+            {Object.entries(OBJETIVOS_PESSOAIS).map(([id, nome]) => {
+              const tipo = id as ObjetivoPessoalTipo;
+              const bloqueado = objetivoBloqueadoPorCooldown(c, tipo).bloqueado;
+              return (
+                <option key={id} value={id} disabled={bloqueado}>
+                  {nome}{bloqueado ? " (já alcançado)" : ""}
+                </option>
+              );
+            })}
           </select>
         </label>
         {o && (
@@ -233,7 +257,7 @@ export function CentralSemana({ carreira: c }: { carreira: EstadoCarreira }) {
             {o.tipo === "minutos"
               ? "Meta: conquistar mais 270 minutos."
               : o.tipo === "tecnica"
-                ? "Meta: somar três pontos em domínio, passe curto e visão."
+                ? `Meta: somar três pontos em ${atributosTecnicaPosicao(c.jogador.posicao).map((a) => NOMES_ATRIBUTOS[a].toLowerCase()).join(", ")}.`
                 : "Acompanhe as decisões e oportunidades da carreira."}
           </p>
         )}

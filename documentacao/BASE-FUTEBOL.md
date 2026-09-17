@@ -1,6 +1,42 @@
-# Base local de futebol — fase 4
+# Base local de futebol — fase 4 (+ enriquecimento Sportmonks / fase 11)
 
 A atualização oficial é `npm run atualizar-dados-futebol`. Não existe endpoint público de escrita. Os JSONs existentes são versionáveis e a disponibilidade é calculada diretamente a partir deles, sem manifesto obrigatório.
+
+## Transfermarkt + Sportmonks
+
+Arquitetura de importação (apenas no PC do desenvolvedor):
+
+1. **Transfermarkt** (API local `felipeall`) — identidade, clubes, elencos, posição, idade, valor de mercado, contratos, fotos.
+2. **Sportmonks** (Football API v3) — estatísticas de desempenho por temporada, quando houver token e cobertura.
+3. **Viztto Rating Engine** — stats → atributos → `calcularOverall()` / potencial estimado (nunca `rating_partida × 10`).
+4. Snapshots em `src/dados/futebol/*.json` — o jogo em runtime **não** chama Transfermarkt nem Sportmonks.
+
+### Token Sportmonks
+
+Defina no ambiente (ou `.env` local, ignorado pelo Git):
+
+```bash
+export SPORTMONKS_API_TOKEN=seu_token_aqui
+```
+
+- Sem token: a atualização **continua** com ratings estimados a partir do Transfermarkt (fallback).
+- Com token inválido (401/403): a publicação é **abortada** para não misturar snapshots parcialmente enriquecidos.
+- O token nunca deve ir para o navegador, logs, snapshots ou relatórios (`relatorios/` e `.cache/sportmonks/` estão no `.gitignore`).
+
+### Matching e fallback
+
+- Matching TM ↔ SM por nome normalizado, data de nascimento, clube, posição, altura e nacionalidade.
+- Só `exact`/`high` aplicam estatísticas; matches duvidosos ficam unresolved.
+- Mapa estável opcional: `.cache/sportmonks/tm-sm-mapping.json`.
+- Cobertura por liga em `src/dominio/constantes/sportmonks-ligas.ts` (níveis A–D). Atualize `seasonIdPreferido` / `nomeTemporadaBusca` quando a temporada Sportmonks mudar (Brasil ≠ Europa).
+
+### Relatórios
+
+Após o comando: resumo no terminal + `relatorios/sportmonks-matching.json` (matched / unmatched / ambiguous / requests por liga).
+
+### Metadata de rating (técnica)
+
+Em cada jogador enriquecido: `ratingMetadata.source` (`sportmonks` | `hybrid` | `transfermarkt-estimated` | `generated`), `confidence` (`high` | `medium` | `low`), minutos, season e id Sportmonks quando houver. Saves existentes guardam overall/potencial no delta da carreira — atualizar snapshots depois **não** altera carreiras já criadas.
 
 ## Catálogo verificado
 

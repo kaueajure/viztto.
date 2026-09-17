@@ -99,28 +99,44 @@ export function gerarLesao(
   };
   return true;
 }
+/** Com plano ativo, só recuperação permanece como foco rápido explícito. */
+export function focoTreinoEfetivo(
+  foco: FocoTreino,
+  planoId: string | null | undefined,
+): FocoTreino {
+  if (!planoId) return foco;
+  return foco === "recuperacao" ? "recuperacao" : "equilibrado";
+}
+
 export function processarTreinamento(
   jogador: Jogador,
   foco: FocoTreino,
-  clube: Clube,
+  clube: Clube | null,
   data: string,
   aleatorio: GeradorAleatorio,
 ): number {
-  const recuperacao = !!jogador.lesao || foco === "recuperacao";
-  const treino = FOCOS_TREINO[recuperacao ? "recuperacao" : foco];
   const preparacao = jogador.preparacao;
+  const focoUsado = focoTreinoEfetivo(foco, preparacao.planoId);
+  const recuperacao = !!jogador.lesao || focoUsado === "recuperacao";
+  const treino = FOCOS_TREINO[recuperacao ? "recuperacao" : focoUsado];
   const fatorCarga = { leve: 0.65, normal: 1, intenso: 1.65 }[preparacao.intensidade];
   const nota = recuperacao ? 0 : avaliarTreino(jogador, aleatorio);
   const confiancaAntes = jogador.confianca;
-  jogador.fadiga = limitar(jogador.fadiga - 15 + (recuperacao ? -24 : treino.carga * fatorCarga));
-  jogador.condicionamento = limitar(jogador.condicionamento + 10 - Math.max(0, treino.carga) * fatorCarga * 0.4);
+  // Com plano, a carga segue a intensidade do plano (via equilibrado), nunca um foco oculto.
+  jogador.fadiga = limitar(jogador.fadiga - 15 + (recuperacao ? -24 : treino.carga * fatorCarga * (clube ? 1 : 0.85)));
+  jogador.condicionamento = limitar(jogador.condicionamento + 10 - Math.max(0, treino.carga) * fatorCarga * 0.4 + (clube ? 0 : 2));
   let progresso = 0;
   if (!recuperacao) {
-    jogador.confianca = limitar(jogador.confianca + (nota - 52) / 18);
+    // Sem clube: não gera confiança de treinador; moral sobe menos.
+    if (clube) {
+      jogador.confianca = limitar(jogador.confianca + (nota - 52) / 18);
+      jogador.moral = limitar(jogador.moral + (nota - 55) / 60);
+    } else {
+      jogador.moral = limitar(jogador.moral + (nota - 55) / 120);
+    }
     jogador.forma = limitar(jogador.forma * .97 + nota * .03);
-    jogador.moral = limitar(jogador.moral + (nota - 55) / 60);
     const plano = PLANOS.find(p => p.id === preparacao.planoId && p.posicoes.includes(jogador.posicao));
-    const atributos = plano?.atributos ?? (foco === "equilibrado" ? Object.keys(PESOS_POSICOES[jogador.posicao]) as Atributo[] : treino.atributos);
+    const atributos = plano?.atributos ?? (focoUsado === "equilibrado" ? Object.keys(PESOS_POSICOES[jogador.posicao]) as Atributo[] : treino.atributos);
     const pontos = 5 * (.45 + nota / 100) * (preparacao.intensidade === 'intenso' ? 1.12 : preparacao.intensidade === 'leve' ? .7 : 1);
     progresso = calcularEvolucao(jogador, atributos, pontos, clube);
     const prioridades = preparacao.prioridades.filter(a => prioridadesDaPosicao(jogador.posicao).includes(a));
@@ -142,6 +158,26 @@ export function configurarDesenvolvimento(estado: EstadoCarreira, planoId: strin
     throw new Error('Escolha um plano da sua posição, até duas prioridades e uma intensidade válida.');
   const c = structuredClone(estado);
   c.jogador.preparacao = {...c.jogador.preparacao,planoId,prioridades:[...prioridades],intensidade};
+  // Evita foco oculto (ex.: velocidade) continuar puxando carga com o plano ativo.
+  if (c.focoTreino !== "recuperacao") c.focoTreino = "equilibrado";
   registrarEvento(c,'plano','Plano de desenvolvimento atualizado',`${plano.nome}. Intensidade ${intensidade}; ${prioridades.length} prioridade(s) individual(is).`,'Treinador',false);
   return c;
+}
+
+/** Foco rápido: com plano, só recuperação ou ritmo do plano (equilibrado). */
+export function escolherFocoTreino(
+  estado: EstadoCarreira,
+  foco: FocoTreino,
+): EstadoCarreira {
+  if (!Object.hasOwn(FOCOS_TREINO, foco))
+    throw new Error("Escolha um foco de treino válido.");
+  if (
+    estado.jogador.preparacao.planoId &&
+    foco !== "recuperacao" &&
+    foco !== "equilibrado"
+  )
+    throw new Error(
+      "Com plano ativo, use apenas recuperação ou o ritmo do plano.",
+    );
+  return { ...estado, focoTreino: foco };
 }

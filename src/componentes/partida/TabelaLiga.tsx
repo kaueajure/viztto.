@@ -8,7 +8,7 @@ export function TabelaLiga({
 }: {
   linhas: LinhaClassificacao[];
   clubes: Clube[];
-  clubeAtualId: string;
+  clubeAtualId: string | null;
   compacta?: boolean;
 }) {
   return (

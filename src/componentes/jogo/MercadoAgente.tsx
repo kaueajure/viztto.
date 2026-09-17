@@ -1,6 +1,6 @@
 "use client";
 import { ConversaContrato } from "@/componentes/clube/ConversaContrato";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { EstadoCarreira } from "@/dominio/entidades/modelos";
 import {
   criarMercado,
@@ -12,6 +12,10 @@ import { Escudo } from "@/componentes/clube/Escudo";
 import { PropostasInicio } from "./PropostasInicio";
 import { dinheiro, formatarData } from "@/utilitarios/formatacao";
 import { obterSituacaoJanela } from "@/simulacao/transferencias/necessidade";
+import {
+  estaSemClube,
+  semanasSemClube,
+} from "@/simulacao/carreira/agente-livre";
 
 const SECOES = {
   geral: "VISÃO GERAL",
@@ -33,11 +37,19 @@ export function MercadoAgente({ carreira: c }: { carreira: EstadoCarreira }) {
   const conversar = useJogoStore((s) => s.conversarAgente);
   const aposentar = useJogoStore((s) => s.aposentar);
   const salvar = useJogoStore((s) => s.definirPreferencias);
+  const marcarMercadoLido = useJogoStore((s) => s.marcarMercadoLido);
   const erro = useJogoStore((s) => s.erro);
   const m = c.mercado ?? criarMercado();
+  useEffect(() => {
+    if (!m.respostaSaidaLida || !m.respostaEmprestimoLida) marcarMercadoLido();
+  }, [m.respostaSaidaLida, m.respostaEmprestimoLida, marcarMercadoLido]);
   const [aviso, setAviso] = useState("");
   const [confirmarAposentadoria, setConfirmarAposentadoria] = useState(false);
-  const clubeAtual = c.clubes.find((cl) => cl.id === c.clubeAtualId)!;
+  const livre = estaSemClube(c);
+  const clubeAtual = livre
+    ? undefined
+    : c.clubes.find((cl) => cl.id === c.clubeAtualId);
+  const ultimoClube = c.clubes.find((cl) => cl.id === c.ultimoClubeId);
   const janela = obterSituacaoJanela(c.dataAtual);
   const acordoFuturo = c.propostas.find(
     (p) =>
@@ -49,6 +61,13 @@ export function MercadoAgente({ carreira: c }: { carreira: EstadoCarreira }) {
     (p) => p.status === "pendente" && p.validade >= c.dataAtual,
   );
   const interessesAtivos = m.interesses.filter((i) => i.status !== "encerrado");
+  const observando = interessesAtivos.filter(
+    (i) =>
+      i.status === "observando" ||
+      i.status === "interessado" ||
+      i.status === "sondagem" ||
+      i.status === "negociando",
+  ).length;
   const nome = (id: string) =>
     c.clubes.find((cl) => cl.id === id)?.nome ?? "Clube";
   const notificar = (mensagem: string) =>
@@ -74,14 +93,37 @@ export function MercadoAgente({ carreira: c }: { carreira: EstadoCarreira }) {
       <p className="sobretitulo">CARREIRA / MERCADO</p>
       <h1>SEU PRÓXIMO CAPÍTULO.</h1>
       <div className="mercado-vinculo">
-        <Escudo clube={clubeAtual} tamanho={48} />
+        {clubeAtual ? (
+          <Escudo clube={clubeAtual} tamanho={48} />
+        ) : ultimoClube ? (
+          <Escudo clube={ultimoClube} tamanho={48} />
+        ) : null}
         <div>
-          <strong>{clubeAtual.nome}</strong>
-          <p>
-            {dinheiro(c.jogador.contrato.salario)} / semana ·{" "}
-            {c.jogador.contrato.papelEsperado.replace("rotacao", "rotação")} ·
-            até {formatarData(c.jogador.contrato.dataTermino)}
-          </p>
+          {livre ? (
+            <>
+              <strong>Sem contrato · Agente livre</strong>
+              <p>
+                Status: Sem contrato
+                {ultimoClube ? ` · Último clube: ${ultimoClube.nome}` : ""}
+                {semanasSemClube(c) > 0
+                  ? ` · ${semanasSemClube(c)} semana(s) sem clube`
+                  : ""}
+              </p>
+              <p className="texto-suave">
+                Mercado: {observando} clube
+                {observando === 1 ? "" : "s"} observando
+              </p>
+            </>
+          ) : (
+            <>
+              <strong>{clubeAtual!.nome}</strong>
+              <p>
+                {dinheiro(c.jogador.contrato.salario)} / semana ·{" "}
+                {c.jogador.contrato.papelEsperado.replace("rotacao", "rotação")} ·
+                até {formatarData(c.jogador.contrato.dataTermino)}
+              </p>
+            </>
+          )}
           {c.aposentado && (
             <p role="status">
               Carreira aposentada em {formatarData(c.dataAposentadoria!)}.

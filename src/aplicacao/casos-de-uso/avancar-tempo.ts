@@ -8,10 +8,12 @@ import type {
   Partida,
   Clube,
   Atributo,
+  Escalacao,
 } from "@/dominio/entidades/modelos";
 import { GeradorAleatorio } from "@/utilitarios/aleatorio";
 import { limitar, somarDias } from "@/utilitarios/formatacao";
 import { simularPartida } from "@/simulacao/partida/motor-partida";
+import { escalacaoUsuarioDoClube } from "@/simulacao/partida/escalacao";
 import {
   processarTreinamento,
   gerarLesao,
@@ -38,7 +40,6 @@ import {
   aplicarEscalacaoAoClube,
   jogadorMundoComoCandidato,
   jogadorUsuarioComoCandidato,
-  reescalarClube,
 } from "@/simulacao/elenco/escalacao-elenco";
 import { sincronizarForcaClube } from "@/simulacao/elenco/forca-escalacao";
 import {
@@ -47,6 +48,11 @@ import {
 } from "@/simulacao/elenco/evolucao-mundo";
 import { avancarLigasExternas } from "@/simulacao/mundo/avancar-ligas";
 import { gerarDecisoesSemana } from "@/simulacao/decisoes/decisoes";
+import {
+  estaSemClube,
+  tornarAgenteLivre,
+  processarSemanaAgenteLivre,
+} from "@/simulacao/carreira/agente-livre";
 
 function aplicarDesempenho(
   carreira: EstadoCarreira,
@@ -94,7 +100,7 @@ function aplicarDesempenho(
       registrarEvento(
         carreira,
         "estreia",
-        `A primeira vez em campo${j.categoria === "base" ? " na base" : ""}`,
+        `A primeira vez em campo${partida.categoria === "base" ? " na base" : ""}`,
         `${j.nome} fez sua estreia com ${p.minutos} minutos.`,
       );
     if (p.gols && primeiroGol)
@@ -102,7 +108,7 @@ function aplicarDesempenho(
         carreira,
         "primeiro-gol",
         `O primeiro gol de ${j.nome}`,
-        `Um marco na carreira ${j.categoria === "base" ? "na base" : "profissional"}.`,
+        `Um marco na carreira ${partida.categoria === "base" ? "na base" : "profissional"}.`,
       );
     if (p.gols >= 3)
       registrarEvento(
@@ -187,12 +193,14 @@ export function avaliarPromocao(carreira: EstadoCarreira, clube: Clube): void {
 function prepararClubesRodada(
   carreira: EstadoCarreira,
   aleatorio: GeradorAleatorio,
-): void {
+  incluirUsuarioNoProfissional: boolean,
+): Escalacao | null {
   const j = carreira.jogador;
+  let escalacaoUsuario: Escalacao | null = null;
   for (const c of carreira.clubes) {
     if (c.ligaId !== carreira.liga.id) continue;
     const candidatos = c.elenco.map(jogadorMundoComoCandidato);
-    if (c.id === carreira.clubeAtualId && j.categoria === "profissional") {
+    if (c.id === carreira.clubeAtualId && incluirUsuarioNoProfissional) {
       candidatos.push(jogadorUsuarioComoCandidato(j, bonusPromessa(carreira)));
     }
     const resultado = escalarElencoCompleto(
@@ -201,7 +209,17 @@ function prepararClubesRodada(
       c.treinador,
     );
     aplicarEscalacaoAoClube(c, resultado);
-    sincronizarForcaClube(c, c.id === carreira.clubeAtualId ? j : undefined);
+    sincronizarForcaClube(
+      c,
+      c.id === carreira.clubeAtualId && incluirUsuarioNoProfissional ? j : undefined,
+    );
+    if (c.id === carreira.clubeAtualId && incluirUsuarioNoProfissional) {
+      escalacaoUsuario =
+        resultado.escalacaoUsuario === "lesionado" ||
+        resultado.escalacaoUsuario === "suspenso"
+          ? resultado.escalacaoUsuario
+          : escalacaoUsuarioDoClube(c) ?? "nao relacionado";
+    }
     if (c.id !== carreira.clubeAtualId) {
       evoluirJogadoresMundo(c.elenco, aleatorio, true);
       c.elenco = c.elenco.filter((jog) => !podeAposentar(jog, aleatorio));
@@ -209,6 +227,7 @@ function prepararClubesRodada(
       evoluirJogadoresMundo(c.elenco, aleatorio, true);
     }
   }
+  return escalacaoUsuario;
 }
 
 export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
@@ -218,9 +237,9 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
     );
   if (estado.temporada.encerrada) return estado;
   const hierarquiaAntes = avaliarHierarquia(estado);
-  const carreira = structuredClone(estado),
-    aleatorio = new GeradorAleatorio(carreira.estadoAleatorio),
-    j = carreira.jogador;
+  let carreira = structuredClone(estado);
+  const aleatorio = new GeradorAleatorio(carreira.estadoAleatorio);
+  let j = carreira.jogador;
   if (!carreira.relacionamentos)
     carreira.relacionamentos = { treinador: 50, diretoria: 50, agente: 60 };
   if (!carreira.decisoes) carreira.decisoes = [];
@@ -228,9 +247,41 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
   if (!carreira.ligas?.length) carreira.ligas = [carreira.liga];
   if (!carreira.temporadasExternas) carreira.temporadasExternas = {};
 
-  const clube = carreira.clubes.find((c) => c.id === carreira.clubeAtualId)!;
+  if (!carreira.historicoContratos) carreira.historicoContratos = [];
+  if (carreira.agenteLivreDesde === undefined) carreira.agenteLivreDesde = null;
+  if (carreira.ultimoClubeId === undefined) carreira.ultimoClubeId = null;
+
   carreira.dataAtual = somarDias(carreira.dataAtual, 7);
   carreira.ultimaPartidaId = null;
+
+  // Resolve fim de contrato ANTES de treino/partidas (sem vínculo provisório).
+  if (
+    !estaSemClube(carreira) &&
+    j.contrato.dataTermino < carreira.dataAtual
+  ) {
+    if (j.categoria === "base") {
+      // Formação: mantém vínculo formativo sem corte salarial nem agente livre.
+      j.contrato.dataTermino = somarDias(carreira.dataAtual, 365);
+    } else {
+      if (carreira.mercado.emprestimo) delete carreira.mercado.emprestimo;
+      carreira = efetivarPreContratos(carreira);
+      j = carreira.jogador;
+      if (
+        !estaSemClube(carreira) &&
+        j.contrato.dataTermino < carreira.dataAtual
+      ) {
+        tornarAgenteLivre(carreira);
+      }
+    }
+  }
+
+  const livre = estaSemClube(carreira);
+  const clube = livre
+    ? undefined
+    : carreira.clubes.find((c) => c.id === carreira.clubeAtualId);
+  if (!livre && !clube)
+    throw new Error("Clube atual não encontrado na carreira.");
+
   if (j.lesao) {
     j.lesao.diasRecuperacao = Math.max(0, j.lesao.diasRecuperacao - 7);
     if (j.lesao.diasRecuperacao === 0) {
@@ -248,18 +299,57 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
   processarTreinamento(
     j,
     carreira.focoTreino,
-    clube,
+    clube ?? null,
     carreira.dataAtual,
     aleatorio,
   );
   aplicarDeclinio(j);
+  if (livre) processarSemanaAgenteLivre(carreira);
 
-  avaliarBase(carreira);
-  const convocado = relacionadoProfissional(carreira);
-  const motivoParticipacao = avaliarHierarquia(carreira).motivo;
-  const categoriaSemana = convocado ? 'profissional' : j.categoria;
-  if (convocado) registrarEvento(carreira,'base-relacionado','Relacionado para o profissional','A comissão chamou você para suprir uma ausência na sua posição. O vínculo com a base permanece.','Treinador',false);
-  prepararClubesRodada(carreira, aleatorio);
+  let motivoParticipacao = "Sem clube nesta semana.";
+  let convocado = false;
+  let categoriaSemana = j.categoria;
+  let incluirUsuarioNoProfissional = false;
+  let escalacaoPreparada: Escalacao | null = null;
+
+  if (!livre && clube) {
+    avaliarBase(carreira);
+    convocado = relacionadoProfissional(carreira);
+    motivoParticipacao = avaliarHierarquia(carreira).motivo;
+    categoriaSemana = convocado ? "profissional" : j.categoria;
+    incluirUsuarioNoProfissional =
+      j.categoria === "profissional" || convocado;
+    if (convocado)
+      registrarEvento(
+        carreira,
+        "base-relacionado",
+        "Relacionado para o profissional",
+        "A comissão chamou você para suprir uma ausência na sua posição. O vínculo com a base permanece.",
+        "Treinador",
+        false,
+      );
+    escalacaoPreparada = prepararClubesRodada(
+      carreira,
+      aleatorio,
+      incluirUsuarioNoProfissional,
+    );
+  } else {
+    // Sem clube: ainda simula a liga, sem o jogador na escalação.
+    for (const c of carreira.clubes.filter(
+      (x) => x.ligaId === carreira.liga.id,
+    )) {
+      const candidatos = c.elenco.map(jogadorMundoComoCandidato);
+      const resultado = escalarElencoCompleto(
+        candidatos,
+        c.formacaoPreferida,
+        c.treinador,
+      );
+      aplicarEscalacaoAoClube(c, resultado);
+      sincronizarForcaClube(c);
+      evoluirJogadoresMundo(c.elenco, aleatorio, true);
+      c.elenco = c.elenco.filter((jog) => !podeAposentar(jog, aleatorio));
+    }
+  }
 
   const rodada = ++carreira.temporada.rodadaAtual;
   const mapa = new Map(carreira.clubes.map((c) => [c.id, c]));
@@ -267,6 +357,8 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
     carreira.temporada[chave] = carreira.temporada[chave].map((partida) => {
       if (partida.rodada !== rodada) return partida;
       const pertence =
+        !livre &&
+        !!clube &&
         partida.categoria === categoriaSemana &&
         [partida.mandanteId, partida.visitanteId].includes(clube.id);
       const resultado = simularPartida(
@@ -274,11 +366,17 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
         mapa.get(partida.mandanteId)!,
         mapa.get(partida.visitanteId)!,
         aleatorio,
-        pertence ? convocado ? { ...j, categoria: "profissional" } : j : undefined,
-        pertence ? clube.id : undefined,
+        pertence ? j : undefined,
+        pertence && clube ? clube.id : undefined,
         pertence ? bonusPromessa(carreira) : 0,
+        pertence && incluirUsuarioNoProfissional
+          ? {
+              escalacaoPreparada: escalacaoPreparada ?? "nao relacionado",
+              elencoProfissional: true,
+            }
+          : undefined,
       );
-      if (pertence) {
+      if (pertence && clube) {
         carreira.ultimaPartidaId = resultado.id;
         aplicarDesempenho(carreira, resultado, clube, aleatorio);
       }
@@ -302,8 +400,15 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
     );
     c.moral = limitar(c.moral + Math.sign(saldo) * 3);
     c.fadiga = aleatorio.inteiro(10, 30);
-    if (c.id === clube.id) reescalarClube(c);
-    sincronizarForcaClube(c, c.id === clube.id ? j : undefined);
+    sincronizarForcaClube(
+      c,
+      !livre &&
+        clube &&
+        c.id === clube.id &&
+        incluirUsuarioNoProfissional
+        ? j
+        : undefined,
+    );
   }
 
   avancarLigasExternas(carreira, aleatorio);
@@ -339,73 +444,85 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
       (Date.parse(carreira.dataAtual) - Date.parse(carreira.dataInicio)) /
         31557600000,
     );
-  avaliarPromocao(carreira, clube);
-  if (j.categoria === "profissional") {
-    const anterior = j.status;
-    const candidatos = [
-      ...clube.elenco.map(jogadorMundoComoCandidato),
-      jogadorUsuarioComoCandidato(j, bonusPromessa(carreira)),
-    ];
-    const esc = escalarElencoCompleto(
-      candidatos,
-      clube.formacaoPreferida,
-      clube.treinador,
-    );
-    aplicarEscalacaoAoClube(clube, esc);
-    sincronizarForcaClube(clube, j);
-    j.status =
-      esc.escalacaoUsuario === "titular"
-        ? j.confianca > 90 && j.overall > clube.forcaGeral + 5
-          ? "estrela do time"
-          : j.confianca > 82
-            ? "jogador importante"
-            : "titular"
-        : esc.escalacaoUsuario === "banco"
-          ? "rotacao"
-          : "reserva";
+  if (!livre && clube) {
+    avaliarPromocao(carreira, clube);
+    if (j.categoria === "profissional") {
+      const anterior = j.status;
+      const candidatos = [
+        ...clube.elenco.map(jogadorMundoComoCandidato),
+        jogadorUsuarioComoCandidato(j, bonusPromessa(carreira)),
+      ];
+      const esc = escalarElencoCompleto(
+        candidatos,
+        clube.formacaoPreferida,
+        clube.treinador,
+      );
+      aplicarEscalacaoAoClube(clube, esc);
+      sincronizarForcaClube(clube, j);
+      j.status =
+        esc.escalacaoUsuario === "titular"
+          ? j.confianca > 90 && j.overall > clube.forcaGeral + 5
+            ? "estrela do time"
+            : j.confianca > 82
+              ? "jogador importante"
+              : "titular"
+          : esc.escalacaoUsuario === "banco"
+            ? "rotacao"
+            : "reserva";
+      if (
+        ["titular", "jogador importante", "estrela do time"].includes(anterior) &&
+        ["reserva", "rotacao"].includes(j.status)
+      )
+        registrarEvento(
+          carreira,
+          "espaco",
+          "Seu espaço no elenco diminuiu",
+          "A comissão vai observar seu desempenho nas próximas semanas.",
+          "Treinador",
+        );
+    }
+    atualizarCompromissos(carreira);
+    const hierarquiaDepois = avaliarHierarquia(carreira);
     if (
-      ["titular", "jogador importante", "estrela do time"].includes(anterior) &&
-      ["reserva", "rotacao"].includes(j.status)
+      hierarquiaDepois.ordem < hierarquiaAntes.ordem ||
+      (!hierarquiaAntes.titular && hierarquiaDepois.titular)
     )
       registrarEvento(
         carreira,
-        "espaco",
-        "Seu espaço no elenco diminuiu",
-        "A comissão vai observar seu desempenho nas próximas semanas.",
+        "hierarquia",
+        hierarquiaDepois.titular
+          ? "Você conquistou a vaga"
+          : "Você subiu na hierarquia",
+        `Agora você está em ${hierarquiaDepois.rotulo}. ${hierarquiaDepois.motivo}`,
         "Treinador",
+        false,
       );
   }
-  atualizarCompromissos(carreira);
-  const hierarquiaDepois = avaliarHierarquia(carreira);
-  if (hierarquiaDepois.ordem < hierarquiaAntes.ordem || (!hierarquiaAntes.titular && hierarquiaDepois.titular))
-    registrarEvento(carreira, 'hierarquia', hierarquiaDepois.titular ? 'Você conquistou a vaga' : 'Você subiu na hierarquia', `Agora você é a ${hierarquiaDepois.ordem}ª opção de ${j.posicao}. ${hierarquiaDepois.motivo}`, 'Treinador', false);
   atualizarObjetivos(carreira);
   j.valorMercado = calcularValorMercado(j, carreira.liga, carreira.dataAtual);
   avaliarMercado(carreira, aleatorio);
-  avisarConcorrencia(carreira, estado);
-  gerarContextoSemana(carreira, aleatorio);
-  gerarDecisoesSemana(carreira, aleatorio);
-  if (
-    j.contrato.dataTermino < carreira.dataAtual &&
-    !carreira.propostas.some(
-      (p) => p.status === "aceita" && p.etapa === "acordo",
-    )
-  ) {
-    j.contrato.dataTermino = somarDias(carreira.dataAtual, 90);
-    j.contrato.salario = Math.round(j.contrato.salario * 0.9);
-    registrarEvento(
-      carreira,
-      "vinculo-provisorio",
-      "Vínculo provisório por 90 dias",
-      "Sem acordo de longo prazo, você permanece com salário reduzido enquanto seu agente procura opções.",
-      "Agente",
-    );
+  if (!livre) {
+    avisarConcorrencia(carreira, estado);
+    gerarContextoSemana(carreira, aleatorio);
+    gerarDecisoesSemana(carreira, aleatorio);
   }
+
+  // Fim de contrato: efetivar acordos primeiro; sem acordo → agente livre.
+  // NÃO cria vínculo provisório nem corta salário automaticamente.
   registrarResumoSemanal(carreira, estado, motivoParticipacao);
   carreira.estadoAleatorio = aleatorio.estado;
-  return efetivarPreContratos(
+  let resultado =
     rodada >= carreira.temporada.totalRodadas
       ? finalizarTemporada(carreira)
-      : carreira,
-  );
+      : carreira;
+  resultado = efetivarPreContratos(resultado);
+  if (
+    !estaSemClube(resultado) &&
+    resultado.jogador.categoria === "profissional" &&
+    resultado.jogador.contrato.dataTermino < resultado.dataAtual
+  ) {
+    if (resultado.mercado.emprestimo) delete resultado.mercado.emprestimo;
+    tornarAgenteLivre(resultado);
+  }
+  return resultado;
 }

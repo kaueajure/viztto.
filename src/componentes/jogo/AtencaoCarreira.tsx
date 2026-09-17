@@ -1,7 +1,12 @@
 import Link from "next/link";
 import type { EstadoCarreira } from "@/dominio/entidades/modelos";
-import { criarMercado } from "@/dominio/mercado";
+import { criarMercado, marcarRespostasMercadoLidas } from "@/dominio/mercado";
 import { obterSituacaoJanela } from "@/simulacao/transferencias/necessidade";
+import {
+  alertaFimContrato,
+  estaSemClube,
+  semanasSemClube,
+} from "@/simulacao/carreira/agente-livre";
 import { formatarData } from "@/utilitarios/formatacao";
 
 export type AcaoAtencao = {
@@ -19,6 +24,28 @@ export function coletarAcoesAtencao(c: EstadoCarreira): AcaoAtencao[] {
   const nome = (id: string) =>
     c.clubes.find((cl) => cl.id === id)?.nome ?? "Clube";
   const janela = obterSituacaoJanela(c.dataAtual);
+
+  if (estaSemClube(c)) {
+    const ultimo = c.ultimoClubeId ? nome(c.ultimoClubeId) : null;
+    const semanas = semanasSemClube(c);
+    const observando = m.interesses.filter((i) => i.status !== "encerrado").length;
+    itens.push({
+      id: "agente-livre",
+      prioridade: 98,
+      titulo: "Você está sem clube · agente livre",
+      detalhe: [
+        ultimo ? `Último clube: ${ultimo}` : null,
+        semanas > 0 ? `${semanas} semana(s) sem clube` : "Recém-liberado",
+        observando > 0
+          ? `${observando} clube(s) observando`
+          : "Peça ao agente para buscar oportunidades",
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      href: "/carreira/mercado",
+      cta: "Ver agente",
+    });
+  }
 
   for (const p of c.propostas.filter(
     (x) => x.status === "pendente" && x.validade >= c.dataAtual,
@@ -66,7 +93,7 @@ export function coletarAcoesAtencao(c: EstadoCarreira): AcaoAtencao[] {
     });
   }
 
-  if (m.respostaDiretoriaSaida && m.statusPedidoSaida !== "nenhum") {
+  if (m.respostaDiretoriaSaida && m.statusPedidoSaida !== "nenhum" && !m.respostaSaidaLida) {
     itens.push({
       id: "dir-saida",
       prioridade: 80,
@@ -80,7 +107,7 @@ export function coletarAcoesAtencao(c: EstadoCarreira): AcaoAtencao[] {
     });
   }
 
-  if (m.respostaDiretoriaEmprestimo && m.pediuEmprestimo) {
+  if (m.respostaDiretoriaEmprestimo && m.pediuEmprestimo && !m.respostaEmprestimoLida) {
     itens.push({
       id: "dir-emp",
       prioridade: 78,
@@ -117,23 +144,28 @@ export function coletarAcoesAtencao(c: EstadoCarreira): AcaoAtencao[] {
     });
   }
 
-  const diasContrato = Math.ceil(
-    (Date.parse(c.jogador.contrato.dataTermino) - Date.parse(c.dataAtual)) /
-      86400000,
-  );
-  if (diasContrato > 0 && diasContrato <= 365) {
-    const meses = Math.ceil(diasContrato / 30);
+  const alerta = alertaFimContrato(c);
+  if (alerta) {
+    const prioridade =
+      alerta.nivel === "urgente"
+        ? 85
+        : alerta.nivel === "forte"
+          ? 75
+          : alerta.nivel === "importante"
+            ? 55
+            : 40;
     itens.push({
       id: "contrato",
-      prioridade: diasContrato <= 90 ? 75 : diasContrato <= 180 ? 55 : 40,
+      prioridade,
       titulo:
-        diasContrato <= 90
-          ? `Contrato termina em cerca de ${meses} mês${meses > 1 ? "es" : ""}`
-          : `Contrato termina em menos de ${meses <= 6 ? "6" : "12"} meses`,
-      detalhe:
-        diasContrato <= 180
-          ? "Pré-contratos internacionais podem ser negociados perto do fim do vínculo."
-          : `Término em ${formatarData(c.jogador.contrato.dataTermino)}.`,
+        alerta.nivel === "urgente"
+          ? `Contrato termina em ${alerta.dias} dia(s)`
+          : alerta.nivel === "forte"
+            ? `Contrato termina em cerca de ${Math.ceil(alerta.dias / 30)} mês(es)`
+            : alerta.nivel === "importante"
+              ? `Faltam cerca de ${Math.ceil(alerta.dias / 30)} meses de contrato`
+              : "Contrato com validade abaixo de 12 meses",
+      detalhe: alerta.texto,
       href: "/carreira/jogador",
       cta: "Ver contrato",
     });
@@ -165,8 +197,8 @@ export function coletarAcoesAtencao(c: EstadoCarreira): AcaoAtencao[] {
   }
 
   if (!c.jogador.preparacao.planoId && !c.aposentado) itens.push({ id: "plano", prioridade: 60, titulo: "Defina seu plano de desenvolvimento", href: "/carreira/treinamento", cta: "Escolher plano" });
-  for (const n of c.noticias.filter(n => !n.lida && ["treinador", "diretoria", "promessa", "hierarquia", "evolucao", "overall"].includes(n.tipo)).slice(0, 3))
-    itens.push({ id: n.id, prioridade: n.tipo === "diretoria" || n.tipo === "promessa" ? 88 : 72, titulo: n.titulo, detalhe: n.texto, href: n.tipo === "evolucao" || n.tipo === "overall" ? "/carreira/noticias" : "/carreira/clube", cta: "Ver resposta" });
+  for (const n of c.noticias.filter(n => !n.lida && ["treinador", "diretoria", "promessa", "hierarquia", "evolucao", "overall", "fim-contrato"].includes(n.tipo)).slice(0, 3))
+    itens.push({ id: n.id, prioridade: n.tipo === "diretoria" || n.tipo === "promessa" || n.tipo === "fim-contrato" ? 88 : 72, titulo: n.titulo, detalhe: n.texto, href: n.tipo === "evolucao" || n.tipo === "overall" || n.tipo === "fim-contrato" ? "/carreira/noticias" : "/carreira/clube", cta: "Ver resposta" });
   return itens.sort((a, b) => b.prioridade - a.prioridade).slice(0, 4);
 }
 
@@ -176,8 +208,18 @@ export function badgeMercado(c: EstadoCarreira): number {
   n += c.propostas.filter(
     (p) => p.status === "pendente" && p.validade >= c.dataAtual,
   ).length;
-  if (m.respostaDiretoriaSaida && m.statusPedidoSaida !== "nenhum") n += 1;
-  if (m.respostaDiretoriaEmprestimo && m.pediuEmprestimo) n += 1;
+  if (
+    m.respostaDiretoriaSaida &&
+    m.statusPedidoSaida !== "nenhum" &&
+    !m.respostaSaidaLida
+  )
+    n += 1;
+  if (
+    m.respostaDiretoriaEmprestimo &&
+    m.pediuEmprestimo &&
+    !m.respostaEmprestimoLida
+  )
+    n += 1;
   if (
     m.interesses.some(
       (i) =>
@@ -189,6 +231,8 @@ export function badgeMercado(c: EstadoCarreira): number {
     n += 1;
   return n;
 }
+
+export { marcarRespostasMercadoLidas };
 
 export function AtencaoCarreira({ carreira: c }: { carreira: EstadoCarreira }) {
   const itens = coletarAcoesAtencao(c);

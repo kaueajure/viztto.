@@ -127,7 +127,27 @@ export const esquemaCarreira = z.object({
   dataInicio: data,
   identidadeInicial: esquemaIdentidade,
   clubeInicialId: texto,
-  clubeAtualId: texto,
+  clubeAtualId: texto.nullable(),
+  agenteLivreDesde: data.nullable().default(null),
+  ultimoClubeId: texto.nullable().default(null),
+  historicoContratos: z
+    .array(
+      z.object({
+        clubeId: texto,
+        salario: numero,
+        dataInicio: data,
+        dataTermino: data,
+        papelEsperado: texto,
+        tipo: categoria,
+        motivoSaida: z.enum([
+          "fim_contrato",
+          "transferencia",
+          "emprestimo",
+          "aposentadoria",
+        ]),
+      }),
+    )
+    .default([]),
   origem: z.enum(["api", "demonstracao"]),
   clubes: z.array(esquemaClube).min(2),
   liga: esquemaLiga,
@@ -324,8 +344,10 @@ export function validarSave(valor: unknown): EstadoCarreira {
   const c = resultado.data;
   const ids = new Set(c.clubes.map((clube) => clube.id));
   if (
-    !ids.has(c.clubeAtualId) ||
+    (c.clubeAtualId !== null && !ids.has(c.clubeAtualId)) ||
+    (c.ultimoClubeId !== null && !ids.has(c.ultimoClubeId)) ||
     !ids.has(c.clubeInicialId) ||
+    c.historicoContratos.some((h) => !ids.has(h.clubeId)) ||
     c.temporada.partidas.some(
       (p) => !ids.has(p.mandanteId) || !ids.has(p.visitanteId),
     )

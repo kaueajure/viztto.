@@ -6,7 +6,7 @@ export function calcularEvolucao(
   jogador: Jogador,
   atributos: Atributo[],
   pontos: number,
-  clube: Clube,
+  clube: Clube | null,
 ): number {
   const curvaIdade =
     jogador.idade < 19
@@ -21,13 +21,18 @@ export function calcularEvolucao(
     0,
     1,
   );
+  const nivelClube = clube
+    ? jogador.categoria === "base"
+      ? clube.qualidadeBase
+      : clube.forcaGeral
+    : 48; // treino individual sem estrutura de clube
+  const eficienciaSemClube = clube ? 1 : 0.55;
   const contexto =
     (0.55 + jogador.personalidade.profissionalismo / 140) *
     (0.7 + jogador.moral / 200) *
     (jogador.lesao ? 0.3 : 1) *
-    (0.65 +
-      (jogador.categoria === "base" ? clube.qualidadeBase : clube.forcaGeral) /
-        180);
+    (0.65 + nivelClube / 180) *
+    eficienciaSemClube;
   const ganho = pontos * curvaIdade * margem * contexto;
   for (const atributo of atributos) {
     const rendimento = limitar((110 - jogador.atributos[atributo]) / 55, 0.2, 1);

@@ -11,6 +11,10 @@ import { Escudo } from "@/componentes/clube/Escudo";
 import { Barra, EstatisticasLinha } from "@/componentes/interface/Elementos";
 import { TabelaLiga } from "@/componentes/partida/TabelaLiga";
 import { somarEstatisticas } from "@/simulacao/temporada/estatisticas";
+import {
+  estaSemClube,
+  semanasSemClube,
+} from "@/simulacao/carreira/agente-livre";
 import { formatarData } from "@/utilitarios/formatacao";
 import { FOCOS_TREINO } from "@/simulacao/treinamento/treinamento";
 export function InicioCarreira({
@@ -26,19 +30,28 @@ export function InicioCarreira({
 }) {
   const j = c.jogador,
     base = j.categoria === "base",
-    clube = c.clubes.find((cl) => cl.id === c.clubeAtualId)!;
+    livre = estaSemClube(c),
+    clube = livre
+      ? undefined
+      : c.clubes.find((cl) => cl.id === c.clubeAtualId);
+  const ultimoClube = c.clubes.find((cl) => cl.id === c.ultimoClubeId);
   const partidas = base ? c.temporada.partidasBase : c.temporada.partidas,
-    proxima = partidas.find(
-      (p) =>
-        p.golsMandante === null &&
-        [p.mandanteId, p.visitanteId].includes(clube.id),
-    );
+    proxima =
+      !livre && clube
+        ? partidas.find(
+            (p) =>
+              p.golsMandante === null &&
+              [p.mandanteId, p.visitanteId].includes(clube.id),
+          )
+        : undefined;
   const mandante = c.clubes.find((cl) => cl.id === proxima?.mandanteId),
     visitante = c.clubes.find((cl) => cl.id === proxima?.visitanteId);
   const tabela = base
       ? c.temporada.classificacaoBase
       : c.temporada.classificacao,
-    indice = tabela.findIndex((l) => l.clubeId === clube.id),
+    indice = clube
+      ? tabela.findIndex((l) => l.clubeId === clube.id)
+      : 0,
     trecho = tabela.slice(
       Math.max(0, Math.min(indice - 2, tabela.length - 5)),
       Math.max(5, Math.min(indice + 3, tabela.length)),
@@ -48,18 +61,41 @@ export function InicioCarreira({
       .filter((r) => r.ano === c.temporada.ano)
       .map((r) => r.estatisticas),
   );
+  const semanasLivre = semanasSemClube(c);
   return (
     <>
       <AtencaoCarreira carreira={c} />
       <PropostasInicio carreira={c} />
       <DecisoesInicio carreira={c} />
       <CentralSemana carreira={c} />
+      {livre && (
+        <section className="painel atencao-carreira" role="status">
+          <p className="sobretitulo">SEM CLUBE / AGENTE LIVRE</p>
+          <h2>VOCÊ ESTÁ NO MERCADO.</h2>
+          <p>
+            {ultimoClube
+              ? `Seu contrato com o ${ultimoClube.nome} terminou.`
+              : "Seu contrato terminou e você ficou sem clube."}
+          </p>
+          <p className="texto-suave">
+            Seu agente está buscando uma nova equipe
+            {semanasLivre > 0 ? ` · ${semanasLivre} semana(s) sem clube` : ""}.
+          </p>
+          <Link className="botao secundario" href="/carreira/mercado">
+            Ir ao agente
+          </Link>
+        </section>
+      )}
       <div className="linha-titulo titulo-pagina">
         <div>
           <p className="sobretitulo">
-            {base ? "DESENVOLVIMENTO / BASE" : "CENTRAL DA CARREIRA"}
+            {livre
+              ? "AGENTE LIVRE"
+              : base
+                ? "DESENVOLVIMENTO / BASE"
+                : "CENTRAL DA CARREIRA"}
           </p>
-          <h1>O JOGO CONTINUA.</h1>
+          <h1>{livre ? "SEM CLUBE." : "O JOGO CONTINUA."}</h1>
         </div>
         <span className="data-edicao">
           {formatarTemporada(c.liga.id, c.temporada.ano)}
@@ -70,14 +106,18 @@ export function InicioCarreira({
         <section className="painel-proxima">
           <div className="linha-titulo">
             <span className="sobretitulo">
-              {c.temporada.encerrada
-                ? "TEMPORADA ENCERRADA"
-                : "PRÓXIMO COMPROMISSO"}
+              {livre
+                ? "SEM PARTIDA DE CLUBE"
+                : c.temporada.encerrada
+                  ? "TEMPORADA ENCERRADA"
+                  : "PRÓXIMO COMPROMISSO"}
             </span>
             <span className="rotulo">
-              {c.temporada.encerrada
-                ? "FIM DE TEMPORADA"
-                : `RODADA ${proxima?.rodada ?? "—"}`}
+              {livre
+                ? "AGENTE LIVRE"
+                : c.temporada.encerrada
+                  ? "FIM DE TEMPORADA"
+                  : `RODADA ${proxima?.rodada ?? "—"}`}
             </span>
           </div>
           <div className="campo-miniatura" aria-hidden="true" />
@@ -85,7 +125,19 @@ export function InicioCarreira({
             {c.liga.nome}
             {base ? " / Sub-20" : ""}
           </p>
-          {mandante && visitante ? (
+          {livre ? (
+            <div className="fim-temporada">
+              <h2>
+                SEM CLUBE.
+                <br />
+                MERCADO ABERTO.
+              </h2>
+              <p>
+                Você não disputa partidas até assinar com um novo clube. Treine
+                individualmente e peça ao agente para buscar oportunidades.
+              </p>
+            </div>
+          ) : mandante && visitante ? (
             <>
               <div className="confronto">
                 <div>
@@ -127,7 +179,9 @@ export function InicioCarreira({
                   ? "CARREIRA ENCERRADA"
                   : j.lesao
                     ? "DEPARTAMENTO MÉDICO"
-                    : "PREPARAÇÃO DA SEMANA"}
+                    : livre
+                      ? "TREINO INDIVIDUAL"
+                      : "PREPARAÇÃO DA SEMANA"}
               </span>
               <p>
                 {c.aposentado
@@ -171,7 +225,11 @@ export function InicioCarreira({
         <section className="painel-atleta">
           <div className="linha-titulo">
             <span className="rotulo">
-              {base ? "PROMESSA DA BASE" : "SEU JOGADOR"}
+              {livre
+                ? "AGENTE LIVRE"
+                : base
+                  ? "PROMESSA DA BASE"
+                  : "SEU JOGADOR"}
             </span>
             <Link href="/carreira/jogador" aria-label="Ver jogador">
               <ArrowUpRight size={19} />
@@ -195,9 +253,9 @@ export function InicioCarreira({
           </div>
           <div className="status-atleta">
             <span className="ponto" />
-            {j.status.replace("rotacao", "rotação")}
+            {livre ? "sem clube" : j.status.replace("rotacao", "rotação")}
           </div>
-          <Barra nome="Confiança do treinador" valor={j.confianca} />
+          {!livre && <Barra nome="Confiança do treinador" valor={j.confianca} />}
           <Barra nome="Condicionamento" valor={j.condicionamento} />
           <div className="forma-moral">
             <span>
@@ -218,7 +276,7 @@ export function InicioCarreira({
           <TabelaLiga
             linhas={trecho}
             clubes={c.clubes}
-            clubeAtualId={clube.id}
+            clubeAtualId={c.clubeAtualId}
             compacta
           />
         </section>
@@ -253,9 +311,11 @@ export function InicioCarreira({
             </div>
           ))}
           <p className="texto-suave avaliacao">
-            {base
-              ? "“Busque regularidade. A comissão acompanha sua evolução antes de decidir pela promoção.”"
-              : "“Seu lugar no time é conquistado a cada semana.”"}
+            {livre
+              ? "“Você está no mercado. Cada semana sem clube conta — mantenha o ritmo e pressione o agente.”"
+              : base
+                ? "“Busque regularidade. A comissão acompanha sua evolução antes de decidir pela promoção.”"
+                : "“Seu lugar no time é conquistado a cada semana.”"}
           </p>
         </section>
       </div>

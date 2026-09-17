@@ -36,11 +36,13 @@ export function responderContexto(c:EstadoCarreira,opcao:string):void {
   }
 }
 export function avisarConcorrencia(c:EstadoCarreira,antes:EstadoCarreira):void {
-  if(c.clubeAtualId!==antes.clubeAtualId)return;
-  const clube=c.clubes.find(cl=>cl.id===c.clubeAtualId)!;
-  const anteriores=new Set(antes.clubes.find(cl=>cl.id===antes.clubeAtualId)!.elenco.map(j=>j.id));
+  if(!c.clubeAtualId || c.clubeAtualId!==antes.clubeAtualId)return;
+  const clube=c.clubes.find(cl=>cl.id===c.clubeAtualId);
+  const antesClube=antes.clubes.find(cl=>cl.id===antes.clubeAtualId);
+  if(!clube || !antesClube)return;
+  const anteriores=new Set(antesClube.elenco.map(j=>j.id));
   const novo=clube.elenco.find(j=>!anteriores.has(j.id)&&(j.posicaoPrincipal===c.jogador.posicao||j.posicoesSecundarias.includes(c.jogador.posicao))&&j.overall>=c.jogador.overall);
   if(novo)registrarEvento(c,'concorrente','Novo concorrente',`O clube contratou ${novo.nome}, ${novo.posicaoPrincipal}, para a equipe principal. Seu espaço pode mudar; acompanhe a hierarquia.`,'Treinador',false);
-  const indisponivel=clube.elenco.find(j=>(j.lesionado||j.suspensao>0)&&j.posicaoPrincipal===c.jogador.posicao&&antes.clubes.find(cl=>cl.id===c.clubeAtualId)!.elenco.some(a=>a.id===j.id&&!a.lesionado&&a.suspensao===0));
+  const indisponivel=clube.elenco.find(j=>(j.lesionado||j.suspensao>0)&&j.posicaoPrincipal===c.jogador.posicao&&antesClube.elenco.some(a=>a.id===j.id&&!a.lesionado&&a.suspensao===0));
   if(indisponivel && c.jogador.categoria==='profissional')registrarEvento(c,'oportunidade','Uma ausência pode abrir espaço',`${indisponivel.nome} está indisponível. A comissão reavaliará as opções para ${c.jogador.posicao}.`,'Treinador',false);
 }

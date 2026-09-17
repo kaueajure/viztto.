@@ -92,7 +92,7 @@ function carreiraMercado(dataInicio = "2026-07-01") {
   c.jogador.forma = 75;
   c.registros.push({
     ano: 2026,
-    clubeId: c.clubeAtualId,
+    clubeId: c.clubeAtualId!,
     competicao: liga.nome,
     categoria: "profissional",
     estatisticas: {
@@ -299,7 +299,7 @@ describe("Fase 07: persistência de mercado e empréstimo", () => {
 
   it("empréstimo ativo round-trip preserva contrato na origem", () => {
     const c = carreiraMercado();
-    const origem = c.clubeAtualId;
+    const origem = c.clubeAtualId!;
     const destino = c.clubes[1]!;
     c.propostas.push({
       id: "emp-1",

@@ -73,6 +73,9 @@ export interface MercadoCarreira {
   disponivelParaEmprestimo: boolean;
   respostaDiretoriaSaida?: string;
   respostaDiretoriaEmprestimo?: string;
+  /** false = novidade não lida; true = já vista (histórico permanece). */
+  respostaSaidaLida: boolean;
+  respostaEmprestimoLida: boolean;
   emprestimo?: EmprestimoAtivo;
   historico: HistoricoNegociacao[];
   ultimaCobrancaPapel?: string;
@@ -96,6 +99,20 @@ export function criarMercado(): MercadoCarreira {
     bloquearPropostas: false,
     pediuEmprestimo: false,
     disponivelParaEmprestimo: false,
+    respostaSaidaLida: true,
+    respostaEmprestimoLida: true,
     historico: [],
+  };
+}
+
+/** Marca respostas da diretoria como vistas; preserva texto/histórico. */
+export function marcarRespostasMercadoLidas<T extends { mercado: MercadoCarreira }>(
+  estado: T,
+): T {
+  const m = estado.mercado;
+  if (m.respostaSaidaLida && m.respostaEmprestimoLida) return estado;
+  return {
+    ...estado,
+    mercado: { ...m, respostaSaidaLida: true, respostaEmprestimoLida: true },
   };
 }

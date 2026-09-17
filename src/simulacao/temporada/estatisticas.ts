@@ -25,7 +25,7 @@ export function registrarEstatisticas(
   partida: Partida,
 ): void {
   const p = partida.participacao;
-  if (!p || !p.minutos) return;
+  if (!p || !p.minutos || !carreira.clubeAtualId) return;
   let registro = carreira.registros.find(
     (r) =>
       r.ano === carreira.temporada.ano &&

@@ -121,6 +121,22 @@ export const esquemaClubeDinamico = z
 const transferencias = esquemaCarreira.shape.transferenciasRecentes
   .unwrap()
   .element.omit({ nomeJogador: true });
+const historicoContratoPersistido = z
+  .object({
+    clubeId: id,
+    salario: numero,
+    dataInicio: z.iso.date(),
+    dataTermino: z.iso.date(),
+    papelEsperado: papel,
+    tipo: z.enum(["base", "profissional"]),
+    motivoSaida: z.enum([
+      "fim_contrato",
+      "transferencia",
+      "emprestimo",
+      "aposentadoria",
+    ]),
+  })
+  .strict();
 export const esquemaCarreiraPersistida = esquemaCarreira
   .omit({
     clubes: true,
@@ -133,8 +149,11 @@ export const esquemaCarreiraPersistida = esquemaCarreira
     versao: z.literal(4),
     id,
     seed: id,
-    clubeAtualId: id,
+    clubeAtualId: id.nullable(),
     clubeInicialId: id,
+    agenteLivreDesde: z.iso.date().nullable().default(null),
+    ultimoClubeId: id.nullable().default(null),
+    historicoContratos: z.array(historicoContratoPersistido).max(50).default([]),
     ligaId: id,
     ligasIds: z.array(id).min(1).max(100),
     clubesDinamicos: z.array(esquemaClubeDinamico).min(2).max(2000),
@@ -214,6 +233,16 @@ export function validarVinculosContratoPersistido(
   if (p.temporadasExternas[p.ligaId])
     throw new Error("Vínculos do save inválidos.");
   const emprestimo = p.mercado.emprestimo;
+  if (p.clubeAtualId === null) {
+    // Agente livre: sem empréstimo ativo; contrato pode referenciar o último clube.
+    if (emprestimo) throw new Error("Vínculos do save inválidos.");
+    if (
+      p.ultimoClubeId &&
+      p.jogador.contrato.clubeId !== p.ultimoClubeId
+    )
+      throw new Error("Vínculos do save inválidos.");
+    return;
+  }
   if (emprestimo) {
     if (emprestimo.clubeOrigemId !== p.jogador.contrato.clubeId)
       throw new Error("Vínculos do save inválidos.");
@@ -270,15 +299,25 @@ export function validarReferenciasCarreiraPersistida(
   const exigirClube = (id: string) => {
     if (!idsClubes.has(id)) throw new Error("Referência de clube inválida.");
   };
-  exigirClube(p.clubeAtualId);
+  if (p.clubeAtualId !== null) exigirClube(p.clubeAtualId);
   exigirClube(p.clubeInicialId);
   exigirClube(p.jogador.contrato.clubeId);
+  if (p.ultimoClubeId) exigirClube(p.ultimoClubeId);
+  for (const h of p.historicoContratos) exigirClube(h.clubeId);
   if (p.mercado.emprestimo) exigirClube(p.mercado.emprestimo.clubeOrigemId);
   validarVinculosContratoPersistido(p);
   const ligaAtual = ligasPorId.get(p.ligaId);
-  const clubeAtual = clubesBase.get(p.clubeAtualId);
-  if (!ligaAtual || clubeAtual?.ligaId !== p.ligaId)
-    throw new Error("Liga atual inválida.");
+  if (!ligaAtual) throw new Error("Liga atual inválida.");
+  if (p.clubeAtualId !== null) {
+    const clubeAtual = clubesBase.get(p.clubeAtualId);
+    if (clubeAtual?.ligaId !== p.ligaId)
+      throw new Error("Liga atual inválida.");
+  } else {
+    const refId = p.ultimoClubeId;
+    const ref = refId ? clubesBase.get(refId) : undefined;
+    if (ref && ref.ligaId !== p.ligaId && !p.ligasIds.includes(ref.ligaId))
+      throw new Error("Liga atual inválida.");
+  }
   for (const ligaId of p.ligasIds) {
     const qtd = p.clubesDinamicos.filter(
       (c) => clubesBase.get(c.id)?.ligaId === ligaId,
@@ -302,6 +341,7 @@ export function validarReferenciasCarreiraPersistida(
   for (const pedido of p.acompanhamento.pedidosContrato) exigirClube(pedido.clubeId);
   if (p.acompanhamento.promessa) exigirClube(p.acompanhamento.promessa.clubeId);
   if (p.acompanhamento.adaptacao) exigirClube(p.acompanhamento.adaptacao.clubeId);
+  if (p.acompanhamento.papelAceito) exigirClube(p.acompanhamento.papelAceito.clubeId);
   for (const proposta of p.propostas) {
     exigirClube(proposta.clubeId);
     if (proposta.clubeOrigemId) exigirClube(proposta.clubeOrigemId);
@@ -444,13 +484,23 @@ export function hidratarCarreira(
   )
     throw new Error("IDs duplicados no save.");
   const liga = ligas.find((l) => l.id === p.ligaId);
-  if (!liga || clubes.find((c) => c.id === p.clubeAtualId)?.ligaId !== liga.id)
-    throw new Error("Liga atual inválida.");
+  if (!liga) throw new Error("Liga atual inválida.");
+  if (p.clubeAtualId !== null) {
+    if (clubes.find((c) => c.id === p.clubeAtualId)?.ligaId !== liga.id)
+      throw new Error("Liga atual inválida.");
+  } else {
+    const refId = p.ultimoClubeId;
+    const ref = refId ? clubes.find((c) => c.id === refId) : undefined;
+    if (ref && ref.ligaId !== liga.id && !p.ligasIds.includes(ref.ligaId))
+      throw new Error("Liga atual inválida.");
+  }
   const exigirClube = (id: string) => {
     if (!idsClubes.has(id)) throw new Error("Referência de clube inválida.");
   };
   exigirClube(p.clubeInicialId);
   exigirClube(p.jogador.contrato.clubeId);
+  if (p.ultimoClubeId) exigirClube(p.ultimoClubeId);
+  for (const h of p.historicoContratos) exigirClube(h.clubeId);
   if (p.mercado.emprestimo) exigirClube(p.mercado.emprestimo.clubeOrigemId);
   validarVinculosContratoPersistido(p);
   for (const l of ligas) {

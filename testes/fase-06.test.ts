@@ -67,7 +67,7 @@ function nova(dataInicio = "2026-07-01") {
   c.jogador.forma = 75;
   c.registros.push({
     ano: 2026,
-    clubeId: c.clubeAtualId,
+    clubeId: c.clubeAtualId!,
     competicao: liga.nome,
     categoria: "profissional",
     estatisticas: {
@@ -96,7 +96,7 @@ function oferta(
   const p: PropostaTransferencia = {
     id: `oferta-${c.propostas.length}`,
     clubeId,
-    clubeOrigemId: c.clubeAtualId,
+    clubeOrigemId: c.clubeAtualId!,
     tipo: "transferencia",
     salario: 2000,
     duracaoAnos: 4,
@@ -499,7 +499,7 @@ describe("Fase 6: agente — bloquear, saída e empréstimo", () => {
     const p: PropostaTransferencia = {
       id: "emp-1",
       clubeId: c.clubes[1]!.id,
-      clubeOrigemId: c.clubeAtualId,
+      clubeOrigemId: c.clubeAtualId!,
       tipo: "emprestimo",
       salario: 1500,
       duracaoAnos: 1,
@@ -520,7 +520,7 @@ describe("Fase 6: agente — bloquear, saída e empréstimo", () => {
 
   it("retorno de empréstimo funciona", () => {
     const c = nova();
-    const origem = c.clubeAtualId;
+    const origem = c.clubeAtualId!;
     const destino = c.clubes[1]!.id;
     c.clubeAtualId = destino;
     c.mercado.emprestimo = {
@@ -548,7 +548,7 @@ describe("Fase 6: aposentadoria e persistência", () => {
     const c = nova();
     c.registros.push({
       ano: 2025,
-      clubeId: c.clubeAtualId,
+      clubeId: c.clubeAtualId!,
       competicao: "Liga",
       categoria: "profissional",
       estatisticas: { ...estatisticasVazias(), jogos: 20, gols: 5 },

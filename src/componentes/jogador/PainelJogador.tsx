@@ -7,6 +7,10 @@ import { avaliarPotencial, POSICOES } from "@/dominio/regras/jogador";
 import { Barra } from "@/componentes/interface/Elementos";
 import { dinheiro } from "@/utilitarios/formatacao";
 import { rotuloRelacao } from "@/simulacao/decisoes/decisoes";
+import {
+  estaSemClube,
+  semanasSemClube,
+} from "@/simulacao/carreira/agente-livre";
 
 const GRUPOS: Record<string, Atributo[]> = {
   Técnicos: [
@@ -49,6 +53,8 @@ const GRUPOS: Record<string, Atributo[]> = {
 export function PainelJogador({ carreira: c }: { carreira: EstadoCarreira }) {
   const j = c.jogador;
   const hierarquia = avaliarHierarquia(c);
+  const livre = estaSemClube(c);
+  const ultimoClube = c.clubes.find((cl) => cl.id === c.ultimoClubeId);
   const rel = c.relacionamentos ?? {
     treinador: 50,
     diretoria: 50,
@@ -107,12 +113,25 @@ export function PainelJogador({ carreira: c }: { carreira: EstadoCarreira }) {
             <div>
               <dt>Contrato</dt>
               <dd>
-                {dinheiro(j.contrato.salario)}/sem · até {j.contrato.dataTermino}
+                {livre
+                  ? "Sem contrato"
+                  : `${dinheiro(j.contrato.salario)}/sem · até ${j.contrato.dataTermino}`}
               </dd>
             </div>
+            {livre && (
+              <div>
+                <dt>Último clube</dt>
+                <dd>
+                  {ultimoClube?.nome ?? "—"}
+                  {semanasSemClube(c) > 0
+                    ? ` · ${semanasSemClube(c)} sem.`
+                    : ""}
+                </dd>
+              </div>
+            )}
             <div>
               <dt>Papel</dt>
-              <dd>{j.status}</dd>
+              <dd>{livre ? "Agente livre" : j.status}</dd>
             </div>
             <div>
               <dt>Valor</dt>
@@ -124,9 +143,18 @@ export function PainelJogador({ carreira: c }: { carreira: EstadoCarreira }) {
       </div>
       <section className="painel espaco">
         <h2>CONCORRÊNCIA · {POSICOES[j.posicao].toUpperCase()}</h2>
-        <p>{hierarquia.ordem}ª opção. {hierarquia.motivo}</p>
+        <p>{hierarquia.rotulo}. {hierarquia.motivo}</p>
         <p className="texto-suave">{hierarquia.proximoPasso}</p>
-        <Link className="botao secundario" href="/carreira/clube">Ver hierarquia e conversar com o treinador</Link>
+        {!livre && (
+          <Link className="botao secundario" href="/carreira/clube">
+            Ver hierarquia e conversar com o treinador
+          </Link>
+        )}
+        {livre && (
+          <Link className="botao secundario" href="/carreira/mercado">
+            Buscar clube com o agente
+          </Link>
+        )}
       </section>
       <div className="grade-atributos">
         {Object.entries(GRUPOS).map(([nome, atributos]) => (

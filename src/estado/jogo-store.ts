@@ -5,7 +5,7 @@ import { solicitarContrato, type PedidoContrato } from "@/simulacao/transferenci
 import { conversarTreinador } from "@/simulacao/elenco/treinador";
 import type { AcaoTreinador } from "@/dominio/desenvolvimento";
 import type { Posicao } from "@/dominio/entidades/modelos";
-import { configurarDesenvolvimento } from "@/simulacao/treinamento/treinamento";
+import { configurarDesenvolvimento, escolherFocoTreino } from "@/simulacao/treinamento/treinamento";
 import type { IntensidadeTreino } from "@/dominio/desenvolvimento";
 import type { Atributo } from "@/dominio/entidades/modelos";
 import { create } from "zustand";
@@ -25,6 +25,7 @@ import {
   type AcaoAgente,
 } from "@/simulacao/transferencias/mercado-progressivo";
 import type { PreferenciasCarreira, TermosContrato } from "@/dominio/mercado";
+import { marcarRespostasMercadoLidas } from "@/dominio/mercado";
 import { serializarCarreira } from "@/infraestrutura/persistencia/carreira-persistida";
 import {
   apiCarreira,
@@ -94,6 +95,7 @@ interface JogoStore {
   ) => void;
   contrapropor: (id: string, termos: TermosContrato) => void;
   lerNoticias: () => void;
+  marcarMercadoLido: () => void;
 }
 
 const BACKOFF_MS = [1000, 2000, 4000, 8000, 15000, 30000] as const;
@@ -176,6 +178,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
   let ativo: Promise<void> | null = null;
   let carregamento: Promise<boolean> | null = null;
   let geracao = 0;
+  let geracaoSerializacaoInvalida: number | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let falhasConsecutivas = 0;
   let envioPendente: { payload: ReturnType<typeof serializarCarreira>; revision: number; geracao: number } | null = null;
@@ -189,6 +192,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
     };
     const agendarRetry = () => {
       if (retryTimer || get().conflito || !get().alteracoesPendentes) return;
+      if (geracaoSerializacaoInvalida === geracao) return;
       const indice = Math.min(falhasConsecutivas - 1, BACKOFF_MS.length - 1);
       const base = BACKOFF_MS[Math.max(0, indice)] ?? BACKOFF_MS[0];
       const jitter = Math.floor(base * 0.15 * Math.random());
@@ -224,6 +228,14 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
       if (ativo) return ativo;
       if (get().operando || get().conflito || !get().alteracoesPendentes)
         return Promise.resolve();
+      if (geracaoSerializacaoInvalida === geracao && !envioPendente) {
+        set({
+          statusPersistencia: "erro",
+          codigoErroPersistencia:
+            get().codigoErroPersistencia ?? CODIGOS_ERRO_SAVE.SAVE_INVALID,
+        });
+        return Promise.resolve();
+      }
       limparRetry();
       ativo = (async () => {
         set({ salvando: true, statusPersistencia: "salvando" });
@@ -232,11 +244,21 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
             const carreira = get().carreira;
             const revision = get().revision;
             if (!carreira || revision === null) break;
+            if (geracaoSerializacaoInvalida === geracao && !envioPendente) {
+              set({
+                statusPersistencia: "erro",
+                codigoErroPersistencia:
+                  get().codigoErroPersistencia ?? CODIGOS_ERRO_SAVE.SAVE_INVALID,
+              });
+              break;
+            }
             const enviada = envioPendente?.geracao ?? geracao;
             let payload;
             try {
               payload = envioPendente?.payload ?? serializarCarreira(carreira);
+              geracaoSerializacaoInvalida = null;
             } catch (erro) {
+              geracaoSerializacaoInvalida = geracao;
               falhasConsecutivas++;
               set({
                 erroPersistencia: mensagemAmigavelPersistencia(
@@ -338,6 +360,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
             const resultado = await api.carregar();
             geracao++;
             envioPendente = null;
+            geracaoSerializacaoInvalida = null;
             falhasConsecutivas = 0;
             set({
               carreira: resultado?.carreira ?? null,
@@ -392,6 +415,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
           );
           geracao++;
           envioPendente = null;
+          geracaoSerializacaoInvalida = null;
           falhasConsecutivas = 0;
           set({
             carreira: resultado.carreira,
@@ -421,6 +445,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
           await api.excluir(get().revision ?? 0);
           geracao++;
           envioPendente = null;
+          geracaoSerializacaoInvalida = null;
           falhasConsecutivas = 0;
           set({
             carreira: null,
@@ -478,7 +503,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
       solicitarContrato: p => aplicar(c => solicitarContrato(c,p)),
       conversarTreinador: (a,p) => aplicar(c => conversarTreinador(c,a,p)),
       configurarDesenvolvimento: (p,a,i) => aplicar(c => configurarDesenvolvimento(c,p,a,i)),
-      escolherTreino: (foco) => aplicar((c) => ({ ...c, focoTreino: foco })),
+      escolherTreino: (foco) => aplicar((c) => escolherFocoTreino(c, foco)),
       responder: (id, aceitar) =>
         aplicar((c) => responderProposta(c, id, aceitar)),
       responderDecisao: (id, opcaoId) =>
@@ -495,6 +520,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
             ? c
             : { ...c, noticias: c.noticias.map((n) => ({ ...n, lida: true })) },
         ),
+      marcarMercadoLido: () => aplicar(marcarRespostasMercadoLidas),
     };
   });
 }

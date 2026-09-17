@@ -86,7 +86,7 @@ export function CalendarioCompeticao({
                 v = c.clubes.find((cl) => cl.id === p.visitanteId)!;
               return (
                 <div
-                  className={`linha-jogo ${[m.id, v.id].includes(c.clubeAtualId) ? "meu-jogo" : ""}`}
+                  className={`linha-jogo ${c.clubeAtualId != null && [m.id, v.id].includes(c.clubeAtualId) ? "meu-jogo" : ""}`}
                   key={p.id}
                 >
                   <time>{formatarData(p.data)}</time>

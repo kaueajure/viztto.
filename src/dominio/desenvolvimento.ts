@@ -1,4 +1,4 @@
-import type { Atributo, Posicao } from './entidades/modelos';
+import type { Atributo, Posicao, StatusElenco } from './entidades/modelos';
 
 export const CAPITULOS = ['origem', 'destaque', 'dificuldade', 'chegada'] as const;
 export type CapituloHistoria = typeof CAPITULOS[number];
@@ -17,6 +17,8 @@ export interface PreparacaoJogador {
   historico: RegistroTreino[];
 }
 export type AcaoTreinador = 'motivo' | 'oportunidade' | 'melhorar' | 'papel' | 'posicao' | 'aceitar' | 'reclamar' | 'cobrar';
+export type CategoriaConversaTreinador = 'informativa' | 'pedido' | 'reclamacao' | 'cobranca' | 'posicional';
+export type CooldownsTreinador = Record<CategoriaConversaTreinador, string | null>;
 export interface PromessaTreinador {
   tipo: 'minutos' | 'avaliacao'; clubeId: string; treinadorId: string;
   inicio: string; prazo: string; condicao: string;
@@ -24,23 +26,48 @@ export interface PromessaTreinador {
   partidas: number; limitePartidas: number;
 }
 export type ObjetivoPessoalTipo = 'titular' | 'minutos' | 'tecnica' | 'emprestimo' | 'transferencia' | 'renovacao';
+/** Dias até poder reativar um objetivo pessoal já concluído (anti-farm). */
+export const DIAS_COOLDOWN_OBJETIVO_PESSOAL = 120;
+export type StatusAdaptacao = 'ativa' | 'secundaria';
+export interface AdaptacaoPosicao {
+  posicao: Posicao; inicio: string; semanas: number; clubeId: string; status: StatusAdaptacao;
+}
+export interface PapelAceitoTreinador {
+  status: StatusElenco; data: string; clubeId: string;
+}
+export interface HistoricoObjetivoPessoal {
+  tipo: ObjetivoPessoalTipo; concluidoEm: string; cicloId: string;
+}
+export interface ObjetivoPessoalAtivo {
+  tipo: ObjetivoPessoalTipo; inicio: string; referencia: number; progresso: number; concluido: boolean; cicloId: string;
+}
+export interface MudancaElencoSemana {
+  texto: string;
+  motivos: ('hierarquia' | 'escalacao' | 'chance' | 'concorrente' | 'papel')[];
+}
 export interface AcompanhamentoCarreira {
   conversas: { data: string; acao: AcaoTreinador; resposta: string; clubeId: string }[];
-  proximaConversa: string | null; promessa: PromessaTreinador | null;
-  adaptacao: { posicao: Posicao; inicio: string; semanas: number; clubeId: string; status: 'ativa' | 'concluida' } | null;
+  cooldownsTreinador: CooldownsTreinador;
+  promessa: PromessaTreinador | null;
+  adaptacao: AdaptacaoPosicao | null;
+  papelAceito: PapelAceitoTreinador | null;
   pedidosContrato: { data: string; clubeId: string; tipo: 'renovacao' | 'aumento' | 'extensao' | 'papel' | 'clausula'; status: 'aceito' | 'negado' | 'contraproposta' | 'adiado'; resposta: string; propostaId?: string }[];
   proximoPedidoContrato: string | null;
-  objetivoPessoal: { tipo: ObjetivoPessoalTipo; inicio: string; referencia: number; progresso: number; concluido: boolean } | null;
+  objetivoPessoal: ObjetivoPessoalAtivo | null;
+  historicoObjetivos: HistoricoObjetivoPessoal[];
   base: { ultimaAvaliacao: string | null; texto: string | null; treinosProfissional: number; conviteAte: string | null };
-  resumoSemanal: { data: string; treino: string; feedback: string; evolucoes: { atributo: Atributo; antes: number; depois: number }[]; overallAntes: number; overallDepois: number } | null;
+  resumoSemanal: { data: string; treino: string; feedback: string; evolucoes: { atributo: Atributo; antes: number; depois: number }[]; overallAntes: number; overallDepois: number; mudancaElenco: MudancaElencoSemana | null } | null;
   ultimoEventoContextual: string | null;
+}
+export function criarCooldownsTreinador(valor: string | null = null): CooldownsTreinador {
+  return { informativa: valor, pedido: valor, reclamacao: valor, cobranca: valor, posicional: valor };
 }
 export function criarPreparacao(): PreparacaoJogador {
   return { planoId: null, prioridades: [], intensidade: 'normal', historico: [] };
 }
 export function criarAcompanhamento(): AcompanhamentoCarreira {
-  return { conversas: [], proximaConversa: null, promessa: null, adaptacao: null,
-    pedidosContrato: [], proximoPedidoContrato: null, objetivoPessoal: null,
+  return { conversas: [], cooldownsTreinador: criarCooldownsTreinador(), promessa: null, adaptacao: null, papelAceito: null,
+    pedidosContrato: [], proximoPedidoContrato: null, objetivoPessoal: null, historicoObjetivos: [],
     base: { ultimaAvaliacao: null, texto: null, treinosProfissional: 0, conviteAte: null },
     resumoSemanal: null, ultimoEventoContextual: null };
 }

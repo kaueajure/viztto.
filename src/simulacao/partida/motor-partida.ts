@@ -1,12 +1,16 @@
 import type {
   Clube,
+  Escalacao,
   Jogador,
   Partida,
   Participacao,
+  Posicao,
+  StatusElenco,
 } from "@/dominio/entidades/modelos";
 import { GeradorAleatorio } from "@/utilitarios/aleatorio";
 import { limitar } from "@/utilitarios/formatacao";
 import { determinarEscalacao } from "./escalacao";
+
 export function calcularGolsEsperados(
   ataque: Clube,
   defesa: Clube,
@@ -26,6 +30,220 @@ export function calcularGolsEsperados(
     4.8,
   );
 }
+
+function fatorEstadoJogador(jogador: Jogador): number {
+  return (
+    (0.75 + jogador.forma / 400) *
+    (0.9 + jogador.moral / 1000) *
+    (0.85 + jogador.condicionamento / 700) *
+    (1 - jogador.fadiga / 250)
+  );
+}
+
+/** Qualidade setorial bruta a partir dos atributos da posição (criação/conversão/defesa). */
+export function qualidadeSetorialJogador(jogador: Jogador): {
+  ataque: number;
+  meio: number;
+  defesa: number;
+} {
+  const a = jogador.atributos;
+
+  switch (jogador.posicao) {
+    case "GOL":
+      return {
+        ataque: 28,
+        meio: 32,
+        defesa:
+          (a.reflexos * 2.2 +
+            a.defesaGoleiro * 2.2 +
+            a.posicionamentoGoleiro * 1.4 +
+            a.agilidade +
+            a.concentracao) /
+          7.8,
+      };
+    case "CA":
+      return {
+        ataque:
+          (a.finalizacao * 3 + a.posicionamento * 2 + a.compostura * 2 + a.cabeceio) /
+          8,
+        meio: (a.passeCurto + a.visao + a.dominio) / 3,
+        defesa: (a.forca + a.antecipacao) / 2,
+      };
+    case "PD":
+    case "PE":
+      return {
+        ataque:
+          (a.finalizacao * 2 + a.drible * 2 + a.cruzamento + a.velocidade * 1.5) /
+          6.5,
+        meio: (a.passeCurto + a.visao + a.cruzamento) / 3,
+        defesa: (a.aceleracao + a.resistencia) / 2,
+      };
+    case "MEI":
+      return {
+        ataque: (a.finalizacao + a.drible + a.posicionamento) / 3,
+        meio:
+          (a.visao * 3 + a.passeCurto * 2 + a.decisao * 1.5 + a.dominio) / 7.5,
+        defesa: (a.antecipacao + a.desarme) / 2,
+      };
+    case "MC":
+      return {
+        ataque: (a.finalizacao + a.passeLongo) / 2,
+        meio:
+          (a.passeCurto * 2.5 + a.visao * 2 + a.passeLongo * 1.5 + a.decisao) / 7,
+        defesa: (a.desarme + a.resistencia + a.antecipacao) / 3,
+      };
+    case "VOL":
+      return {
+        ataque: (a.passeCurto + a.finalizacao) / 2,
+        meio: (a.passeCurto + a.visao + a.decisao) / 3,
+        defesa:
+          (a.desarme * 2 + a.marcacao * 2 + a.antecipacao * 1.5 + a.forca) / 6.5,
+      };
+    case "ZAG":
+      return {
+        ataque: (a.cabeceio + a.passeCurto) / 2,
+        meio: (a.passeCurto + a.passeLongo) / 2,
+        defesa:
+          (a.marcacao * 2.5 +
+            a.desarme * 2 +
+            a.antecipacao * 1.5 +
+            a.forca +
+            a.cabeceio) /
+          8,
+      };
+    case "LD":
+    case "LE":
+      return {
+        ataque: (a.cruzamento * 1.5 + a.velocidade + a.passeCurto) / 3.5,
+        meio: (a.passeCurto + a.cruzamento + a.resistencia) / 3,
+        defesa:
+          (a.desarme * 2 + a.marcacao * 1.5 + a.antecipacao + a.velocidade) / 5.5,
+      };
+    default:
+      return {
+        ataque: jogador.overall,
+        meio: jogador.overall,
+        defesa: jogador.overall,
+      };
+  }
+}
+
+function pesosSetor(posicao: Posicao): {
+  ataque: number;
+  meio: number;
+  defesa: number;
+} {
+  if (posicao === "GOL") return { ataque: 0.04, meio: 0.05, defesa: 0.42 };
+  if (["CA", "PD", "PE"].includes(posicao))
+    return { ataque: 0.34, meio: 0.12, defesa: 0.06 };
+  if (posicao === "MEI") return { ataque: 0.18, meio: 0.32, defesa: 0.08 };
+  if (posicao === "MC") return { ataque: 0.1, meio: 0.3, defesa: 0.12 };
+  if (posicao === "VOL") return { ataque: 0.06, meio: 0.18, defesa: 0.26 };
+  if (posicao === "ZAG") return { ataque: 0.05, meio: 0.08, defesa: 0.34 };
+  return { ataque: 0.12, meio: 0.16, defesa: 0.24 }; // laterais
+}
+
+/**
+ * Ajusta forças do clube do usuário conforme minutos e atributos.
+ * Titulares já contados na sincronização: refina por attrs e escala por minutos.
+ * Entrada do banco: adiciona contribuição proporcional aos minutos.
+ */
+export function ajustarClubePeloJogador(
+  clube: Clube,
+  jogador: Jogador,
+  minutos: number,
+  jaNaEscalacao: boolean,
+): Clube {
+  if (minutos <= 0 && !jaNaEscalacao) return clube;
+
+  const prop = limitar(minutos / 90, 0, 1);
+  const fator = fatorEstadoJogador(jogador);
+  const q = qualidadeSetorialJogador(jogador);
+  const pesos = pesosSetor(jogador.posicao);
+  const ataqueEfetivo = q.ataque * fator;
+  const meioEfetivo = q.meio * fator;
+  const defesaEfetivo = q.defesa * fator;
+  const refEfetivo = jogador.overall * fator;
+
+  let dAtaque: number;
+  let dMeio: number;
+  let dDefesa: number;
+
+  if (jaNaEscalacao) {
+    // Força já inclui overall×estado; troca por qualidade×estado×minutos.
+    dAtaque = (ataqueEfetivo * prop - refEfetivo) * pesos.ataque;
+    dMeio = (meioEfetivo * prop - refEfetivo) * pesos.meio;
+    dDefesa = (defesaEfetivo * prop - refEfetivo) * pesos.defesa;
+  } else {
+    dAtaque = (ataqueEfetivo - clube.forcaAtaque) * pesos.ataque * prop;
+    dMeio = (meioEfetivo - clube.forcaMeio) * pesos.meio * prop;
+    dDefesa = (defesaEfetivo - clube.forcaDefesa) * pesos.defesa * prop;
+  }
+
+  return {
+    ...clube,
+    forcaAtaque: limitar(clube.forcaAtaque + dAtaque, 35, 99),
+    forcaMeio: limitar(clube.forcaMeio + dMeio, 35, 99),
+    forcaDefesa: limitar(clube.forcaDefesa + dDefesa, 35, 99),
+  };
+}
+
+const BONUS_STATUS_ENTRADA: Record<StatusElenco, number> = {
+  "estrela do time": 0.28,
+  "jogador importante": 0.22,
+  titular: 0.18,
+  rotacao: 0.14,
+  promessa: 0.12,
+  reserva: 0.02,
+  "categoria de base": -0.06,
+};
+
+/**
+ * Chance de um reserva entrar — varia por posição, papel, confiança,
+ * fadiga/forma do elenco, rotação do treinador e necessidade pré-jogo.
+ * Goleiros permanecem em faixa bem mais baixa.
+ */
+export function chanceEntradaBanco(
+  jogador: Jogador,
+  clube: Clube,
+  oponente: Clube,
+): number {
+  if (jogador.posicao === "GOL") {
+    return limitar(
+      0.045 +
+        clube.fadiga * 0.0012 +
+        Math.max(0, clube.treinador.rotacao - 70) * 0.0006,
+      0.02,
+      0.14,
+    );
+  }
+
+  let chance = 0.3 + (BONUS_STATUS_ENTRADA[jogador.status] ?? 0);
+  chance += (jogador.confianca - 50) * 0.0025;
+  chance += clube.fadiga * 0.005;
+  chance += (50 - clube.forma) * 0.0015;
+  chance += (50 - clube.moral) * 0.001;
+  chance += (clube.treinador.rotacao - 50) * 0.0035;
+
+  if (jogador.idade <= 21 || jogador.status === "promessa") {
+    chance += 0.06 + clube.treinador.preferenciaJovens * 0.0015;
+  }
+
+  if (["CA", "PD", "PE", "MEI"].includes(jogador.posicao)) chance += 0.08;
+  else if (["MC", "VOL"].includes(jogador.posicao)) chance += 0.04;
+  else if (jogador.posicao === "ZAG") chance -= 0.06;
+  else if (["LD", "LE"].includes(jogador.posicao)) chance += 0.02;
+
+  // Necessidade tática pré-jogo (adversário mais forte → buscar impacto).
+  chance += limitar(
+    (oponente.forcaGeral - clube.forcaGeral) * 0.008,
+    -0.08,
+    0.12,
+  );
+
+  return limitar(chance, 0.08, 0.92);
+}
+
 export function calcularNotaJogador(
   p: Participacao,
   posicao: Jogador["posicao"],
@@ -57,6 +275,7 @@ export function calcularNotaJogador(
     ) / 10
   );
 }
+
 export function simularPartida(
   partida: Partida,
   mandante: Clube,
@@ -65,26 +284,35 @@ export function simularPartida(
   jogador?: Jogador,
   clubeJogadorId?: string,
   incentivo = 0,
+  opcoesEscalacao?: { escalacaoPreparada?: Escalacao; elencoProfissional?: boolean },
 ): Partida {
   if (partida.golsMandante !== null) return partida;
+
   const resultado: Partida = {
     ...partida,
     eventos: [],
-    golsMandante: aleatorio.poisson(
-      calcularGolsEsperados(mandante, visitante, true, partida.rodada / 40),
-    ),
-    golsVisitante: aleatorio.poisson(
-      calcularGolsEsperados(visitante, mandante, false, partida.rodada / 40),
-    ),
+    golsMandante: null,
+    golsVisitante: null,
   };
+
+  let mandanteEfetivo = mandante;
+  let visitanteEfetivo = visitante;
+
   if (jogador && clubeJogadorId) {
     const clube = clubeJogadorId === mandante.id ? mandante : visitante;
-    const escalacao = determinarEscalacao(jogador, clube, aleatorio, incentivo);
+    const oponente = clubeJogadorId === mandante.id ? visitante : mandante;
+    const escalacao = determinarEscalacao(
+      jogador,
+      clube,
+      aleatorio,
+      incentivo,
+      opcoesEscalacao,
+    );
     const entrada =
       escalacao === "titular"
         ? 0
         : escalacao === "banco" &&
-            aleatorio.chance(jogador.posicao === "GOL" ? 0.07 : 0.65)
+            aleatorio.chance(chanceEntradaBanco(jogador, clube, oponente))
           ? aleatorio.chance(0.035)
             ? aleatorio.inteiro(15, 44)
             : aleatorio.inteiro(55, 85)
@@ -135,7 +363,28 @@ export function simularPartida(
       desenvolvimento: 0,
     };
     resultado.participacao = p;
+
+    const jaNaEscalacao =
+      clube.titularesIds.includes("usuario") ||
+      clube.goleiroTitularId === "usuario";
+    const clubeAjustado = ajustarClubePeloJogador(
+      clube,
+      jogador,
+      minutos,
+      jaNaEscalacao,
+    );
+    if (clubeJogadorId === mandante.id) mandanteEfetivo = clubeAjustado;
+    else visitanteEfetivo = clubeAjustado;
   }
+
+  const momento = partida.rodada / 40;
+  resultado.golsMandante = aleatorio.poisson(
+    calcularGolsEsperados(mandanteEfetivo, visitanteEfetivo, true, momento),
+  );
+  resultado.golsVisitante = aleatorio.poisson(
+    calcularGolsEsperados(visitanteEfetivo, mandanteEfetivo, false, momento),
+  );
+
   for (const [clube, gols] of [
     [mandante, resultado.golsMandante!],
     [visitante, resultado.golsVisitante!],

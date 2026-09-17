@@ -1,7 +1,8 @@
 import "server-only";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { LIGAS_SUPORTADAS } from "@/dominio/constantes/ligas";
+import { TEMPORADAS_INICIAIS } from "@/dominio/constantes/temporadas-iniciais";
 import type { Liga } from "@/dominio/entidades/modelos";
 import { validarDisponibilidadeLiga } from "@/infraestrutura/persistencia/base-futebol";
 import {
@@ -9,6 +10,10 @@ import {
   salvarDadosLiga,
   obterDiretorioImportacao,
 } from "@/infraestrutura/persistencia/importacao-futebol";
+import {
+  enriquecerLigaComSportmonks,
+  type RelatorioMatchingLiga,
+} from "@/infraestrutura/sportmonks/enriquecer-liga";
 import { importarLiga, type ErroImportacaoClube } from "./importar-liga";
 
 export interface ResumoAtualizacaoLiga {
@@ -20,27 +25,40 @@ export interface ResumoAtualizacaoLiga {
   jogadores: number;
   falhas: ErroImportacaoClube[];
   erro?: string;
+  sportmonks?: {
+    matched: number;
+    unmatched: number;
+    ambiguous: number;
+    requests: number;
+    cobertura: string;
+  };
 }
 interface OpcoesAtualizacao {
   diretorio?: string;
   ligas?: Liga[];
   importar?: typeof importarLiga;
   informar?: (linha: string) => void;
+  /** Se true, falha sem SPORTMONKS_API_TOKEN. Default: false (fallback TM). */
+  exigirSportmonks?: boolean;
+  enriquecer?: typeof enriquecerLigaComSportmonks;
 }
 export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
   const destino = opcoes.diretorio ?? obterDiretorioImportacao();
   await mkdir(join(destino, ".staging"), { recursive: true });
   const staging = await mkdtemp(join(destino, ".staging", "atualizacao-"));
   const importar = opcoes.importar ?? importarLiga;
+  const enriquecer = opcoes.enriquecer ?? enriquecerLigaComSportmonks;
   const informar = opcoes.informar ?? console.log;
   const ligas = opcoes.ligas ?? LIGAS_SUPORTADAS;
   const inicio = Date.now();
   const resumo: ResumoAtualizacaoLiga[] = [];
+  const relatoriosMatching: RelatorioMatchingLiga[] = [];
+  let abortarTudo = false;
   informar(
-    "════════════════════════════════════════\nVIZTTO — ATUALIZAÇÃO DA BASE DE FUTEBOL\n════════════════════════════════════════",
+    "════════════════════════════════════════\nVIZTTO — ATUALIZAÇÃO DA BASE DE FUTEBOL\nTransfermarkt + Sportmonks (enrichment)\n════════════════════════════════════════",
   );
-  // A ordem é intencional: nunca há duas ligas importando/publicando em paralelo.
   for (const [indice, liga] of ligas.entries()) {
+    if (abortarTudo) break;
     informar(
       `\n[${indice + 1}/${ligas.length}] ${liga.nome}\nCompetição: ${liga.idTransfermarkt}`,
     );
@@ -68,13 +86,42 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
       });
       item.falhas = resultado.erros;
       const candidato = await lerDadosLiga(liga.id, staging);
+      if (!candidato)
+        throw new Error("Snapshot de staging não encontrado após importação.");
+
+      const temporadaLabel =
+        TEMPORADAS_INICIAIS[liga.id]?.temporadaTransfermarkt ??
+        String(candidato.temporada);
+      const enriquecido = await enriquecer(liga, candidato.clubes, {
+        informar,
+        exigirToken: opcoes.exigirSportmonks,
+        temporadaLabel,
+      });
+      relatoriosMatching.push(enriquecido.relatorio);
+      item.sportmonks = {
+        matched: enriquecido.relatorio.matched.length,
+        unmatched: enriquecido.relatorio.unmatched.length,
+        ambiguous: enriquecido.relatorio.ambiguous.length,
+        requests: enriquecido.relatorio.requests,
+        cobertura: enriquecido.relatorio.cobertura,
+      };
+      if (enriquecido.abortarPublicacao) {
+        abortarTudo = true;
+        item.erro =
+          enriquecido.erro ??
+          "Falha crítica Sportmonks — publicação abortada para preservar snapshots.";
+        informar(`✗ ${liga.nome}: ${item.erro}`);
+        resumo.push(item);
+        break;
+      }
+      candidato.clubes = enriquecido.clubes;
+
       const validado = validarDisponibilidadeLiga(liga, candidato);
       if (!validado)
         throw new Error(
           resultado.motivoInterrupcao ??
             "Snapshot sem pelo menos dois clubes válidos ou com edição/status incompatível.",
         );
-      // Publica somente clubes da atualização atual; placeholders e falhos ficam no staging.
       validado.progresso = {
         total: resultado.progresso.total,
         importados: validado.clubes.length,
@@ -94,7 +141,6 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
       );
     } catch (erro) {
       item.erro = erro instanceof Error ? erro.message : String(erro);
-      // Erros de escrita/leitura são reportados também, sem interromper as ligas seguintes.
       try {
         item.falhas =
           (await lerDadosLiga(liga.id, staging))?.erros ?? item.falhas;
@@ -109,21 +155,65 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
       informar(`  - ${falha.nome}: ${falha.motivo}`);
     resumo.push(item);
   }
-  const temFalhas = resumo.some(
-    (l) => !l.publicado || l.falhas.length > 0 || l.clubes !== l.total,
-  );
+
+  try {
+    const dirRel = join(process.cwd(), "relatorios");
+    await mkdir(dirRel, { recursive: true });
+    await writeFile(
+      join(dirRel, "sportmonks-matching.json"),
+      JSON.stringify(
+        {
+          geradoEm: new Date().toISOString(),
+          ligas: relatoriosMatching.map((r) => ({
+            ligaId: r.ligaId,
+            cobertura: r.cobertura,
+            total: r.total,
+            matched: r.matched.length,
+            unmatched: r.unmatched.length,
+            ambiguous: r.ambiguous.length,
+            requests: r.requests,
+            amostrasUnmatched: r.unmatched.slice(0, 20),
+            amostrasAmbiguous: r.ambiguous.slice(0, 20),
+          })),
+        },
+        null,
+        2,
+      ),
+    );
+    informar(`Relatório de matching: relatorios/sportmonks-matching.json`);
+  } catch {
+    /* best-effort */
+  }
+
+  const temFalhas =
+    abortarTudo ||
+    resumo.some(
+      (l) => !l.publicado || l.falhas.length > 0 || l.clubes !== l.total,
+    );
   const duracaoSegundos = Math.round((Date.now() - inicio) / 1000);
+  const jogadoresTm = resumo.reduce((s, l) => s + l.jogadores, 0);
+  const matches = resumo.reduce((s, l) => s + (l.sportmonks?.matched ?? 0), 0);
+  const unmatched = resumo.reduce(
+    (s, l) => s + (l.sportmonks?.unmatched ?? 0),
+    0,
+  );
   informar(
-    "\n════════════════════════════════════════\nRESUMO\n════════════════════════════════════════",
+    "\n════════════════════════════════════════\nATUALIZAÇÃO DE DADOS CONCLUÍDA\n════════════════════════════════════════",
+  );
+  informar(
+    `Transfermarkt:\n${resumo.filter((l) => l.publicado).length}/${resumo.length} ligas publicadas\n${resumo.reduce((s, l) => s + l.clubes, 0)} clubes\n${jogadoresTm} jogadores`,
+  );
+  informar(
+    `Sportmonks:\n${matches} matches confiáveis\n${unmatched} unmatched/fallback\n${resumo.reduce((s, l) => s + (l.sportmonks?.requests ?? 0), 0)} requests`,
   );
   for (const item of resumo)
     informar(
       `${!item.publicado ? "✗" : item.falhas.length ? "⚠" : "✓"} ${item.nome}: ${item.clubes}/${item.total}${item.erro ? ` · ${item.erro}` : ""}`,
     );
   informar(
-    `${resumo.length} ligas · ${resumo.reduce((s, l) => s + l.clubes, 0)} clubes publicados · ${resumo.reduce((s, l) => s + l.jogadores, 0)} jogadores · ${resumo.reduce((s, l) => s + l.falhas.length + (l.erro ? 1 : 0), 0)} falhas · ${duracaoSegundos}s`,
+    `Tempo: ${Math.floor(duracaoSegundos / 60)}m ${duracaoSegundos % 60}s`,
   );
   if (!temFalhas) await rm(staging, { recursive: true, force: true });
   else informar(`Diagnóstico da tentativa: ${staging}`);
-  return { ligas: resumo, temFalhas, duracaoSegundos };
+  return { ligas: resumo, temFalhas, duracaoSegundos, abortarTudo };
 }

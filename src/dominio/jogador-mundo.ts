@@ -211,7 +211,10 @@ function statusInicial(overall: number, forcaClube: number): StatusElenco {
 }
 
 export function criarJogadorMundo(
-  bruto: DadosImportadosJogador,
+  bruto: DadosImportadosJogador & {
+    overall?: number;
+    potencial?: number;
+  },
   contexto: {
     clubeId: string;
     reputacaoClube: number;
@@ -223,23 +226,30 @@ export function criarJogadorMundo(
 ): JogadorMundo {
   const idade = bruto.idade ?? 24;
   const posicaoPrincipal = mapearPosicaoPrincipal(bruto.posicao);
-  const overall = gerarOverallInicial({
-    valorMercado: bruto.valorMercado,
-    idade,
-    reputacaoClube: contexto.reputacaoClube,
-    reputacaoLiga: contexto.reputacaoLiga,
-    posicao: posicaoPrincipal,
-    indiceNoElenco: contexto.indiceNoElenco,
-    tamanhoElenco: contexto.tamanhoElenco,
-    seed: `${bruto.id}-${contexto.clubeId}`,
-  });
-  const potencial = gerarPotencialInicial({
-    overall,
-    idade,
-    valorMercado: bruto.valorMercado,
-    reputacaoLiga: contexto.reputacaoLiga,
-    seed: bruto.id,
-  });
+  // Snapshot enriquecido (Sportmonks/Rating Engine) tem precedência — não regenera.
+  const overall =
+    typeof bruto.overall === "number"
+      ? Math.round(limitar(bruto.overall, 40, 99))
+      : gerarOverallInicial({
+          valorMercado: bruto.valorMercado,
+          idade,
+          reputacaoClube: contexto.reputacaoClube,
+          reputacaoLiga: contexto.reputacaoLiga,
+          posicao: posicaoPrincipal,
+          indiceNoElenco: contexto.indiceNoElenco,
+          tamanhoElenco: contexto.tamanhoElenco,
+          seed: `${bruto.id}-${contexto.clubeId}`,
+        });
+  const potencial =
+    typeof bruto.potencial === "number"
+      ? Math.max(overall, Math.round(limitar(bruto.potencial, overall, 99)))
+      : gerarPotencialInicial({
+          overall,
+          idade,
+          valorMercado: bruto.valorMercado,
+          reputacaoLiga: contexto.reputacaoLiga,
+          seed: bruto.id,
+        });
   const salario = Math.round(
     Math.max(800, (bruto.valorMercado ?? overall * 80_000) * 0.0012),
   );

@@ -5,6 +5,10 @@ import type { EstadoCarreira } from "@/dominio/entidades/modelos";
 import { Escudo } from "@/componentes/clube/Escudo";
 import { PainelEquipe } from "@/componentes/clube/PainelEquipe";
 import { dinheiro, formatarData } from "@/utilitarios/formatacao";
+import {
+  estaSemClube,
+  semanasSemClube,
+} from "@/simulacao/carreira/agente-livre";
 
 export function MercadoClube({
   carreira: c,
@@ -13,16 +17,54 @@ export function MercadoClube({
   carreira: EstadoCarreira;
   secao: "mercado" | "clube";
 }) {
-  const clube = c.clubes.find((cl) => cl.id === c.clubeAtualId)!,
-    contrato = c.jogador.contrato,
-    dias = Math.max(
-      0,
-      Math.ceil(
-        (Date.parse(contrato.dataTermino) - Date.parse(c.dataAtual)) / 86400000,
-      ),
-    );
+  const livre = estaSemClube(c);
+  const clube = livre
+    ? undefined
+    : c.clubes.find((cl) => cl.id === c.clubeAtualId);
+  const ultimo = c.clubes.find((cl) => cl.id === c.ultimoClubeId);
+  const contrato = c.jogador.contrato;
+  const dias = Math.max(
+    0,
+    Math.ceil(
+      (Date.parse(contrato.dataTermino) - Date.parse(c.dataAtual)) / 86400000,
+    ),
+  );
 
   if (secao === "clube") {
+    if (livre || !clube) {
+      return (
+        <>
+          <p className="sobretitulo">ESTRUTURA / EQUIPE</p>
+          <h1>SEM CLUBE</h1>
+          <ConversaTreinador carreira={c} />
+          <ConversaContrato carreira={c} />
+          <section className="painel espaco">
+            <div className="linha-titulo">
+              <h2>SEU VÍNCULO</h2>
+              {ultimo && <Escudo clube={ultimo} tamanho={40} />}
+            </div>
+            <dl className="ficha">
+              <div>
+                <dt>Status</dt>
+                <dd>Sem contrato · agente livre</dd>
+              </div>
+              <div>
+                <dt>Último clube</dt>
+                <dd>{ultimo?.nome ?? "—"}</dd>
+              </div>
+              <div>
+                <dt>Tempo sem clube</dt>
+                <dd>
+                  {semanasSemClube(c) > 0
+                    ? `${semanasSemClube(c)} semana(s)`
+                    : "Recém-liberado"}
+                </dd>
+              </div>
+            </dl>
+          </section>
+        </>
+      );
+    }
     return (
       <>
         <p className="sobretitulo">ESTRUTURA / EQUIPE</p>

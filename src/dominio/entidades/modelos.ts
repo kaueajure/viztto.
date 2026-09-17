@@ -265,6 +265,16 @@ export interface Contrato {
   clausulaRescisao?: number;
   luvas?: number;
 }
+/** Contrato encerrado preservado no histórico da carreira. */
+export interface HistoricoContrato {
+  clubeId: string;
+  salario: number;
+  dataInicio: string;
+  dataTermino: string;
+  papelEsperado: StatusElenco;
+  tipo: "base" | "profissional";
+  motivoSaida: "fim_contrato" | "transferencia" | "emprestimo" | "aposentadoria";
+}
 export interface IdentidadeJogador {
   nome: string;
   sobrenome: string;
@@ -447,7 +457,14 @@ export interface EstadoCarreira {
   identidadeInicial: IdentidadeJogador;
   clubeInicialId: string;
   jogador: Jogador;
-  clubeAtualId: string;
+  /** null = agente livre / sem clube. */
+  clubeAtualId: string | null;
+  /** Data em que ficou sem clube; null quando vinculado. */
+  agenteLivreDesde: string | null;
+  /** Último clube antes de ficar livre (UI / histórico). */
+  ultimoClubeId: string | null;
+  /** Contratos encerrados (fim de vínculo, transferência etc.). */
+  historicoContratos: HistoricoContrato[];
   /** Liga principal do jogador (atalho). */
   liga: Liga;
   /** Todas as ligas ativas no mundo desta carreira. */

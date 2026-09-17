@@ -65,7 +65,7 @@ function nova() {
   c.jogador.forma = 75;
   c.registros.push({
     ano: 2026,
-    clubeId: c.clubeAtualId,
+    clubeId: c.clubeAtualId!,
     competicao: liga.nome,
     categoria: "profissional",
     estatisticas: {
@@ -94,7 +94,7 @@ function oferta(c: EstadoCarreira, clubeId = c.clubes[1]!.id) {
   const p: PropostaTransferencia = {
     id: "oferta-teste",
     clubeId,
-    clubeOrigemId: c.clubeAtualId,
+    clubeOrigemId: c.clubeAtualId!,
     tipo: "transferencia",
     salario: 2000,
     duracaoAnos: 4,
@@ -427,7 +427,7 @@ describe("Fase 3: negociação", () => {
     const c = nova();
     c.jogador.contrato.papelEsperado = "titular";
     const partidas = c.temporada.partidas
-      .filter((p) => [p.mandanteId, p.visitanteId].includes(c.clubeAtualId))
+      .filter((p) => [p.mandanteId, p.visitanteId].includes(c.clubeAtualId!))
       .slice(0, 5);
     for (const p of partidas)
       p.participacao = {

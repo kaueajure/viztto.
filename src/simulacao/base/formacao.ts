@@ -1,10 +1,12 @@
 import type { EstadoCarreira } from '@/dominio/entidades/modelos';
+import { estaSemClube } from '@/simulacao/carreira/agente-livre';
 import { registrarEvento } from '../eventos/eventos';
 import { limitar, somarDias } from '@/utilitarios/formatacao';
 export function avaliarBase(c: EstadoCarreira): void {
   const j=c.jogador,b=c.acompanhamento.base;
-  if(j.categoria!=='base') return;
-  const clube=c.clubes.find(cl=>cl.id===c.clubeAtualId)!;
+  if(estaSemClube(c) || j.categoria!=='base') return;
+  const clube=c.clubes.find(cl=>cl.id===c.clubeAtualId);
+  if(!clube) return;
   const treinos=j.preparacao.historico.filter(t=>t.avaliacao!=='Recuperação');
   const media=treinos.length?treinos.reduce((s,t)=>s+t.nota,0)/treinos.length:0;
   if(b.conviteAte && b.conviteAte>=c.dataAtual && !j.lesao && c.focoTreino!=='recuperacao') {
@@ -27,6 +29,13 @@ export function avaliarBase(c: EstadoCarreira): void {
   registrarEvento(c,'base-avaliacao','Avaliação mensal da base',b.texto,'Treinador',false);
 }
 export function relacionadoProfissional(c: EstadoCarreira): boolean {
-  const j=c.jogador,b=c.acompanhamento.base,clube=c.clubes.find(cl=>cl.id===c.clubeAtualId)!;
+  if(estaSemClube(c)) return false;
+  const j=c.jogador,b=c.acompanhamento.base,clube=c.clubes.find(cl=>cl.id===c.clubeAtualId);
+  if(!clube) return false;
   return j.categoria==='base' && j.idade>=16 && !j.lesao && j.suspensao===0 && !!b.conviteAte && b.conviteAte>=c.dataAtual && b.treinosProfissional>=2 && j.confianca>=70 && j.overall>=clube.forcaGeral-8 && clube.elenco.some(n=>n.posicaoPrincipal===j.posicao && (n.lesionado || n.suspensao>0));
+}
+
+/** Categoria da partida que o jogador disputa nesta semana (convocação não muda o vínculo). */
+export function categoriaPartidaDaSemana(c: EstadoCarreira): 'base' | 'profissional' {
+  return relacionadoProfissional(c) ? 'profissional' : c.jogador.categoria;
 }

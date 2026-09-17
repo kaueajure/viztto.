@@ -196,7 +196,7 @@ describe('Fase 08 — treinador', () => {
     for(let i=0;i<10;i++) { pedido.dataAtual=somarDias(pedido.dataAtual,7); atualizarCompromissos(pedido); }
     expect(pedido.jogador.posicaoSecundaria).toBe('PE');
     expect(pedido.jogador.posicao).toBe('PD');
-    expect(hidratarCarreira(serializarCarreira(pedido),catalogo).acompanhamento.adaptacao?.status).toBe('concluida');
+    expect(hidratarCarreira(serializarCarreira(pedido),catalogo).acompanhamento.adaptacao?.status).toBe('secundaria');
   });
 });
 
@@ -220,11 +220,12 @@ describe('Fase 08 — contratos', () => {
     expect(solicitarContrato(c,pedido).acompanhamento.pedidosContrato.at(-1)?.resposta).toMatch(/orçamento/);
     c.clubes[0].orcamento=1e8;
     c.jogador.contrato.dataTermino=somarDias(c.dataAtual,1460);
-    expect(solicitarContrato(c,pedido).acompanhamento.pedidosContrato.at(-1)?.resposta).toMatch(/três anos/);
+    // Aumento não estende vínculo; renovação completa ainda exige motivo para prazo longo.
+    expect(solicitarContrato(c,{...pedido,tipo:'renovacao'}).acompanhamento.pedidosContrato.at(-1)?.resposta).toMatch(/três anos/);
   });
   it('papel atual limita os termos e pode produzir contraproposta', () => {
     const { carreira:c }=exemploCarreira();
-    const resposta=solicitarContrato(c,{...pedido,papel:'titular'});
+    const resposta=solicitarContrato(c,{tipo:'papel',salario:c.jogador.contrato.salario,duracaoAnos:1,papel:'titular'});
     expect(resposta.acompanhamento.pedidosContrato.at(-1)?.status).toBe('contraproposta');
     expect(resposta.propostas.at(-1)?.papelPrometido).toBe('reserva');
     expect(resposta.noticias.some(n=>n.tipo==='diretoria')).toBe(true);
@@ -279,7 +280,10 @@ describe('Fase 08 — central e objetivos',()=>{
     const {carreira:c,catalogo}=exemploCarreira();
     const objetivo=escolherObjetivo(c,'tecnica');
     expect(objetivo.jogador.atributos).toEqual(c.jogador.atributos);
-    objetivo.jogador.atributos.dominio+=3;
+    // PD: drible / finalização / velocidade — não domínio genérico.
+    objetivo.jogador.atributos.drible+=1;
+    objetivo.jogador.atributos.finalizacao+=1;
+    objetivo.jogador.atributos.velocidade+=1;
     registrarResumoSemanal(objetivo,c);
     expect(objetivo.acompanhamento.objetivoPessoal?.concluido).toBe(true);
     expect(coletarAcoesAtencao(objetivo).some(a=>a.titulo.includes('trabalho'))).toBe(true);

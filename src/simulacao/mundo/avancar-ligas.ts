@@ -56,7 +56,8 @@ export function avancarLigasExternas(
       }
       evoluirJogadoresMundo(c.elenco, aleatorio, false);
       c.elenco = c.elenco.filter((j) => !podeAposentar(j, aleatorio));
-      reescalarClube(c, aleatorio);
+      // Reescala a cada 2 rodadas nas ligas externas (determinístico); força toda semana.
+      if (rodada % 2 === 0) reescalarClube(c, aleatorio);
       sincronizarForcaClube(c);
     }
 

@@ -35,14 +35,15 @@ export type CandidatoEscalacao = {
   ehUsuario: boolean;
 };
 
-const PESO_STATUS: Record<StatusElenco, number> = {
-  "estrela do time": 12,
-  "jogador importante": 8,
-  titular: 5,
-  rotacao: 2,
+/** Influência leve de papel/status — não deve travar titularidade contra forma/overall. */
+export const PESO_STATUS: Record<StatusElenco, number> = {
+  "estrela do time": 3.5,
+  "jogador importante": 2.5,
+  titular: 1.5,
+  rotacao: 0.5,
   reserva: 0,
-  promessa: -2,
-  "categoria de base": -15,
+  promessa: -0.5,
+  "categoria de base": -6,
 };
 
 /** Compatibilidade posicional 0–1. */
@@ -107,7 +108,7 @@ export function avaliarParaSlot(
   if (compat < 0.1) return -500;
   return (
     candidato.overall * compat +
-    (candidato.forma - 50) * 0.12 +
+    (candidato.forma - 50) * 0.2 +
     (candidato.moral - 50) * 0.06 +
     (candidato.condicionamento - 70) * 0.08 -
     candidato.fadiga * 0.15 +

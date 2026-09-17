@@ -89,7 +89,10 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
         <Link href="/">Voltar ao menu</Link>
       </main>
     );
-  const clube = c.clubes.find((cl) => cl.id === c.clubeAtualId)!;
+  const clube =
+    c.clubes.find((cl) => cl.id === c.clubeAtualId) ??
+    c.clubes.find((cl) => cl.id === c.ultimoClubeId) ??
+    c.clubes[0]!;
   const ultima = [...c.temporada.partidas, ...c.temporada.partidasBase].find(
     (p) => p.id === c.ultimaPartidaId,
   );

@@ -181,6 +181,7 @@ export function responderDecisao(
     if (opcaoId.startsWith("aceitar:")) {
       const pos = opcaoId.split(":")[1] as Posicao;
       if (!posicoesPlausiveis(j).includes(pos)) throw new Error("Posição incompatível com o perfil atual.");
+      if (!carreira.clubeAtualId) throw new Error("Você está sem clube.");
       carreira.acompanhamento.adaptacao = { posicao: pos, inicio: carreira.dataAtual, semanas: 0, clubeId: carreira.clubeAtualId, status: 'ativa' };
       j.confianca = limitar(j.confianca + 4);
       carreira.relacionamentos.treinador = limitar(

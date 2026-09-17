@@ -27,8 +27,8 @@ export function Treinamento({ carreira: c }: { carreira: EstadoCarreira }) {
           {c.jogador.preparacao.prioridades.length
             ? ` · Prioridades definidas`
             : ""}
-          . O foco rápido abaixo fica em segundo plano enquanto o plano estiver
-          ativo — use-o principalmente para descanso.
+          . Com plano ativo, a carga segue a intensidade do plano; o foco
+          rápido só oferece recuperação ou o ritmo do plano (equilibrado).
         </p>
       )}
       <div className="grade-dupla espaco">
