@@ -1,34 +1,41 @@
 import "server-only";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LIGAS_SUPORTADAS } from "@/dominio/constantes/ligas";
 import { TEMPORADAS_INICIAIS } from "@/dominio/constantes/temporadas-iniciais";
 import type { Liga } from "@/dominio/entidades/modelos";
 import { validarPublicacaoLiga } from "@/infraestrutura/persistencia/base-futebol";
 import {
-  clubesProntosParaJogo,
   lerDadosLiga,
   lerDadosLigaEmDiretorio,
-  salvarDadosLiga,
   obterDiretorioImportacao,
   publicarReleaseAtomica,
+  salvarDadosLiga,
   type DadosLigaImportados,
 } from "@/infraestrutura/persistencia/importacao-futebol";
 import {
-  enriquecerLigaComSportmonks,
-  snapshotEstavaEnriquecido,
+  criarLoteCanonico,
+  executarRatingsBot,
+  aplicarResultados,
+} from "@/infraestrutura/ratings/lote";
+import {
+  validarResultadoBot,
+  type ResultadoBot,
+} from "@/infraestrutura/ratings/contrato";
+import {
+  avaliarSaudeRatings,
   taxaEnriquecimento,
-  type RelatorioMatchingLiga,
   type StatusEnriquecimento,
-} from "@/infraestrutura/sportmonks/enriquecer-liga";
+} from "@/infraestrutura/ratings/saude-ratings";
 import { importarLiga, type ErroImportacaoClube } from "./importar-liga";
 
 export type StatusPublicacaoLote =
   | "sucesso"
   | "sucesso_fallback_esperado"
   | "atualizacao_degradada"
-  | "falha_critica";
-
+  | "falha_critica"
+  | "dry_run";
 export interface ResumoAtualizacaoLiga {
   ligaId: string;
   nome: string;
@@ -40,331 +47,221 @@ export interface ResumoAtualizacaoLiga {
   falhas: ErroImportacaoClube[];
   erro?: string;
   statusEnriquecimento?: StatusEnriquecimento;
-  sportmonks?: {
-    matched: number;
-    unmatched: number;
-    ambiguous: number;
-    requests: number;
-    cobertura: string;
-    saude?: string;
-  };
 }
-
 interface OpcoesAtualizacao {
   diretorio?: string;
   publicacao?: { modo: "isolada"; ligasEsperadas: string[] };
-  permitirBootstrapDegradado?: boolean;
+  permitirEnginePuro?: boolean;
+  dryRun?: boolean;
   ligas?: Liga[];
   importar?: typeof importarLiga;
   informar?: (linha: string) => void;
-  /** Se true, falha sem SPORTMONKS_API_TOKEN. Default: false. */
-  exigirSportmonks?: boolean;
-  enriquecer?: typeof enriquecerLigaComSportmonks;
+  executarBot?: typeof executarRatingsBot;
+  providers?: string[];
+  fixture?: string;
+  cacheDir?: string;
+  reportDir?: string;
 }
-
-interface CandidatoStaging {
-  liga: Liga;
-  dados: DadosLigaImportados;
-  item: ResumoAtualizacaoLiga;
-}
-
-/** @deprecated Preferir publicarReleaseAtomica — mantido para testes unitários do rename. */
+/** Compatibilidade do helper de publicação; o mecanismo atômico é o mesmo. */
 export async function publicarLoteAtomico(
   candidatos: Array<{ ligaId: string; dados: DadosLigaImportados }>,
   destino: string,
   _rollbackDir?: string,
-): Promise<void> {
+) {
   await publicarReleaseAtomica(candidatos, destino);
 }
 
-function classificarLote(
-  resumo: ResumoAtualizacaoLiga[],
-  abortar: boolean,
-  publicou: boolean,
-): StatusPublicacaoLote {
-  if (abortar || !publicou) return "falha_critica";
-  if (
-    resumo.some(
-      (l) =>
-        l.statusEnriquecimento === "falha_critica" ||
-        l.sportmonks?.saude === "critico",
-    )
-  )
-    return "falha_critica";
-  if (resumo.some((l) => l.statusEnriquecimento === "degradado"))
-    return "atualizacao_degradada";
-  if (
-    resumo.some(
-      (l) =>
-        l.statusEnriquecimento === "fallback_esperado" ||
-        (l.falhas.length > 0 && l.prontoEmStaging),
-    )
-  )
-    return "sucesso_fallback_esperado";
-  return "sucesso";
-}
-
 export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
-  if (opcoes.publicacao?.modo === "isolada" && !opcoes.diretorio)
+  if (opcoes.publicacao && !opcoes.diretorio)
     throw new Error("Publicação isolada exige diretório explícito.");
   const destino = opcoes.diretorio ?? obterDiretorioImportacao();
-  await mkdir(join(destino, ".staging"), { recursive: true });
-  const staging = await mkdtemp(join(destino, ".staging", "atualizacao-"));
-  const importar = opcoes.importar ?? importarLiga;
-  const enriquecer = opcoes.enriquecer ?? enriquecerLigaComSportmonks;
   const informar = opcoes.informar ?? console.log;
-  const ligas = opcoes.ligas ?? LIGAS_SUPORTADAS;
   const inicio = Date.now();
+  const ligas = opcoes.ligas ?? LIGAS_SUPORTADAS;
   const resumo: ResumoAtualizacaoLiga[] = [];
-  const relatoriosMatching: RelatorioMatchingLiga[] = [];
-  const prontos: CandidatoStaging[] = [];
-  let abortarTudo = false;
-  let motivoAbort = "";
-
+  const candidatos: Array<{
+    liga: Liga;
+    dados: DadosLigaImportados;
+    anterior: DadosLigaImportados | null;
+  }> = [];
+  // Staging sempre fora dos oficiais, inclusive dry-run.
+  const staging = await mkdtemp(join(tmpdir(), "viztto-import-"));
+  const reportDir = opcoes.reportDir ?? "relatorios";
+  let publicou = false,
+    abortarTudo = false;
+  let statusLote: StatusPublicacaoLote = "falha_critica";
+  const saude = [];
   informar(
-    "════════════════════════════════════════\nVIZTTO — ATUALIZAÇÃO DA BASE DE FUTEBOL\nTransfermarkt + Sportmonks (enrichment)\nRelease atômica: ponteiro active.json\n════════════════════════════════════════",
+    "VIZTTO — TRANSFERMARKT → RATINGS BOT → RATING ENGINE → RELEASE ATÔMICA",
   );
-
-  for (const [indice, liga] of ligas.entries()) {
-    if (abortarTudo) break;
-    informar(
-      `\n[${indice + 1}/${ligas.length}] ${liga.nome}\nCompetição: ${liga.idTransfermarkt}`,
-    );
-    const item: ResumoAtualizacaoLiga = {
-      ligaId: liga.id,
-      nome: liga.nome,
-      publicado: false,
-      prontoEmStaging: false,
-      total: 0,
-      clubes: 0,
-      jogadores: 0,
-      falhas: [],
-    };
-    try {
-      const resultado = await importar(liga, {
+  try {
+    if (!ligas.length || new Set(ligas.map((l) => l.id)).size !== ligas.length)
+      throw new Error("Universo de ligas vazio ou duplicado.");
+    // Importa e valida TODAS as ligas antes do único processo Python.
+    for (const liga of ligas) {
+      const item: ResumoAtualizacaoLiga = {
+        ligaId: liga.id,
+        nome: liga.nome,
+        publicado: false,
+        prontoEmStaging: false,
+        total: 0,
+        clubes: 0,
+        jogadores: 0,
+        falhas: [],
+      };
+      resumo.push(item);
+      informar(`Transfermarkt: ${liga.nome}`);
+      const r = await (opcoes.importar ?? importarLiga)(liga, {
         forcar: true,
         diretorio: staging,
-        aoProgresso: (p) => {
-          item.total = p.total;
-          const concluido = p.importados + p.falhas;
-          const barras = p.total ? Math.round((concluido / p.total) * 20) : 0;
-          informar(
-            `[${"█".repeat(barras)}${"░".repeat(20 - barras)}] ${concluido}/${p.total} · ${p.importados} atualizados · ${p.falhas} falhas${p.clubeAtual ? ` · Atualizando: ${p.clubeAtual}` : ""}`,
-          );
-        },
       });
-      item.falhas = resultado.erros;
-      const candidato = await lerDadosLigaEmDiretorio(liga.id, staging);
-      if (!candidato)
-        throw new Error("Snapshot de staging não encontrado após importação.");
-
-      const temporadaLabel =
-        TEMPORADAS_INICIAIS[liga.id]?.temporadaSportmonks ??
-        TEMPORADAS_INICIAIS[liga.id]?.temporadaTransfermarkt ??
-        String(candidato.temporada);
-      const anteriorOficial = await lerDadosLiga(liga.id, destino);
-      const enriquecido = await enriquecer(liga, candidato.clubes, {
-        informar,
-        exigirToken: opcoes.exigirSportmonks,
-        permitirBootstrapDegradado: opcoes.permitirBootstrapDegradado,
-        temporadaLabel,
-        anteriorEnriquecido: snapshotEstavaEnriquecido(anteriorOficial?.clubes),
-        taxaEnriquecimentoAnterior: taxaEnriquecimento(anteriorOficial?.clubes),
-      });
-      relatoriosMatching.push(enriquecido.relatorio);
-      item.statusEnriquecimento = enriquecido.status;
-      item.sportmonks = {
-        matched: enriquecido.relatorio.matched.length,
-        unmatched: enriquecido.relatorio.unmatched.length,
-        ambiguous: enriquecido.relatorio.ambiguous.length,
-        requests: enriquecido.relatorio.requests,
-        cobertura: enriquecido.relatorio.cobertura,
-        saude: enriquecido.relatorio.saude,
-      };
-
-      if (
-        enriquecido.abortarPublicacao ||
-        enriquecido.status === "falha_critica" ||
-        enriquecido.relatorio.saude === "critico"
-      ) {
-        abortarTudo = true;
-        motivoAbort =
-          enriquecido.erro ??
-          "Falha crítica Sportmonks — lote não será publicado.";
-        item.erro = motivoAbort;
-        informar(`✗ ${liga.nome}: ${item.erro}`);
-        resumo.push(item);
-        break;
-      }
-
-      candidato.clubes = enriquecido.clubes;
-      candidato.progresso = {
-        total: resultado.progresso.total,
-        importados: clubesProntosParaJogo(candidato).length,
-        falhas: resultado.erros.length,
-        clubeAtual: null,
-      };
-      // Ajusta status bruto antes do gate de publicação.
-      if (
-        resultado.erros.length === 0 &&
-        candidato.progresso.importados === candidato.progresso.total
-      )
-        candidato.status = "completo";
-      else candidato.status = "parcial";
-
-      await salvarDadosLiga(candidato, staging);
-      const pub = validarPublicacaoLiga(liga, candidato, anteriorOficial, {
+      item.falhas = r.erros;
+      const dados = await lerDadosLigaEmDiretorio(liga.id, staging);
+      const anterior = await lerDadosLiga(liga.id, destino);
+      if (!dados) throw new Error(`Staging ausente: ${liga.id}`);
+      const validacao = validarPublicacaoLiga(liga, dados, anterior, {
         clubesEsperados:
           TEMPORADAS_INICIAIS[liga.id]?.clubesEsperados ??
           liga.quantidadeClubes,
       });
-      if (!pub.ok || !pub.dados)
-        throw new Error(
-          pub.motivo ?? "Snapshot não elegível para publicação oficial.",
-        );
-
-      item.prontoEmStaging = true;
-      item.total = resultado.progresso.total;
-      item.clubes = pub.dados.clubes.length;
-      item.jogadores = pub.dados.clubes.reduce(
-        (total, clube) => total + clube.elenco.length,
-        0,
-      );
-      prontos.push({ liga, dados: pub.dados, item });
-      informar(
-        `✓ ${liga.nome}: staging OK · ${item.clubes}/${item.total} clubes · ${item.statusEnriquecimento ?? "ok"}`,
-      );
-    } catch (erro) {
-      abortarTudo = true;
-      item.erro = erro instanceof Error ? erro.message : String(erro);
-      motivoAbort = item.erro;
-      try {
-        item.falhas =
-          (await lerDadosLiga(liga.id, staging))?.erros ?? item.falhas;
-      } catch (leitura) {
-        item.erro += ` Falha ao ler staging: ${leitura instanceof Error ? leitura.message : String(leitura)}`;
-      }
-      informar(
-        `✗ ${liga.nome}: ${item.erro} — lote abortado; oficiais intactos.`,
-      );
+      if (!validacao.ok || !validacao.dados)
+        throw new Error(validacao.motivo ?? "Liga incompleta.");
+      item.total = dados.progresso.total;
+      item.clubes = dados.clubes.length;
+      item.jogadores = dados.clubes.reduce((n, c) => n + c.elenco.length, 0);
+      candidatos.push({ liga, dados: validacao.dados, anterior });
     }
-    for (const falha of item.falhas)
-      informar(`  - ${falha.nome}: ${falha.motivo}`);
-    resumo.push(item);
-  }
-
-  // Lote incompleto: qualquer liga solicitada que não entrou em staging → abort.
-  if (!abortarTudo && prontos.length !== ligas.length) {
-    abortarTudo = true;
-    motivoAbort = "Nem todas as ligas solicitadas ficaram prontas em staging.";
-  }
-
-  let publicou = false;
-  if (!abortarTudo && prontos.length === ligas.length) {
+    const universo = candidatos.map((c) => ({
+      liga: c.liga,
+      clubes: c.dados.clubes,
+    }));
+    const lote = criarLoteCanonico(universo);
+    let resultado: ResultadoBot;
+    let falhaBot = false;
     try {
-      informar(
-        `\nPublicando release atômica (${prontos.length} ligas) via active.json…`,
+      resultado = await (opcoes.executarBot ?? executarRatingsBot)(lote, {
+        diretorio: join(staging, "ratings"),
+        cacheDir: opcoes.cacheDir,
+        reportPath: join(reportDir, "ratings-import.json"),
+        providers: opcoes.providers,
+        fixture: opcoes.fixture,
+        dryRun: opcoes.dryRun,
+      });
+    } catch (erro) {
+      // Contrato inválido/falha completa nunca autoriza substituir base enriquecida.
+      if (
+        !opcoes.permitirEnginePuro ||
+        candidatos.some((c) => taxaEnriquecimento(c.anterior?.clubes) > 0)
+      )
+        throw erro;
+      falhaBot = true;
+      resultado = {
+        version: 1,
+        batchId: lote.batchId,
+        players: lote.players.map((p) => ({
+          id: p.id,
+          transfermarktId: p.transfermarktId,
+          sources: [],
+        })),
+        providers: {},
+        diagnostics: {},
+      };
+    }
+    resultado = validarResultadoBot(resultado, lote);
+    if (
+      !opcoes.publicacao &&
+      Object.values(resultado.providers).some((p) => p.synthetic)
+    )
+      throw new Error(
+        "Provider sintético não pode alimentar publicação oficial.",
       );
-      const { releaseId } = await publicarReleaseAtomica(
-        prontos.map((p) => ({ ligaId: p.liga.id, dados: p.dados })),
+    falhaBot ||=
+      Object.values(resultado.providers).some((p) => p.errors > 0) &&
+      !resultado.players.some((p) => p.sources.length);
+    const enriquecidas = aplicarResultados(universo, resultado);
+    for (const [i, c] of candidatos.entries()) {
+      c.dados.clubes = enriquecidas[i].clubes;
+      const item = resumo[i];
+      const ids = new Set(
+        c.dados.clubes.flatMap((c) => c.elenco.map((j) => j.id)),
+      );
+      const diagnosticos = Object.values(resultado.diagnostics).flatMap((d) =>
+        Object.entries(d)
+          .filter(([id]) => ids.has(id))
+          .map(([, m]) => m),
+      );
+      const externalRatings = resultado.players.filter(
+        (p) =>
+          ids.has(p.id) &&
+          p.sources.some((s) => ["exact", "high"].includes(s.confidence)),
+      ).length;
+      const avaliacao = avaliarSaudeRatings(
+        {
+          playersTotal: ids.size,
+          providerCandidates: Object.values(resultado.providers).reduce(
+            (n, p) => n + p.providerCandidates,
+            0,
+          ),
+          matched: externalRatings,
+          exact: diagnosticos.filter((d) => d.confidence === "exact").length,
+          high: diagnosticos.filter((d) => d.confidence === "high").length,
+          ambiguous: diagnosticos.filter((d) => d.confidence === "ambiguous")
+            .length,
+          externalRatings,
+          fallbackEngine: ids.size - externalRatings,
+          requestFailures: Object.values(resultado.providers).reduce(
+            (n, p) => n + p.errors,
+            falhaBot ? 1 : 0,
+          ),
+          coverage: taxaEnriquecimento(c.dados.clubes),
+          previousCoverage: taxaEnriquecimento(c.anterior?.clubes),
+        },
+        opcoes.permitirEnginePuro,
+        falhaBot,
+      );
+      saude.push({ ligaId: c.liga.id, ...avaliacao });
+      item.statusEnriquecimento = avaliacao.status;
+      if (avaliacao.abortarPublicacao) throw new Error(avaliacao.motivo);
+      await salvarDadosLiga(c.dados, staging);
+      const validacao = validarPublicacaoLiga(c.liga, c.dados, c.anterior);
+      if (!validacao.ok) throw new Error(validacao.motivo);
+      item.prontoEmStaging = true;
+    }
+    if (opcoes.dryRun) statusLote = "dry_run";
+    else {
+      await publicarReleaseAtomica(
+        candidatos.map((c) => ({ ligaId: c.liga.id, dados: c.dados })),
         destino,
         { publicacao: opcoes.publicacao },
       );
       publicou = true;
-      for (const p of prontos) p.item.publicado = true;
-      informar(`✓ Release ${releaseId} ativa. Base oficial atualizada.`);
-    } catch (erro) {
-      abortarTudo = true;
-      motivoAbort =
-        erro instanceof Error ? erro.message : "Falha na publicação atômica.";
-      informar(
-        `✗ Publicação abortada (release anterior intacta): ${motivoAbort}`,
-      );
+      for (const item of resumo) item.publicado = true;
+      statusLote = resumo.some((r) => r.statusEnriquecimento === "degradado")
+        ? "atualizacao_degradada"
+        : resumo.some((r) => r.statusEnriquecimento === "fallback_esperado")
+          ? "sucesso_fallback_esperado"
+          : "sucesso";
     }
-  } else {
-    informar(
-      `\n✗ Nenhuma alteração oficial. ${motivoAbort || "Lote incompleto."}`,
-    );
+  } catch (erro) {
+    abortarTudo = true;
+    const mensagem =
+      erro instanceof Error ? erro.message : "Falha na atualização";
+    if (resumo.length) resumo[resumo.length - 1].erro = mensagem;
+    informar(`Lote bloqueado: ${mensagem}`);
   }
-
-  try {
-    const dirRel = join(process.cwd(), "relatorios");
-    await mkdir(dirRel, { recursive: true });
-    await writeFile(
-      join(dirRel, "sportmonks-matching.json"),
-      JSON.stringify(
-        {
-          geradoEm: new Date().toISOString(),
-          statusLote: classificarLote(resumo, abortarTudo, publicou),
-          motivoAbort: motivoAbort || null,
-          ligas: relatoriosMatching.map((r) => {
-            const item = resumo.find((l) => l.ligaId === r.ligaId);
-            return {
-              ligaId: r.ligaId,
-              cobertura: r.cobertura,
-              total: r.total,
-              matched: r.matched.length,
-              unmatched: r.unmatched.length,
-              ambiguous: r.ambiguous.length,
-              requests: r.requests,
-              saude: r.saude,
-              motivoSaude: r.motivoSaude,
-              metricas: r.metricas,
-              coverageHealth: r.coverageHealth,
-              seasonId: r.seasonId,
-              seasonStrategy: r.seasonStrategy,
-              seasonMetodo: r.seasonMetodo,
-              mappingsStale: r.mappingsStale,
-              publicado: item?.publicado ?? false,
-              motivoBloqueio: item?.erro ?? null,
-              amostrasUnmatched: r.unmatched.slice(0, 20),
-              amostrasAmbiguous: r.ambiguous.slice(0, 20),
-            };
-          }),
-        },
-        null,
-        2,
-      ),
-    );
-    informar(`Relatório de matching: relatorios/sportmonks-matching.json`);
-  } catch {
-    /* best-effort */
-  }
-
-  const statusLote = classificarLote(resumo, abortarTudo, publicou);
-  const duracaoSegundos = Math.round((Date.now() - inicio) / 1000);
-  const jogadoresTm = resumo.reduce((s, l) => s + l.jogadores, 0);
-  const matches = resumo.reduce((s, l) => s + (l.sportmonks?.matched ?? 0), 0);
-  const unmatched = resumo.reduce(
-    (s, l) => s + (l.sportmonks?.unmatched ?? 0),
-    0,
+  await mkdir(reportDir, { recursive: true });
+  await writeFile(
+    join(reportDir, "saude-ratings.json"),
+    JSON.stringify({ statusLote, ligas: saude, resumo }, null, 2),
   );
-  informar(
-    "\n════════════════════════════════════════\nATUALIZAÇÃO DE DADOS CONCLUÍDA\n════════════════════════════════════════",
-  );
-  informar(`Status do lote: ${statusLote.toUpperCase()}`);
-  informar(
-    `Transfermarkt:\n${resumo.filter((l) => l.publicado).length}/${ligas.length} ligas publicadas\n${resumo.reduce((s, l) => s + l.clubes, 0)} clubes\n${jogadoresTm} jogadores`,
-  );
-  informar(
-    `Sportmonks:\n${matches} matches confiáveis\n${unmatched} unmatched/fallback\n${resumo.reduce((s, l) => s + (l.sportmonks?.requests ?? 0), 0)} requests`,
-  );
-  for (const item of resumo)
-    informar(
-      `${!item.publicado ? "✗" : item.falhas.length ? "⚠" : "✓"} ${item.nome}: ${item.clubes}/${item.total}${item.erro ? ` · ${item.erro}` : ""}`,
-    );
-  informar(
-    `Tempo: ${Math.floor(duracaoSegundos / 60)}m ${duracaoSegundos % 60}s`,
-  );
-  if (publicou && !abortarTudo) {
+  if (publicou || opcoes.dryRun)
     await rm(staging, { recursive: true, force: true });
-  } else {
-    informar(`Diagnóstico: staging=${staging}`);
-  }
+  else informar(`Diagnóstico: ${staging}`);
+  informar(`Status: ${statusLote}`);
   return {
     ligas: resumo,
-    temFalhas: !publicou,
-    duracaoSegundos,
+    temFalhas: abortarTudo,
+    duracaoSegundos: Math.round((Date.now() - inicio) / 1000),
     abortarTudo,
     publicou,
     statusLote,

@@ -14,25 +14,13 @@ import {
 } from "@/infraestrutura/persistencia/importacao-futebol";
 import { LIGAS_SUPORTADAS } from "@/dominio/constantes/ligas";
 import {
-  normalizarDetailsSportmonks,
-  resolverStatDetail,
-} from "@/infraestrutura/sportmonks/rating-engine";
-import { ClienteSportmonks } from "@/infraestrutura/sportmonks/cliente";
-import {
-  snapshotEstavaEnriquecido,
-  temporadaAnoCompativel,
-  validarMappingPersistido,
-} from "@/infraestrutura/sportmonks/enriquecer-liga";
-import {
-  avaliarSaudeEnriquecimento,
-  metricasVazias,
-} from "@/infraestrutura/sportmonks/saude-enriquecimento";
-import { pontuarMatch } from "@/infraestrutura/sportmonks/matching";
-import {
   tornarAgenteLivre,
   estaSemClube,
 } from "@/simulacao/carreira/agente-livre";
-import { responderProposta, efetivarPreContratos } from "@/simulacao/transferencias/mercado";
+import {
+  responderProposta,
+  efetivarPreContratos,
+} from "@/simulacao/transferencias/mercado";
 import { avancarSemana } from "@/aplicacao/casos-de-uso/avancar-tempo";
 import {
   avaliarDisponibilidadeObjetivo,
@@ -45,12 +33,23 @@ import {
   ajustarClubePeloJogador,
   aproximarReservaEntrante,
 } from "@/simulacao/partida/motor-partida";
-import { hidratarElencoClube, criarJogadorMundo } from "@/dominio/jogador-mundo";
+import {
+  hidratarElencoClube,
+  criarJogadorMundo,
+} from "@/dominio/jogador-mundo";
 import { categoriaPartidaDaSemana } from "@/simulacao/base/formacao";
 import { exemploCarreira } from "./auxiliar-carreira-persistida";
-import { serializarCarreira, hidratarCarreira } from "@/infraestrutura/persistencia/carreira-persistida";
+import {
+  serializarCarreira,
+  hidratarCarreira,
+} from "@/infraestrutura/persistencia/carreira-persistida";
 import { criarAtributosUniformes } from "@/dominio/regras/jogador";
-import type { Clube, Jogador, JogadorExterno, JogadorMundo } from "@/dominio/entidades/modelos";
+import type {
+  Clube,
+  Jogador,
+  JogadorExterno,
+  JogadorMundo,
+} from "@/dominio/entidades/modelos";
 import { somarDias } from "@/utilitarios/formatacao";
 
 const dirOriginal = obterDiretorioImportacao();
@@ -58,7 +57,8 @@ const limpeza: string[] = [];
 
 afterEach(async () => {
   definirDiretorioImportacao(dirOriginal);
-  for (const d of limpeza.splice(0)) await rm(d, { recursive: true, force: true });
+  for (const d of limpeza.splice(0))
+    await rm(d, { recursive: true, force: true });
 });
 
 function clubeMin(ligaId: string, n: number, elenco?: JogadorExterno[]): Clube {
@@ -135,7 +135,7 @@ async function salvarOficial(
       ...(enriquecido
         ? {
             ratingMetadata: {
-              source: "sportmonks",
+              source: "external",
               confidence: "high",
               minutes: 2000,
               appearances: 30,
@@ -165,271 +165,6 @@ async function salvarOficial(
   );
 }
 
-describe("Hardening — publicação atômica", () => {
-  it("publica todas as ligas só no final", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "viztto-atom-ok-"));
-    limpeza.push(dir);
-    const ligas = LIGAS_SUPORTADAS.slice(0, 2).map((l) => ({
-      ...l,
-      quantidadeClubes: 2,
-    }));
-    const r = await atualizarBaseFutebol({
-      diretorio: dir,
-      ligas,
-      publicacao: { modo: "isolada", ligasEsperadas: ligas.map(l => l.id) },
-      informar: () => undefined,
-      importar: async (l, op) => {
-        const staging = op?.diretorio ?? dir;
-        const agora = new Date().toISOString();
-        const cal = l.id === "brasileirao"
-          ? { temporada: 2026, tm: "2025", inicio: "2026-01-28" }
-          : { temporada: 2026, tm: "2025", inicio: "2026-04-10" };
-        await salvarDadosLiga(
-          {
-            ligaId: l.id,
-            temporada: cal.temporada,
-            temporadaTransfermarkt: cal.tm,
-            inicio: cal.inicio,
-            importadoEm: agora,
-            atualizadoEm: agora,
-            status: "completo",
-            progresso: { total: 2, importados: 2, falhas: 0, clubeAtual: null },
-            erros: [],
-            clubes: [clubeMin(l.id, 1), clubeMin(l.id, 2)],
-          },
-          staging,
-        );
-        return {
-          clubes: [clubeMin(l.id, 1), clubeMin(l.id, 2)],
-          erros: [],
-          temporada: cal.temporada,
-          temporadaTransfermarkt: cal.tm,
-          inicio: cal.inicio,
-          status: "completo",
-          progresso: { total: 2, importados: 2, falhas: 0, clubeAtual: null },
-        };
-      },
-      enriquecer: async (_l, clubes) => ({
-        clubes: clubes.map((c) => ({
-          ...c,
-          elenco: c.elenco.map((j) => ({
-            ...j,
-            overall: 70,
-            potencial: 75,
-            ratingMetadata: {
-              source: "transfermarkt-estimated" as const,
-              confidence: "low" as const,
-              minutes: 0,
-              appearances: 0,
-              season: "",
-              coverageLevel: "D" as const,
-            },
-          })),
-        })),
-        relatorio: {
-          ligaId: _l.id,
-          cobertura: "D",
-          total: 2,
-          matched: [],
-          unmatched: [],
-          ambiguous: [],
-          requests: 0,
-        },
-        status: "fallback_esperado",
-      }),
-    });
-    expect(r.publicou).toBe(true);
-    expect(r.ligas.every((l) => l.publicado)).toBe(true);
-    for (const l of ligas) {
-      const snap = await lerDadosLiga(l.id, dir);
-      expect(snap).not.toBeNull();
-    }
-  });
-
-  it("falha na última liga não altera oficiais anteriores", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "viztto-atom-fail-"));
-    limpeza.push(dir);
-    const ligas = LIGAS_SUPORTADAS.slice(0, 2).map((l) => ({
-      ...l,
-      quantidadeClubes: 2,
-    }));
-    await salvarOficial(dir, ligas[0]!.id, true);
-    const antes = await readFile(join(dir, `${ligas[0]!.id}.json`), "utf8");
-    let n = 0;
-    await atualizarBaseFutebol({
-      diretorio: dir,
-      ligas,
-      publicacao: { modo: "isolada", ligasEsperadas: ligas.map(l => l.id) },
-      informar: () => undefined,
-      importar: async (l, op) => {
-        n++;
-        if (n === 2) throw new Error("falha ultima");
-        const staging = op?.diretorio ?? dir;
-        const agora = new Date().toISOString();
-        await salvarDadosLiga(
-          {
-            ligaId: l.id,
-            temporada: 2026,
-            temporadaTransfermarkt: "2025",
-            inicio: "2026-01-28",
-            importadoEm: agora,
-            atualizadoEm: agora,
-            status: "completo",
-            progresso: { total: 2, importados: 2, falhas: 0, clubeAtual: null },
-            erros: [],
-            clubes: [clubeMin(l.id, 1), clubeMin(l.id, 2)],
-          },
-          staging,
-        );
-        return {
-          clubes: [clubeMin(l.id, 1), clubeMin(l.id, 2)],
-          erros: [],
-          temporada: 2026,
-          temporadaTransfermarkt: "2025",
-          inicio: "2026-01-28",
-          status: "completo",
-          progresso: { total: 2, importados: 2, falhas: 0, clubeAtual: null },
-        };
-      },
-      enriquecer: async (_l, clubes) => ({
-        clubes,
-        relatorio: {
-          ligaId: _l.id,
-          cobertura: "A",
-          total: 0,
-          matched: [],
-          unmatched: [],
-          ambiguous: [],
-          requests: 0,
-        },
-        status: "ok",
-      }),
-    });
-    const depois = await readFile(join(dir, `${ligas[0]!.id}.json`), "utf8");
-    expect(depois).toBe(antes);
-  });
-
-  it("Sportmonks degradado não sobrescreve base enriquecida", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "viztto-deg-"));
-    limpeza.push(dir);
-    const liga = LIGAS_SUPORTADAS[0]!;
-    await salvarOficial(dir, liga.id, true);
-    const antes = await readFile(join(dir, `${liga.id}.json`), "utf8");
-    expect(snapshotEstavaEnriquecido((await lerDadosLiga(liga.id, dir))!.clubes)).toBe(
-      true,
-    );
-    const r = await atualizarBaseFutebol({
-      diretorio: dir,
-      ligas: [liga],
-      publicacao: { modo: "isolada", ligasEsperadas: [liga.id] },
-      informar: () => undefined,
-      importar: async (l, op) => {
-        const staging = op?.diretorio ?? dir;
-        const agora = new Date().toISOString();
-        await salvarDadosLiga(
-          {
-            ligaId: l.id,
-            temporada: 2026,
-            temporadaTransfermarkt: "2025",
-            inicio: "2026-01-28",
-            importadoEm: agora,
-            atualizadoEm: agora,
-            status: "completo",
-            progresso: { total: 2, importados: 2, falhas: 0, clubeAtual: null },
-            erros: [],
-            clubes: [clubeMin(l.id, 1), clubeMin(l.id, 2)],
-          },
-          staging,
-        );
-        return {
-          clubes: [clubeMin(l.id, 1), clubeMin(l.id, 2)],
-          erros: [],
-          temporada: 2026,
-          temporadaTransfermarkt: "2025",
-          inicio: "2026-01-28",
-          status: "completo",
-          progresso: { total: 2, importados: 2, falhas: 0, clubeAtual: null },
-        };
-      },
-      enriquecer: async () => ({
-        clubes: [],
-        relatorio: {
-          ligaId: liga.id,
-          cobertura: "A",
-          total: 0,
-          matched: [],
-          unmatched: [],
-          ambiguous: [],
-          requests: 0,
-        },
-        status: "falha_critica",
-        abortarPublicacao: true,
-        erro: "timeout simulado",
-      }),
-    });
-    expect(r.publicou).toBe(false);
-    expect(await readFile(join(dir, `${liga.id}.json`), "utf8")).toBe(antes);
-  });
-});
-
-describe("Hardening — normalizarDetails determinístico", () => {
-  const detailsMisturados = [
-    { type: { developer_name: "GOALS_CONCEDED" }, value: 12 },
-    { type: { developer_name: "EXPECTED_GOALS" }, value: 8.2 },
-    { type: { developer_name: "GOALS" }, value: 15 },
-    { type: { name: "Shots On Target" }, value: 40 },
-    { type: { code: "shots_total" }, value: 90 },
-    { type: { developer_name: "ASSISTS" }, value: 7 },
-    { type: { developer_name: "EXPECTED_ASSISTS" }, value: 5.1 },
-    { type: { developer_name: "ACCURATE_PASSES" }, value: 800 },
-    { type: { developer_name: "TOTAL_PASSES" }, value: 1000 },
-    { type: { developer_name: "TACKLES" }, value: 50 },
-    { type: { developer_name: "TACKLES_WON" }, value: 30 },
-    { type: { developer_name: "DRIBBLES_ATTEMPTS" }, value: 40 },
-    { type: { developer_name: "DRIBBLES_SUCCESS" }, value: 22 },
-    { type: { developer_name: "SAVES" }, value: 60 },
-    { type: { developer_name: "MINUTES_PLAYED" }, value: 2500 },
-    { type: { developer_name: "APPEARANCES" }, value: 32 },
-  ];
-
-  it("não confunde goals com goals_conceded/xg independente da ordem", () => {
-    const a = normalizarDetailsSportmonks(detailsMisturados);
-    const b = normalizarDetailsSportmonks([...detailsMisturados].reverse());
-    expect(a.goals).toBe(15);
-    expect(a.goalsConceded).toBe(12);
-    expect(a.xg).toBe(8.2);
-    expect(a.assists).toBe(7);
-    expect(a.xa).toBe(5.1);
-    expect(a.shots).toBe(90);
-    expect(a.shotsOnTarget).toBe(40);
-    expect(a.passesAccurate).toBe(800);
-    expect(a.passesTotal).toBe(1000);
-    expect(a.tackles).toBe(50);
-    expect(a.tacklesWon).toBe(30);
-    expect(a.dribblesAttempted).toBe(40);
-    expect(a.dribblesSuccess).toBe(22);
-    expect(a.saves).toBe(60);
-    expect(a.minutes).toBe(2500);
-    expect(a.appearances).toBe(32);
-    expect(a).toEqual(b);
-  });
-
-  it("resolverStatDetail exige match exato", () => {
-    expect(
-      resolverStatDetail(
-        [{ type: { developer_name: "GOALS_CONCEDED" }, value: 9 }],
-        ["goals", "goal"],
-      ),
-    ).toBeUndefined();
-    expect(
-      resolverStatDetail(
-        [{ type: { developer_name: "GOALS_CONCEDED" }, value: 9 }],
-        ["goals_conceded"],
-      ),
-    ).toBe(9);
-  });
-});
-
 describe("Hardening — agente livre / objetivos / semana", () => {
   it("renovação pendente não aceita após virar agente livre", () => {
     const { carreira } = exemploCarreira();
@@ -457,9 +192,9 @@ describe("Hardening — agente livre / objetivos / semana", () => {
     expect(avaliarDisponibilidadeObjetivo(carreira, "titular").disponivel).toBe(
       false,
     );
-    expect(avaliarDisponibilidadeObjetivo(carreira, "transferencia").disponivel).toBe(
-      true,
-    );
+    expect(
+      avaliarDisponibilidadeObjetivo(carreira, "transferencia").disponivel,
+    ).toBe(true);
     expect(rotuloObjetivo(carreira, "transferencia")).toMatch(/clube/i);
     expect(() => escolherObjetivo(carreira, "renovacao")).toThrow();
     const c2 = escolherObjetivo(carreira, "transferencia");
@@ -478,7 +213,9 @@ describe("Hardening — agente livre / objetivos / semana", () => {
 
   it("acordo futuro efetivado antes do treino na mesma semana", () => {
     const { carreira } = exemploCarreira();
-    const destino = carreira.clubes.find((c) => c.id !== carreira.clubeAtualId)!;
+    const destino = carreira.clubes.find(
+      (c) => c.id !== carreira.clubeAtualId,
+    )!;
     destino.orcamento = 50_000_000;
     const dataChegada = somarDias(carreira.dataAtual, 7);
     carreira.propostas.push({
@@ -657,7 +394,9 @@ describe("Hardening — substituições e hydrate", () => {
       posicao: "CA",
     });
     // Qualidade≈overall → delta pequeno; double-count deixaria o ataque bem abaixo.
-    expect(Math.abs(mesmoNivel.forcaAtaque - clube.forcaAtaque)).toBeLessThan(4);
+    expect(Math.abs(mesmoNivel.forcaAtaque - clube.forcaAtaque)).toBeLessThan(
+      4,
+    );
     const titularForteSai = ajustarClubePeloJogador(clube, user, 30, false, {
       overall: 92,
       posicao: "CA",
@@ -719,7 +458,7 @@ describe("Hardening — substituições e hydrate", () => {
       potencial: 84,
       atributos: attrs,
       ratingMetadata: {
-        source: "sportmonks",
+        source: "external",
         confidence: "high",
         minutes: 2000,
         appearances: 30,
@@ -752,7 +491,10 @@ describe("Hardening — substituições e hydrate", () => {
     carreira.jogador.confianca = 75;
     carreira.jogador.overall = 72;
     const clube = carreira.clubes.find((c) => c.id === carreira.clubeAtualId)!;
-    carreira.jogador.overall = Math.max(carreira.jogador.overall, clube.forcaGeral - 5);
+    carreira.jogador.overall = Math.max(
+      carreira.jogador.overall,
+      clube.forcaGeral - 5,
+    );
     const colega = clube.elenco.find(
       (n) => n.posicaoPrincipal === carreira.jogador.posicao,
     );
@@ -776,7 +518,9 @@ describe("Hardening — substituições e hydrate", () => {
     expect(categoriaPartida).toBe("profissional");
     expect(jogaBaseNestaSemana).toBe(false);
     // UI: rótulo de identidade vs confronto
-    expect(ehDaBase ? "PROMESSA DA BASE" : "SEU JOGADOR").toBe("PROMESSA DA BASE");
+    expect(ehDaBase ? "PROMESSA DA BASE" : "SEU JOGADOR").toBe(
+      "PROMESSA DA BASE",
+    );
     expect(jogaBaseNestaSemana ? " / Sub-20" : "").toBe("");
   });
 
@@ -787,168 +531,5 @@ describe("Hardening — substituições e hydrate", () => {
     const h = hidratarCarreira(s, catalogo);
     expect(h.clubeAtualId).toBeNull();
     expect(estaSemClube(h)).toBe(true);
-  });
-});
-
-describe("Hardening — rate limiter Sportmonks", () => {
-  it("espaça inícios de request sem race", async () => {
-    const starts: number[] = [];
-    let clock = 0;
-    const fetchImpl = vi.fn(async () => {
-      starts.push(clock);
-      clock += 5; // simula trabalho curto
-      return {
-        ok: true,
-        status: 200,
-        headers: new Headers(),
-        json: async () => ({ data: {} }),
-      } as Response;
-    });
-    const waits: number[] = [];
-    const realSetTimeout = globalThis.setTimeout;
-    vi.stubGlobal(
-      "setTimeout",
-      ((fn: () => void, ms?: number) => {
-        waits.push(ms ?? 0);
-        clock += ms ?? 0;
-        return realSetTimeout(fn, 0);
-      }) as typeof setTimeout,
-    );
-    const c = new ClienteSportmonks({
-      token: "t",
-      fetchImpl: fetchImpl as typeof fetch,
-      usarCache: false,
-      intervaloMs: 50,
-      concorrencia: 1,
-    });
-    await Promise.all([c.getJson("/a"), c.getJson("/b"), c.getJson("/c")]);
-    vi.unstubAllGlobals();
-    // Três inícios: o 2º e 3º devem aguardar o intervalo global.
-    expect(waits.filter((w) => w >= 40).length).toBeGreaterThanOrEqual(2);
-  });
-});
-
-describe("Hardening — nacionalidade no matching", () => {
-  it("candidato com nationality pontua bônus de nacionalidade", () => {
-    const r = pontuarMatch(
-      {
-        nome: "Pedro",
-        dataNascimento: "1998-05-10",
-        altura: 180,
-        posicao: "Centre-Forward",
-        nacionalidade: ["Brasil"],
-      },
-      {
-        id: 1,
-        nome: "Pedro",
-        dateOfBirth: "1998-05-10",
-        height: 180,
-        nationality: "Brasil",
-        position: "Centre-Forward",
-        teamName: "Flamengo",
-      },
-    );
-    expect(r.motivo).toMatch(/nac/);
-  });
-});
-
-describe("Hardening — saúde / season / mapping Sportmonks", () => {
-  it("queda severa A/B aborta publicação", () => {
-    const r = avaliarSaudeEnriquecimento({
-      cobertura: "A",
-      metricas: metricasVazias({
-        timesEsperados: 20,
-        timesEncontrados: 2,
-        squadsSolicitados: 2,
-        squadsObtidos: 1,
-        jogadoresTm: 500,
-        matches: 40,
-        comStats: 60,
-        fallback: 440,
-      }),
-      taxaAtual: 0.12,
-      taxaAnterior: 0.75,
-      anteriorEnriquecido: true,
-    });
-    expect(r.abortarPublicacao).toBe(true);
-    expect(r.saude).toBe("critico");
-  });
-
-  it("bootstrap A/B crítico (5%) NÃO publica e NÃO é sucesso", () => {
-    const r = avaliarSaudeEnriquecimento({
-      cobertura: "A",
-      metricas: metricasVazias({
-        timesEsperados: 20,
-        timesEncontrados: 2,
-        squadsSolicitados: 20,
-        squadsObtidos: 2,
-        jogadoresTm: 500,
-        matches: 25,
-        comStats: 25,
-        fallback: 475,
-      }),
-      taxaAtual: 0.05,
-      taxaAnterior: undefined,
-      anteriorEnriquecido: false,
-    });
-    expect(r.saude).toBe("critico");
-    expect(r.status).toBe("falha_critica");
-    expect(r.abortarPublicacao).toBe(true);
-  });
-
-  it("cobertura D é fallback esperado, nunca aborta por métricas", () => {
-    const r = avaliarSaudeEnriquecimento({
-      cobertura: "D",
-      metricas: metricasVazias({ jogadoresTm: 400, fallback: 400 }),
-      taxaAtual: 0,
-      taxaAnterior: 0,
-      anteriorEnriquecido: false,
-    });
-    expect(r.saude).toBe("fallback_esperado");
-    expect(r.abortarPublicacao).toBe(false);
-    expect(r.status).toBe("fallback_esperado");
-  });
-
-  it("temporadaSportmonksCompativel: Europa normaliza; sem ±1", () => {
-    expect(temporadaAnoCompativel("2026/2027", "2026/2027")).toBe(true);
-    expect(temporadaAnoCompativel("2026/27", "2026/2027")).toBe(true);
-    expect(temporadaAnoCompativel("2025", "2026")).toBe(false);
-    expect(temporadaAnoCompativel("2025/2026", "2026/2027")).toBe(false);
-    expect(temporadaAnoCompativel("2027/2028", "2026/2027")).toBe(false);
-  });
-
-  it("mapping automático stale se ID ausente dos candidatos atuais", () => {
-    const j = {
-      id: "1",
-      idTransfermarkt: "tm1",
-      nome: "Jogador X",
-      dataNascimento: "1999-01-01",
-      posicao: "Centre-Forward",
-    } as never;
-    const stale = validarMappingPersistido(
-      j,
-      {
-        sportmonksId: 99,
-        confiancaOriginal: "exact",
-        nome: "Jogador X",
-        dataNascimento: "1999-01-01",
-        atualizadoEm: new Date().toISOString(),
-      },
-      undefined,
-    );
-    expect(stale.stale).toBe(true);
-    expect(stale.ok).toBe(false);
-
-    const manual = validarMappingPersistido(
-      j,
-      {
-        sportmonksId: 99,
-        confiancaOriginal: "exact",
-        manual: true,
-        atualizadoEm: new Date().toISOString(),
-      },
-      undefined,
-    );
-    expect(manual.ok).toBe(true);
   });
 });

@@ -55,49 +55,18 @@ No atualizador, exige também `diretorio` explícito. Esse contrato só deve ser
 usado com fixtures e diretórios temporários; o comando normal não o oferece.
 Uma lista parcial em `ligas` não reduz o universo exigido para publicação oficial.
 
-Bootstrap A/B degradado bloqueia por padrão. Opt-in:
-`npm run atualizar-dados-futebol -- --allow-degraded-bootstrap`.
-A opção passa pelo shell ao TypeScript e à avaliação de saúde.
-Saúde crítica e regressão severa continuam bloqueando com a flag.
-A/B já enriquecido com saúde degradada também bloqueia.
-C conserva tolerância à cobertura parcial; D conserva fallback esperado.
-Ausência opcional de token mantém o fallback estimado já existente.
+Primeira geração sem ratings externos exige `--allow-engine-only`.
+Queda severa de cobertura bloqueia mesmo com essa opção. O bot não publica;
+somente o atualizador chama a release após todos os gates.
 
-Publicação degradada aceita retorna atualizacao_degradada e exit code 0;
-bloqueio retorna falha_critica e exit code 1.
-`VIZTTO_IMPORTACAO_DIR` é respeitado pelo comando.
+`VIZTTO_IMPORTACAO_DIR` é respeitado pelo comando. `--dry-run` não publica.
 
-## Seasons Sportmonks
+## Saúde e benchmark
 
-Nome descritivo da liga: nomeLigaSportmonks; identificador: idSportmonks.
-Label: TEMPORADAS_INICIAIS[ligaId].temporadaSportmonks.
-Identificador da temporada: seasonId resolvido e validado pela API.
-
-A documentação v3 usa YYYY/YYYY (exemplo 2021/2022), busca pelo nome da
-temporada e filtro seasonLeagues. Não comprova a disponibilidade de uma edição
-no plano contratado; a resposta precisa confirmar id, liga e label.
-2026/27 continua equivalente a 2026/2027 na validação.
-
-- [Busca por nome](https://docs.sportmonks.com/v3/endpoints-and-entities/endpoints/seasons/get-seasons-by-search-by-name)
-- [Squads por time e temporada](https://docs.sportmonks.com/v3/endpoints-and-entities/endpoints/team-squads/get-team-squad-by-team-and-season-id)
-
-Exemplos sem credenciais:
-```text
-https://api.sportmonks.com/v3/football/seasons/search/2026%2F2027?filters=seasonLeagues%3A8
-https://api.sportmonks.com/v3/football/seasons/search/2026?filters=seasonLeagues%3A648
-```
-
-A requisição de validação é /seasons/<id>?include=league.
-Os testes usam ClienteSportmonks real com fetch simulado e verificam pathname,
-label, filtro e liga. Nenhuma requisição real é necessária.
-
-## Health e benchmark
-
-HEALTH_THRESHOLDS centraliza:
-base enriquecida >=15%; queda relativa >=60% com perda >=9 pontos percentuais,
-ou perda absoluta >=40 pontos. Queda severa se aplica a A/B.
-Crítico: teams/squads <25% ou matching <10%.
-Saudável: teams/squads >=60%, matching >=35%, stats >=25%.
+O gate genérico compara cada liga com sua release anterior. Base enriquecida
+>=15%: perda relativa >=60% com perda >=9 pontos percentuais, ou perda
+absoluta >=40 pontos bloqueia. Falha total do bot sobre qualquer cobertura
+externa anterior também bloqueia. Ver [ratings-pipeline.md](ratings-pipeline.md).
 
 `npm run benchmark:save` gera 13 ligas, 258 clubes, 28 NPCs por clube,
 atributos e metadata completos, classificações e 12 temporadas externas.

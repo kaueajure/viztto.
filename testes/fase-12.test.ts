@@ -1,6 +1,6 @@
 /**
  * Pós–Fase 12 — hardening: releases atômicas, publicação estrita,
- * freeze de atributos no save, season consciente, saúde SM.
+ * freeze de atributos no save.
  */
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -10,14 +10,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import { LIGAS_SUPORTADAS } from "@/dominio/constantes/ligas";
-import {
-  TEMPORADAS_INICIAIS,
-  normalizarLabelTemporadaSportmonks,
-  temporadaSportmonksCompativel,
-} from "@/dominio/constantes/temporadas-iniciais";
-import { SPORTMONKS_LIGAS } from "@/dominio/constantes/sportmonks-ligas";
+import { TEMPORADAS_INICIAIS } from "@/dominio/constantes/temporadas-iniciais";
 import { criarAtributosUniformes } from "@/dominio/regras/jogador";
-import { NOMES_ATRIBUTOS, type Clube, type JogadorMundo } from "@/dominio/entidades/modelos";
+import {
+  NOMES_ATRIBUTOS,
+  type Clube,
+  type JogadorMundo,
+} from "@/dominio/entidades/modelos";
 import {
   validarDisponibilidadeLiga,
   validarPublicacaoLiga,
@@ -35,17 +34,21 @@ import {
   hidratarCarreira,
   serializarCarreira,
 } from "@/infraestrutura/persistencia/carreira-persistida";
-import { resolverSeasonId } from "@/infraestrutura/sportmonks/enriquecer-liga";
-import { ClienteSportmonks } from "@/infraestrutura/sportmonks/cliente";
-import {
-  avaliarSaudeEnriquecimento,
-  metricasVazias,
-} from "@/infraestrutura/sportmonks/saude-enriquecimento";
 import type { RatingMetadata } from "@/dominio/rating-metadata";
 import { exemploCarreira } from "./auxiliar-carreira-persistida";
 
-const publicarReleaseAtomica: typeof publicarRelease = (candidatos, destino, opcoes) =>
-  publicarRelease(candidatos, destino, { ...opcoes, publicacao: { modo: "isolada", ligasEsperadas: candidatos.map(c => c.ligaId) } });
+const publicarReleaseAtomica: typeof publicarRelease = (
+  candidatos,
+  destino,
+  opcoes,
+) =>
+  publicarRelease(candidatos, destino, {
+    ...opcoes,
+    publicacao: {
+      modo: "isolada",
+      ligasEsperadas: candidatos.map((c) => c.ligaId),
+    },
+  });
 
 const dirOriginal = obterDiretorioImportacao();
 const limpeza: string[] = [];
@@ -178,9 +181,9 @@ describe("Fase 12 — release atômica (ponteiro active.json)", () => {
       dir,
     );
     expect((await lerManifestoAtivo(dir))!.releaseId).toBe(idA);
-    expect((await lerDadosLiga(liga.id, dir))!.clubes[0]!.elenco[0]!.overall).toBe(
-      60,
-    );
+    expect(
+      (await lerDadosLiga(liga.id, dir))!.clubes[0]!.elenco[0]!.overall,
+    ).toBe(60);
 
     // Simula release B montada mas processo morto antes do rename do active.json
     const idB = `r-fake-b`;
@@ -193,9 +196,9 @@ describe("Fase 12 — release atômica (ponteiro active.json)", () => {
     await salvarDadosLiga(b, releaseB);
     // NÃO troca active.json
     expect((await lerManifestoAtivo(dir))!.releaseId).toBe(idA);
-    expect((await lerDadosLiga(liga.id, dir))!.clubes[0]!.elenco[0]!.overall).toBe(
-      60,
-    );
+    expect(
+      (await lerDadosLiga(liga.id, dir))!.clubes[0]!.elenco[0]!.overall,
+    ).toBe(60);
   });
 
   it("B) troca única do manifesto ativa todas as ligas da release B", async () => {
@@ -242,9 +245,9 @@ describe("Fase 12 — gate de publicação oficial", () => {
   it("19/20 não publica; parcial não publica; liga nova incompleta não publica", () => {
     const liga = LIGAS_SUPORTADAS.find((l) => l.id === "brasileirao")!;
     const ant = snapshotCompleto(liga.id, 20);
-    expect(validarPublicacaoLiga(liga, snapshotCompleto(liga.id, 19), ant).ok).toBe(
-      false,
-    );
+    expect(
+      validarPublicacaoLiga(liga, snapshotCompleto(liga.id, 19), ant).ok,
+    ).toBe(false);
 
     const parcial = snapshotCompleto(liga.id, 18, {
       status: "parcial",
@@ -284,7 +287,7 @@ describe("Fase 12 — freeze de atributos no save", () => {
     pedro.potencial = 82;
     pedro.atributos = attrsA;
     pedro.ratingMetadata = {
-      source: "sportmonks",
+      source: "external",
       confidence: "high",
       minutes: 2000,
       appearances: 30,
@@ -292,9 +295,9 @@ describe("Fase 12 — freeze de atributos no save", () => {
     };
 
     const persistido = serializarCarreira(carreira);
-    expect(persistido.clubesDinamicos[0]!.elenco[0]!.atributos?.finalizacao).toBe(
-      80,
-    );
+    expect(
+      persistido.clubesDinamicos[0]!.elenco[0]!.atributos?.finalizacao,
+    ).toBe(80);
 
     // Catálogo B com atributos diferentes
     const catalogoB = structuredClone(catalogo);
@@ -344,8 +347,11 @@ describe("Fase 12 — freeze de atributos no save", () => {
     expect(pedroLegado.atributos?.finalizacao).toBe(88); // fallback catálogo B
     // Re-serialize congela
     const re = serializarCarreira(hLegado);
-    expect(re.clubesDinamicos.flatMap((c) => c.elenco).find((j) => j.id === pedro.id)!
-      .atributos?.finalizacao).toBe(88);
+    expect(
+      re.clubesDinamicos
+        .flatMap((c) => c.elenco)
+        .find((j) => j.id === pedro.id)!.atributos?.finalizacao,
+    ).toBe(88);
   });
 
   it("round-trip preserva overall, potencial, atributos e metadata", () => {
@@ -356,7 +362,7 @@ describe("Fase 12 — freeze de atributos no save", () => {
     j.atributos = criarAtributosUniformes(71);
     j.atributos.finalizacao = 79;
     j.ratingMetadata = {
-      source: "hybrid",
+      source: "multi-source",
       confidence: "medium",
       minutes: 1200,
       appearances: 20,
@@ -367,7 +373,7 @@ describe("Fase 12 — freeze de atributos no save", () => {
     expect(j2.overall).toBe(77);
     expect(j2.potencial).toBe(85);
     expect(j2.atributos?.finalizacao).toBe(79);
-    expect(j2.ratingMetadata?.source).toBe("hybrid");
+    expect(j2.ratingMetadata?.source).toBe("multi-source");
   });
 
   it("tamanho aproximado do save com atributos vs sem", () => {
@@ -397,183 +403,6 @@ describe("Fase 12 — freeze de atributos no save", () => {
     console.log(
       `[save-size] sem attrs≈${(bytesSem / 1024).toFixed(1)} KiB · com attrs≈${(bytesCom / 1024).toFixed(1)} KiB · Δ=${((bytesCom - bytesSem) / 1024).toFixed(1)} KiB · chavesAttrs=${Object.keys(NOMES_ATRIBUTOS).length}`,
     );
-  });
-});
-
-describe("Fase 12 — saúde Sportmonks e season", () => {
-  it("D) queda 75%→10% aborta; 20/20 ok; 5/20 degradado", () => {
-    const queda = avaliarSaudeEnriquecimento({
-      cobertura: "A",
-      metricas: metricasVazias({
-        timesEsperados: 20,
-        timesEncontrados: 20,
-        squadsSolicitados: 20,
-        squadsObtidos: 20,
-        jogadoresTm: 500,
-        matches: 50,
-        comStats: 50,
-        fallback: 450,
-      }),
-      taxaAtual: 0.1,
-      taxaAnterior: 0.75,
-      anteriorEnriquecido: true,
-    });
-    expect(queda.abortarPublicacao).toBe(true);
-
-    const ok = avaliarSaudeEnriquecimento({
-      cobertura: "A",
-      metricas: metricasVazias({
-        timesEsperados: 20,
-        timesEncontrados: 20,
-        squadsSolicitados: 20,
-        squadsObtidos: 20,
-        jogadoresTm: 500,
-        matches: 350,
-        comStats: 300,
-        fallback: 50,
-      }),
-      taxaAtual: 0.7,
-      taxaAnterior: 0.75,
-      anteriorEnriquecido: true,
-    });
-    expect(ok.abortarPublicacao).toBe(false);
-    expect(["saudavel", "degradado"]).toContain(ok.saude);
-
-    const ruim = avaliarSaudeEnriquecimento({
-      cobertura: "A",
-      metricas: metricasVazias({
-        timesEsperados: 20,
-        timesEncontrados: 5,
-        squadsSolicitados: 20,
-        squadsObtidos: 5,
-        squadsFalhos: 15,
-        jogadoresTm: 500,
-        matches: 40,
-        comStats: 20,
-        fallback: 480,
-      }),
-      taxaAtual: 0.05,
-      taxaAnterior: 0.7,
-      anteriorEnriquecido: true,
-    });
-    expect(ruim.abortarPublicacao).toBe(true);
-  });
-
-  it("G) strategy busca não escolhe currentSeason silenciosamente", async () => {
-    expect(SPORTMONKS_LIGAS.brasileirao!.seasonStrategy).toBe("busca");
-    expect(SPORTMONKS_LIGAS["premier-league"]!.seasonStrategy).toBe("busca");
-
-    const calls: string[] = [];
-    const fetchImpl = vi.fn(async (url: string) => {
-      calls.push(String(url));
-      if (String(url).includes("/leagues/")) {
-        return {
-          ok: true,
-          status: 200,
-          headers: new Headers(),
-          json: async () => ({
-            data: { currentSeason: { id: 999, name: "2024" } },
-          }),
-        };
-      }
-      if (String(url).includes("/seasons/search/")) {
-        return {
-          ok: true,
-          status: 200,
-          headers: new Headers(),
-          json: async () => ({
-            data: [
-              { id: 111, name: "2025", league_id: 648 },
-              { id: 222, name: "2026", league_id: 648 },
-            ],
-          }),
-        };
-      }
-      if (String(url).includes("/seasons/222")) {
-        return {
-          ok: true,
-          status: 200,
-          headers: new Headers(),
-          json: async () => ({
-            data: { id: 222, name: "2026", league_id: 648 },
-          }),
-        };
-      }
-      if (String(url).includes("/seasons/111")) {
-        return {
-          ok: true,
-          status: 200,
-          headers: new Headers(),
-          json: async () => ({
-            data: { id: 111, name: "2025", league_id: 648 },
-          }),
-        };
-      }
-      return {
-        ok: true,
-        status: 200,
-        headers: new Headers(),
-        json: async () => ({ data: {} }),
-      };
-    }) as unknown as typeof fetch;
-
-    const cliente = new ClienteSportmonks({
-      token: "t",
-      fetchImpl,
-      usarCache: false,
-      intervaloMs: 0,
-    });
-    const season = await resolverSeasonId(
-      cliente,
-      {
-        idSportmonks: 648,
-        seasonIdPreferido: null,
-        seasonStrategy: "busca",
-      },
-      "2026",
-    );
-    expect(season.seasonId).toBe(222);
-    expect(season.metodo).toBe("busca");
-    expect(calls.some((u) => u.includes("/leagues/"))).toBe(false);
-    expect(calls.some((u) => u.includes("/seasons/search/"))).toBe(true);
-  });
-
-  it("seasonIdPreferido explícito tem prioridade", async () => {
-    const fetchImpl = vi.fn(async (url: string) => {
-      if (String(url).includes("/seasons/777")) {
-        return {
-          ok: true,
-          status: 200,
-          headers: new Headers(),
-          json: async () => ({
-            data: { id: 777, name: "2026", league_id: 648 },
-          }),
-        };
-      }
-      return {
-        ok: true,
-        status: 200,
-        headers: new Headers(),
-        json: async () => ({ data: [] }),
-      };
-    }) as unknown as typeof fetch;
-    const cliente = new ClienteSportmonks({
-      token: "t",
-      fetchImpl,
-      usarCache: false,
-      intervaloMs: 0,
-    });
-    const r = await resolverSeasonId(
-      cliente,
-      {
-        idSportmonks: 648,
-        seasonIdPreferido: 777,
-        seasonStrategy: "busca",
-      },
-      "2026",
-    );
-    expect(r.seasonId).toBe(777);
-    expect(r.metodo).toBe("preferido");
   });
 });
 
@@ -607,17 +436,16 @@ describe("Fase 12 — manifesto corrompido / legado", () => {
       }),
       "utf8",
     );
-    const { ErroReleaseInvalida: E } = await import(
-      "@/infraestrutura/persistencia/importacao-futebol"
-    );
+    const { ErroReleaseInvalida: E } =
+      await import("@/infraestrutura/persistencia/importacao-futebol");
     await expect(lerDadosLiga(liga.id, dir)).rejects.toBeInstanceOf(E);
   });
 });
 
 describe("Fase 12+ — ratingMetadata completo round-trip", () => {
   const fontes: RatingMetadata["source"][] = [
-    "sportmonks",
-    "hybrid",
+    "external",
+    "multi-source",
     "transfermarkt-estimated",
     "generated",
   ];
@@ -632,10 +460,9 @@ describe("Fase 12+ — ratingMetadata completo round-trip", () => {
         minutes: 2500,
         appearances: 30,
         season: "2026",
-        sportmonksPlayerId: 12345,
+        sources: [{ provider: "fixture", externalPlayerId: "12345" }],
         matchConfidence: "exact",
         estimatedAttributes: ["velocidade", "forca"],
-        coverageLevel: "A",
       };
       j.ratingMetadata = meta;
       j.atributos = criarAtributosUniformes(70);
@@ -649,15 +476,14 @@ describe("Fase 12+ — ratingMetadata completo round-trip", () => {
     const { carreira, catalogo } = exemploCarreira();
     const j = carreira.clubes[0]!.elenco[0]!;
     const metaA: RatingMetadata = {
-      source: "sportmonks",
+      source: "external",
       confidence: "high",
       minutes: 2500,
       appearances: 30,
       season: "A",
-      sportmonksPlayerId: 111,
+      sources: [{ provider: "fixture", externalPlayerId: "111" }],
       matchConfidence: "exact",
       estimatedAttributes: ["velocidade"],
-      coverageLevel: "A",
     };
     j.overall = 78;
     j.atributos = criarAtributosUniformes(70);
@@ -670,13 +496,12 @@ describe("Fase 12+ — ratingMetadata completo round-trip", () => {
         if (nj.id === j.id) {
           nj.overall = 99;
           nj.ratingMetadata = {
-            source: "hybrid",
+            source: "multi-source",
             confidence: "low",
             minutes: 1,
             appearances: 1,
             season: "B",
-            sportmonksPlayerId: 999,
-            coverageLevel: "D",
+            sources: [{ provider: "fixture", externalPlayerId: "999" }],
           };
         }
     const h = hidratarCarreira(save, catB);
@@ -708,9 +533,9 @@ describe("Fase 12+ — point-of-commit da release", () => {
     expect(manifestoCommitado).toBe(true);
     expect(idB).not.toBe(idA);
     expect((await lerManifestoAtivo(dir))!.releaseId).toBe(idB);
-    expect((await lerDadosLiga(liga.id, dir))!.clubes[0]!.elenco[0]!.overall).toBe(
-      91,
-    );
+    expect(
+      (await lerDadosLiga(liga.id, dir))!.clubes[0]!.elenco[0]!.overall,
+    ).toBe(91);
   });
 
   it("falha antes do manifesto preserva A", async () => {
@@ -738,13 +563,13 @@ describe("Fase 12+ — point-of-commit da release", () => {
       ),
     ).rejects.toThrow();
     expect((await lerManifestoAtivo(dir))!.releaseId).toBe(idA);
-    expect((await lerDadosLiga(liga.id, dir))!.clubes[0]!.elenco[0]!.overall).toBe(
-      40,
-    );
+    expect(
+      (await lerDadosLiga(liga.id, dir))!.clubes[0]!.elenco[0]!.overall,
+    ).toBe(40);
   });
 });
 
-describe("Fase 12+ — clubes esperados e temporada SM", () => {
+describe("Fase 12+ — clubes esperados", () => {
   it("usa liga.quantidadeClubes por padrão", () => {
     const bra = LIGAS_SUPORTADAS.find((l) => l.id === "brasileirao")!;
     const cha = LIGAS_SUPORTADAS.find((l) => l.id === "championship")!;
@@ -770,16 +595,5 @@ describe("Fase 12+ — clubes esperados e temporada SM", () => {
         clubesEsperados: 18,
       }).ok,
     ).toBe(true);
-  });
-
-  it("labels Sportmonks Brasil/Europa", () => {
-    expect(TEMPORADAS_INICIAIS.brasileirao!.temporadaSportmonks).toBe("2026");
-    expect(TEMPORADAS_INICIAIS.brasileirao!.temporadaTransfermarkt).toBe("2025");
-    expect(TEMPORADAS_INICIAIS["premier-league"]!.temporadaSportmonks).toBe(
-      "2026/2027",
-    );
-    expect(normalizarLabelTemporadaSportmonks("2026/27")).toBe("2026/2027");
-    expect(temporadaSportmonksCompativel("2026/27", "2026/2027")).toBe(true);
-    expect(temporadaSportmonksCompativel("2025", "2026")).toBe(false);
   });
 });

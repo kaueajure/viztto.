@@ -58,6 +58,9 @@ else
     exit 1
   fi
 fi
+# Um processo Python por lote; o interpretador é resolvido antes da importação.
+RATINGS_PYTHON="$(bash scripts/ratings-python.sh -c 'import sys; print(sys.executable)')"
+export RATINGS_PYTHON
 # react-server mantém as proteções server-only da infraestrutura, sem subir Next.
 setsid node --env-file-if-exists=.env --conditions=react-server --import tsx scripts/atualizar-dados-futebol.ts "$@" &
 ATUALIZADOR_PID=$!

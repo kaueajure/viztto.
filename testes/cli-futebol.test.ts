@@ -23,10 +23,8 @@ async function ambiente(opcoes: {
   const dir = await mkdtemp(join(tmpdir(), "viztto-cli-"));
   diretorios.push(dir);
   for (const pasta of ["scripts", "API", "bin"]) await mkdir(join(dir, pasta));
-  await copyFile(
-    "scripts/atualizar-dados-futebol.sh",
-    join(dir, "scripts/atualizar-dados-futebol.sh"),
-  );
+  for (const script of ["atualizar-dados-futebol.sh", "ratings-python.sh"])
+    await copyFile(join("scripts", script), join(dir, "scripts", script));
   await writeFile(
     join(dir, "bin/curl"),
     '#!/usr/bin/env bash\n[[ -f "$TEST_ROOT/pronta" ]]\n',
@@ -59,6 +57,8 @@ if [[ -f "$TEST_ROOT/falhar" ]]; then exit 1; fi
       env: {
         ...process.env,
         TEST_ROOT: dir,
+        // Interpretador explícito: a CLI não provisiona venv no diretório de teste.
+        RATINGS_PYTHON: "python3",
         PATH: `${join(dir, "bin")}:${process.env.PATH}`,
       },
       stdio: "pipe",

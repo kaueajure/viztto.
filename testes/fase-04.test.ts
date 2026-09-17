@@ -278,7 +278,7 @@ describe("atualização segura", () => {
     const importar: typeof importarLiga = async (l, opcoes) => {
       ordem.push(l.id);
       expect(opcoes?.forcar).toBe(true);
-      expect(opcoes?.diretorio).toContain(".staging");
+      expect(opcoes?.diretorio).toContain("viztto-import-");
       const dados = snapshot(l);
       await salvarDadosLiga(dados, opcoes?.diretorio);
       return {
@@ -293,6 +293,18 @@ describe("atualização segura", () => {
       importar,
       informar: () => {},
       ligas: LIGAS_SUPORTADAS.map((l) => ({ ...l, quantidadeClubes: 3 })),
+      permitirEnginePuro: true,
+      executarBot: async (lote) => ({
+        version: 1,
+        batchId: lote.batchId,
+        players: lote.players.map((p) => ({
+          id: p.id,
+          transfermarktId: p.transfermarktId,
+          sources: [],
+        })),
+        providers: {},
+        diagnostics: {},
+      }),
     });
     expect(ordem).toEqual(LIGAS_SUPORTADAS.map((l) => l.id));
     expect(resumo.temFalhas).toBe(false);

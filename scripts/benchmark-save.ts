@@ -34,15 +34,16 @@ const clubes = ligas.flatMap((liga) => {
       potencial: 78,
       atributos: criarAtributosUniformes(66),
       ratingMetadata: {
-        source: "sportmonks" as const,
+        source: "external" as const,
         confidence: "high" as const,
         minutes: 1800,
         appearances: 25,
         season: "2026",
-        sportmonksPlayerId: i * 28 + j + 1,
+        sources: [
+          { provider: "benchmark", externalPlayerId: String(i * 28 + j + 1) },
+        ],
         matchConfidence: "exact",
         estimatedAttributes: ["velocidade"],
-        coverageLevel: "A" as const,
       },
     }));
     clube.tamanhoElenco = 28;
@@ -54,9 +55,16 @@ const clubes = ligas.flatMap((liga) => {
 });
 const carreira = criarCarreira({
   identidade: {
-    nome: "Ana", sobrenome: "Benchmark", nacionalidade: "Brasil",
-    idade: 22, posicao: "PD", posicaoSecundaria: "", peDominante: "direito",
-    altura: 170, peso: 62, arquetipo: "criador",
+    nome: "Ana",
+    sobrenome: "Benchmark",
+    nacionalidade: "Brasil",
+    idade: 22,
+    posicao: "PD",
+    posicaoSecundaria: "",
+    peDominante: "direito",
+    altura: 170,
+    peso: 62,
+    arquetipo: "criador",
   },
   origem: "api",
   seed: "benchmark-13-ligas",

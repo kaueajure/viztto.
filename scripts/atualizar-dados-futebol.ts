@@ -4,9 +4,8 @@ import { atualizarBaseFutebol } from "../src/infraestrutura/transfermarkt/atuali
 try {
   const resumo = await atualizarBaseFutebol({
     diretorio: obterDiretorioImportacao(),
-    permitirBootstrapDegradado: process.argv.includes(
-      "--allow-degraded-bootstrap",
-    ),
+    dryRun: process.argv.includes("--dry-run"),
+    permitirEnginePuro: process.argv.includes("--allow-engine-only"),
   });
   process.exitCode = resumo.temFalhas ? 1 : 0;
 } catch (erro) {

@@ -44,7 +44,7 @@ export function gerarClubesDemonstracao(liga: Liga): Clube[] {
       return {
         id: `${id}-j${i}`,
         idExterno: -(indice * 100 + i + 1),
-        idTransfermarkt: `demo-${indice}-${i}`,
+        idTransfermarkt: `${id}-${i}`,
         nome: `Jogador ${nome.split(" ").slice(-1)[0]} ${i + 1}`,
         dataNascimento: null,
         idade: aleatorio.inteiro(18, 34),

@@ -229,7 +229,7 @@ export function criarJogadorMundo(
 ): JogadorMundo {
   const idade = bruto.idade ?? 24;
   const posicaoPrincipal = mapearPosicaoPrincipal(bruto.posicao);
-  // Snapshot enriquecido (Sportmonks/Rating Engine) tem precedência — não regenera.
+  // Snapshot enriquecido (ratings externos/Rating Engine) tem precedência — não regenera.
   const overall =
     typeof bruto.overall === "number"
       ? Math.round(limitar(bruto.overall, 40, 99))

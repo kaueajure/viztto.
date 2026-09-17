@@ -18,7 +18,12 @@
     "db:migrate": "node --env-file-if-exists=.env --conditions=react-server scripts/db.mjs migrate",
     "db:studio": "drizzle-kit studio --host=127.0.0.1",
     "db:check": "node --env-file-if-exists=.env --conditions=react-server scripts/db.mjs check",
-    "snapshots:check-git": "tsx --conditions=react-server scripts/validar-snapshots-git.ts"
+    "snapshots:check-git": "tsx --conditions=react-server scripts/validar-snapshots-git.ts",
+    "atualizar-ratings": "bash scripts/atualizar-ratings.sh",
+    "ratings:dry-run": "npm run atualizar-ratings -- --dry-run",
+    "ratings:report": "bash scripts/ratings-python.sh -m ratings_bot --report-only",
+    "calibrar-ratings": "bash scripts/ratings-python.sh -m ratings_bot.calibrate",
+    "test:ratings": "bash scripts/ratings-python.sh -m pytest -q"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",

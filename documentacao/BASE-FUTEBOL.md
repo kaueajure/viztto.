@@ -1,48 +1,6 @@
-# Base local de futebol — fase 4 (+ enriquecimento Sportmonks / fase 11)
+# Base local de futebol
 
-A atualização oficial é `npm run atualizar-dados-futebol`. Não existe endpoint público de escrita. Os JSONs existentes são versionáveis e a disponibilidade é calculada diretamente a partir deles, sem manifesto obrigatório.
-
-## Transfermarkt + Sportmonks
-
-Arquitetura de importação (apenas no PC do desenvolvedor):
-
-1. **Transfermarkt** (API local `felipeall`) — identidade, clubes, elencos, posição, idade, valor de mercado, contratos, fotos.
-2. **Sportmonks** (Football API v3) — estatísticas de desempenho por temporada, quando houver token e cobertura.
-3. **Viztto Rating Engine** — stats → atributos → `calcularOverall()` / potencial estimado (nunca `rating_partida × 10`).
-4. Snapshots em `src/dados/futebol/*.json` — o jogo em runtime **não** chama Transfermarkt nem Sportmonks.
-
-### Token Sportmonks
-
-Defina no ambiente (ou `.env` local, ignorado pelo Git):
-
-```bash
-export SPORTMONKS_API_TOKEN=seu_token_aqui
-```
-
-- Sem token: a atualização **continua** com ratings estimados a partir do Transfermarkt (fallback).
-- Com token inválido (401/403): a publicação é **abortada** para não misturar snapshots parcialmente enriquecidos.
-- O token nunca deve ir para o navegador, logs, snapshots ou relatórios (`relatorios/` e `.cache/sportmonks/` estão no `.gitignore`).
-
-### Matching e fallback
-
-- Matching TM ↔ SM por nome normalizado, data de nascimento, clube, posição, altura e nacionalidade.
-- Só `exact`/`high` aplicam estatísticas; matches duvidosos ficam unresolved.
-- Mapa estável opcional: `.cache/sportmonks/tm-sm-mapping.json`.
-- Cobertura por liga em `src/dominio/constantes/sportmonks-ligas.ts` (níveis A–D). Atualize `seasonIdPreferido` / `nomeTemporadaBusca` quando a temporada Sportmonks mudar (Brasil ≠ Europa).
-
-### Publicação atômica (fase de hardening)
-
-O lote inteiro é preparado em staging. **Nenhum** JSON oficial é alterado até todas as ligas solicitadas validarem. Só então ocorre a publicação controlada (tmp → rename) com rollback se um rename falhar no meio.
-
-Status do lote no resumo:
-
-- `sucesso`
-- `sucesso_fallback_esperado` (cobertura D / token ausente sem base enriquecida prévia)
-- `atualizacao_degradada` / `falha_critica` — **não publica** se a Sportmonks falhar sobre base já enriquecida
-
-### Metadata de rating (técnica)
-
-Em cada jogador enriquecido: `ratingMetadata.source` (`sportmonks` | `hybrid` | `transfermarkt-estimated` | `generated`), `confidence` (`high` | `medium` | `low`), minutos, season e id Sportmonks quando houver. Saves existentes guardam overall/potencial no delta da carreira — atualizar snapshots depois **não** altera carreiras já criadas.
+Transfermarkt define identidade, clubes e universo canônico. O robô Python adiciona apenas ratings por matching seguro. Veja [pipeline de ratings](../docs/ratings-pipeline.md) e [publicação atômica](../docs/snapshots-futebol.md).
 
 ## Catálogo verificado
 
@@ -72,41 +30,12 @@ O seletor do Transfermarkt exibe **2026** para o valor interno **2025** nas trê
 
 ## Publicação e falhas
 
-- A CLI trava execuções concorrentes com `flock` e importa ligas sequencialmente.
-- Cada execução tem staging próprio, isolado do diretório servido pelo Next.
-- JSON válido, edição compatível e pelo menos dois clubes válidos permitem publicação.
-- Snapshot parcial publica apenas clubes atualizados com sucesso. Clubes com erro não reutilizam dados antigos em atualização forçada.
-- Erro geral, edição errada ou menos de dois clubes preservam o arquivo anterior e produzem saída não zero.
-- Arquivos temporários e staging não entram no Git. `.env`, `.venv` e caches permanecem ignorados.
-- Os snapshots já presentes antes da fase 4 continuam utilizáveis por sua edição/calendário. Uma próxima atualização adiciona o identificador interno explicitamente.
-- Validar os códigos/participantes não equivale a atualizar todos os perfis e elencos.
-
-## Exemplo de saída
-
-Exemplo ilustrativo (as quantidades de jogadores dependem da consulta; não é um relatório de atualização real):
-
-```text
-Reutilizando Transfermarkt API em http://127.0.0.1:8000 (não será encerrada).
-════════════════════════════════════════
-VIZTTO — ATUALIZAÇÃO DA BASE DE FUTEBOL
-════════════════════════════════════════
-[1/13] Brasileirão Série A
-Competição: BRA1
-[████████░░░░░░░░░░░░] 8/20 · 8 atualizados · 0 falhas · Atualizando: Fluminense
-✓ Brasileirão Série A: 20/20 clubes, 612 jogadores.
-...
-⚠ Ligue 1: 17/18 clubes, 480 jogadores.
-  - Clube X: A API não retornou jogadores para este clube.
-════════════════════════════════════════
-RESUMO
-════════════════════════════════════════
-✓ Brasileirão Série A: 20/20
-...
-⚠ Ligue 1: 17/18
-✓ Ligue 2: 18/18
-13 ligas · ... clubes publicados · ... jogadores · 1 falhas · ...s
-Diagnóstico da tentativa: src/dados/futebol/.staging/atualizacao-...
-```
+- A CLI usa `flock`; cada execução prepara todas as ligas em diretório temporário.
+- Exige clubes completos, calendário válido e universo completo das ligas suportadas.
+- Snapshot parcial ou queda severa de cobertura externa bloqueia a publicação.
+- O ponto único de publicação é o rename de `active.json` após validar a release completa.
+- Engine puro exige `--allow-engine-only`; não permite substituir uma base enriquecida após falha total.
+- `--dry-run` gera diagnóstico sem publicar. A CLI completa ainda consulta Transfermarkt; para testes offline use fixtures no robô isolado.
 
 ## Verificação
 

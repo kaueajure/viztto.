@@ -1,1280 +1,1362 @@
-Quero implementar uma nova camada de dados no Viztto usando a Sportmonks como fonte de ESTATÍSTICAS E DESEMPENHO dos jogadores, mantendo a API atual do Transfermarkt como fonte principal de identidade, clubes, elencos, contratos, valores de mercado e demais dados já utilizados.
+Quero alterar estruturalmente o pipeline de dados do projeto Viztto.
 
-IMPORTANTE:
+OBJETIVO PRINCIPAL:
 
-A Sportmonks NÃO deve substituir a integração atual com Transfermarkt.
+REMOVER COMPLETAMENTE A SPORTMONKS do projeto.
 
-A arquitetura desejada é:
+Manter:
+
+Transfermarkt
+→ como fonte canônica de identidade, elenco, clube, posição, idade, valor de mercado etc.
+
+E criar:
+
+um ROBÔ/IMPORTADOR EM PYTHON
+→ que procure ratings externos SOMENTE para os jogadores que já foram encontrados pelo Transfermarkt.
+
+A arquitetura final deve ser:
 
 TRANSFERMARKT
-→ identidade dos jogadores
-→ clubes
-→ elencos
-→ posição
-→ idade/data de nascimento
-→ valores de mercado
-→ contratos
-→ fotos e demais dados já existentes
-
-+
-
-SPORTMONKS
-→ estatísticas reais dos jogadores
-→ minutos
-→ partidas
-→ gols
-→ assistências
-→ chutes
-→ passes
-→ dribles
-→ duelos
-→ desarmes
-→ interceptações
-→ estatísticas defensivas
-→ estatísticas ofensivas
-→ ratings de desempenho
-→ xG/xA ou outras métricas quando disponíveis
-→ demais dados úteis disponíveis por liga
-
 ↓
-
-VIZTTO RATING ENGINE
-
+define o universo de jogadores
 ↓
-
-overall
-potencial estimado
-atributos individuais
-
+lista canônica dos jogadores Viztto
 ↓
+ROBÔ DE RATINGS
+↓
+procura esses jogadores em uma ou mais fontes externas permitidas
+↓
+matching seguro
+↓
+normalização das diferentes escalas
+↓
+OVR / atributos / dados complementares externos
+↓
+Rating Engine Viztto
+↓
+fallback para quem não foi encontrado
+↓
+snapshot final
+↓
+carreira
 
-SNAPSHOTS LOCAIS DO VIZTTO
+\==================================================
+REGRAS IMPORTANTES
+\==================================================
 
-Durante o jogo:
+Antes de alterar qualquer coisa:
 
-ZERO chamadas ao Transfermarkt.
-ZERO chamadas à Sportmonks.
+1\. Leia e audite completamente o estado atual do projeto.
+2\. Identifique tudo que depende da Sportmonks.
+3\. Identifique quais partes do Rating Engine são independentes dela.
+4\. Preserve tudo que puder ser reaproveitado.
+5\. Não reconstruir arquitetura desnecessariamente.
+6\. Não alterar os snapshots oficiais durante esta implementação.
+7\. Não fazer commit.
+8\. Não fazer push.
+9\. Não fazer deploy.
+10\. Não executar scraping real em massa durante a implementação.
 
-O jogo deve continuar funcionando exclusivamente com os snapshots locais gerados previamente.
+IMPORTANTE SOBRE FONTES EXTERNAS:
 
-==================================================
-OBJETIVO PRINCIPAL
-==================================================
+NÃO implemente scraping de uma fonte que proíba explicitamente automação/scraping.
 
-Quero manter a experiência operacional atual.
+O robô deve ter arquitetura de providers/adapters.
 
-Hoje temos um comando semelhante a:
+Somente providers cuja utilização automatizada seja tecnicamente e contratualmente permitida devem ser habilitados.
 
-npm run atualizar-dados-futebol
+Se alguma fonte candidata não tiver autorização clara:
 
-Quero continuar executando UM ÚNICO COMANDO manualmente no meu PC para atualizar toda a base.
+\- não implementar scraping automático dela;
+\- deixar o adapter preparado/desativado;
+\- documentar o motivo.
+
+Não tente contornar:
+
+\- CAPTCHA;
+\- Cloudflare;
+\- rate limit;
+\- autenticação;
+\- paywall;
+\- bloqueios anti-bot;
+\- robots/termos explícitos contra automação.
+
+\==================================================
+PARTE 1 — REMOVER SPORTMONKS COMPLETAMENTE
+\==================================================
+
+Remover a Sportmonks como dependência de funcionamento do Viztto.
+
+Auditar e remover/refatorar:
+
+\- SPORTMONKS\_API\_TOKEN
+\- SPORTMONKS\_API\_URL
+\- SPORTMONKS\_LIGAS
+\- ClienteSportmonks
+\- enriquecerLigaComSportmonks
+\- health específico Sportmonks
+\- season resolution Sportmonks
+\- mappings Transfermarkt → Sportmonks
+\- caches Sportmonks
+\- relatórios sportmonks-matching
+\- testes específicos Sportmonks
+\- documentação Sportmonks
+\- tipos e enums exclusivos da Sportmonks
+\- flags como exigirSportmonks
+\- permitirBootstrapDegradado quando só existirem por causa da Sportmonks
+\- referências em scripts
+\- comentários obsoletos
+\- imports mortos
+\- envs mortos
+
+NÃO remover automaticamente componentes reaproveitáveis.
 
 Por exemplo:
 
-npm run atualizar-dados-futebol
+\- Rating Engine Viztto
+\- RatingMetadata genérico
+\- matching genérico
+\- normalização de atributos
+\- health genérico de fontes externas
+\- release atômica
+\- active.json
+\- gate de snapshots completos
+\- isolamento snapshot/save
+\- atributos persistidos
+\- benchmark de save
 
-Internamente esse comando deverá:
+Esses componentes devem ser reaproveitados e generalizados.
 
-1. atualizar/importar os dados do Transfermarkt;
-2. buscar os dados necessários da Sportmonks;
-3. fazer paginação automaticamente;
-4. respeitar rate limits;
-5. fazer matching entre jogadores das duas fontes;
-6. calcular ratings e atributos do Viztto;
-7. validar os dados;
-8. gerar os snapshots finais;
-9. gerar relatório da atualização;
-10. nunca deixar snapshots parcialmente corrompidos caso alguma etapa falhe.
+\==================================================
+PARTE 2 — GENERALIZAR \`RatingMetadata\`
+\==================================================
 
-Para mim deve continuar sendo apenas:
+Hoje RatingMetadata nasceu muito ligado à Sportmonks.
 
-npm run atualizar-dados-futebol
+Quero torná-lo agnóstico de provider.
 
-Não quero precisar executar manualmente dezenas de comandos.
+Em vez de campos como:
 
-==================================================
-1. PRIMEIRO: ANALISAR A ARQUITETURA ATUAL
-==================================================
+sportmonksPlayerId
+coverageLevel Sportmonks
+source = sportmonks
 
-Antes de alterar qualquer código, analise completamente como funciona hoje:
-
-- integração open source com Transfermarkt;
-- scripts de atualização;
-- API Python existente;
-- atualizar-base;
-- snapshots;
-- estrutura de jogadores;
-- estrutura de clubes;
-- LIGAS_SUPORTADAS;
-- TEMPORADA_TRANSFERMARKT;
-- criação de JogadorMundo;
-- geração atual de overall;
-- geração atual de potencial;
-- atributos existentes no domínio;
-- cálculo de força dos clubes;
-- persistência de carreira;
-- evolução dos jogadores durante uma carreira;
-- testes relacionados à base de futebol.
-
-Não crie uma segunda arquitetura paralela.
-
-A Sportmonks deve entrar como enriquecimento da arquitetura existente.
-
-==================================================
-2. LIGAS ATUAIS
-==================================================
-
-O Viztto atualmente possui:
-
-- Brasileirão Série A
-- Brasileirão Série B
-- Brasileirão Série C
-- Premier League
-- Championship
-- La Liga
-- LaLiga 2
-- Serie A italiana
-- Serie B italiana
-- Bundesliga
-- 2. Bundesliga
-- Ligue 1
-- Ligue 2
-
-Mapeie cada liga do Viztto para a competição/temporada correspondente na Sportmonks.
-
-NÃO espalhe IDs da Sportmonks pelo código.
-
-Criar configuração centralizada, por exemplo conceitualmente:
-
-liga Viztto
-→ id Transfermarkt
-→ id Sportmonks
-→ season Sportmonks
-→ nível de cobertura disponível
-
-Não assuma que todas as competições possuem o mesmo nível de dados.
-
-==================================================
-3. COBERTURA DIFERENTE ENTRE LIGAS
-==================================================
-
-A implementação precisa funcionar mesmo quando a Sportmonks não possuir estatísticas avançadas suficientes.
-
-Exemplo importante:
-
-Brasileirão Série A:
-→ dados individuais ricos.
-
-Brasileirão Série C:
-→ cobertura individual pode ser limitada.
-
-Portanto o Rating Engine deve possuir níveis de dados.
-
-Algo conceitualmente como:
-
-NÍVEL A
-estatísticas avançadas completas
-
-NÍVEL B
-estatísticas individuais básicas
-
-NÍVEL C
-dados muito limitados
-
-NÍVEL D
-sem correspondência Sportmonks
-
-Nunca impedir a atualização inteira porque uma liga ou jogador possui menos dados.
-
-==================================================
-4. MATCHING TRANSFERMARKT ↔ SPORTMONKS
-==================================================
-
-Este é um ponto crítico.
-
-Transfermarkt continua sendo a identidade canônica do jogador no Viztto.
-
-Sportmonks serve como enriquecimento.
-
-Precisamos relacionar:
-
-Jogador Transfermarkt
-↔
-Jogador Sportmonks
-
-Não fazer matching apenas pelo nome.
-
-Usar uma combinação segura dos dados disponíveis, como:
-
-- nome normalizado;
-- data de nascimento;
-- clube;
-- posição;
-- nacionalidade;
-- altura, se disponível;
-- outros identificadores confiáveis.
-
-Criar sistema de confiança do matching.
+usar uma estrutura genérica.
 
 Exemplo conceitual:
 
-exact
-high
-medium
-low
-unmatched
+type FonteRating =
+&#x20; \| "external"
+&#x20; \| "multi-source"
+&#x20; \| "transfermarkt-estimated"
+&#x20; \| "generated";
 
-Nunca aplicar automaticamente estatísticas de outro jogador em matching duvidoso.
+interface FonteRatingExterna {
+&#x20; provider: string;
+&#x20; externalPlayerId?: string;
+&#x20; ratingOriginal?: number;
+&#x20; ratingNormalizado?: number;
+&#x20; confidence?: string;
+&#x20; matchedBy?: string[];
+&#x20; sourceUpdatedAt?: string;
+}
 
-Matching abaixo de um limite seguro deve permanecer unresolved.
+interface RatingMetadata {
+&#x20; source:
+&#x20;   \| "external"
+&#x20;   \| "multi-source"
+&#x20;   \| "transfermarkt-estimated"
+&#x20;   \| "generated";
 
-Gerar relatório contendo:
+&#x20; confidence:
+&#x20;   \| "high"
+&#x20;   \| "medium"
+&#x20;   \| "low";
 
-- jogadores encontrados;
-- matches exatos;
-- matches por heurística;
-- jogadores não encontrados;
-- conflitos;
-- jogadores duplicados.
+&#x20; sources?: FonteRatingExterna[];
 
-Se for útil, persistir um mapa estável:
+&#x20; estimatedAttributes?: string[];
 
-Transfermarkt ID
-→ Sportmonks ID
+&#x20; calibrationVersion?: string;
+}
 
-para reutilizar em atualizações futuras.
+Não precisa usar exatamente esse formato.
 
-Não dependa novamente de fuzzy matching toda vez para jogadores já confirmados.
+Audite o que já existe e crie a menor estrutura que seja:
 
-==================================================
-5. SPORTMONKS CLIENT
-==================================================
+\- genérica;
+\- persistível;
+\- compatível com save;
+\- extensível;
+\- determinística.
 
-Criar uma camada específica para comunicação com Sportmonks.
+Criar migração/compatibilidade para saves existentes caso necessário.
 
-Não espalhar fetch diretamente pelo projeto.
+\==================================================
+PARTE 3 — TRANSFERMARKT CONTINUA SENDO A FONTE CANÔNICA
+\==================================================
 
-Algo conceitualmente semelhante a:
+O Transfermarkt deve continuar sendo responsável por definir:
 
-SportmonksClient
+\- jogadores existentes;
+\- clubes;
+\- ligas;
+\- nome;
+\- ID Transfermarkt;
+\- data de nascimento;
+\- idade;
+\- posição;
+\- nacionalidade;
+\- altura;
+\- pé;
+\- valor de mercado;
+\- contrato;
+\- foto quando existir;
+\- clube atual;
+\- demais dados canônicos atualmente usados.
 
-responsável por:
+REGRA FUNDAMENTAL:
 
-- autenticação;
-- paginação;
-- retries;
-- timeout;
-- rate limiting;
-- concorrência limitada;
-- erros HTTP;
-- cache temporário;
-- transformação básica.
-
-A implementação deve verificar a documentação atual da Sportmonks antes de assumir endpoints ou campos.
-
-Não hardcodar comportamento baseado apenas em exemplos.
-
-==================================================
-6. TOKEN
-==================================================
-
-A chave/token da Sportmonks:
-
-- nunca deve ser enviado para o navegador;
-- nunca deve entrar nos snapshots;
-- nunca deve ser commitado;
-- nunca deve aparecer em logs;
-- nunca deve ser salvo no código.
-
-Usar variável de ambiente apropriada, por exemplo:
-
-SPORTMONKS_API_TOKEN
-
-ou nome equivalente definido de forma consistente.
-
-O script deve falhar com mensagem clara se a atualização Sportmonks for explicitamente solicitada sem credencial.
-
-==================================================
-7. NÃO USAR SPORTMONKS EM PRODUÇÃO
-==================================================
-
-CRÍTICO:
-
-Nenhuma página do Viztto deve chamar Sportmonks.
-
-Nenhuma API pública do Viztto deve chamar Sportmonks.
-
-Criar carreira não deve chamar Sportmonks.
-
-Avançar semana não deve chamar Sportmonks.
-
-Transferências não devem chamar Sportmonks.
-
-Tudo deve ser importado previamente.
-
-Fluxo:
-
-PC DO DESENVOLVEDOR
-
-npm run atualizar-dados-futebol
-
-↓
-
-Transfermarkt + Sportmonks
-
-↓
-
-snapshots Viztto
-
-↓
-
-commit dos snapshots
-
-↓
-
-deploy
-
-↓
-
-produção lê arquivos locais
-
-==================================================
-8. PAGINAÇÃO E REQUISIÇÕES
-==================================================
-
-"Um comando" NÃO significa tentar fazer apenas uma requisição HTTP.
-
-O script pode e deve fazer quantas requisições forem necessárias.
-
-Ele deve:
-
-- seguir paginação automaticamente;
-- usar includes adequados quando isso reduzir chamadas;
-- evitar uma requisição individual por jogador quando houver endpoint agregado melhor;
-- limitar concorrência;
-- respeitar limites da API;
-- fazer retry de erros transitórios;
-- não refazer chamadas desnecessariamente.
-
-Se 250 requisições forem necessárias para atualizar corretamente tudo, tudo bem.
-
-Para o usuário continua sendo um comando.
-
-==================================================
-9. CACHE DE IMPORTAÇÃO
-==================================================
-
-Considere criar cache temporário/local para evitar baixar novamente dados inalterados durante desenvolvimento.
+O robô de ratings NÃO pode adicionar jogadores que não vieram do Transfermarkt.
 
 Exemplo:
 
-.cache/sportmonks/
+Transfermarkt encontrou 7.000 jogadores.
 
-Esse cache NÃO precisa fazer parte do snapshot final e não deve virar dependência da produção.
+O universo final continua tendo esses mesmos \~7.000 jogadores.
 
-Permitir invalidação completa quando necessário.
+Se a fonte de ratings contiver 30.000 jogadores:
 
-Nunca permitir cache antigo mascarar mudança de temporada silenciosamente.
+não importar 30.000.
 
-==================================================
-10. RATING ENGINE DO VIZTTO
-==================================================
+Pesquisar/enriquecer apenas os jogadores canônicos.
 
-Não copie diretamente rating de partida para overall.
+\==================================================
+PARTE 4 — CRIAR ROBÔ PYTHON
+\==================================================
 
-Exemplo INCORRETO:
+Criar módulo Python profissional dentro do projeto.
 
-rating 7.8
-→ overall 78
+Sugestão de estrutura:
 
-Não fazer isso.
+ratings\_bot/
+&#x20; \_\_init\_\_.py
+&#x20; cli.py
+&#x20; config.py
+&#x20; models.py
+&#x20; matcher.py
+&#x20; normalizer.py
+&#x20; cache.py
+&#x20; report.py
 
-Criar um Rating Engine próprio do Viztto.
+&#x20; providers/
+&#x20;   \_\_init\_\_.py
+&#x20;   base.py
+&#x20;   provider\_x.py
+&#x20;   provider\_y.py
 
-Ele deve considerar:
+Pode adaptar nomes à arquitetura atual.
 
-- posição;
-- idade;
-- minutos;
-- quantidade de partidas;
-- rating médio;
-- desempenho;
-- estatísticas específicas da função;
-- força da liga;
-- força do clube;
-- valor de mercado;
-- papel/status;
-- qualidade e quantidade dos dados disponíveis.
+Quero execução semelhante a:
 
-A fórmula precisa ser:
+python -m ratings\_bot ...
 
-- determinística;
-- testável;
-- centralizada;
-- documentada;
-- balanceada.
+ou wrapper npm:
 
-Não espalhar números mágicos por vários arquivos.
+npm run atualizar-ratings
 
-==================================================
-11. ATRIBUTOS POR POSIÇÃO
-==================================================
+\==================================================
+ENTRADA DO ROBÔ
+\==================================================
 
-Usar as estatísticas relevantes para cada atributo.
+O robô NÃO deve varrer indiscriminadamente sites inteiros.
 
-Não aplicar a mesma fórmula a todas as posições.
+Ele recebe a lista dos jogadores importados pelo Transfermarkt.
 
-Exemplos conceituais:
+Exemplo de input:
 
-ATACANTE
+.cache/ratings/players-to-enrich.json
 
-finalização:
-- gols
-- xG
-- conversão
-- chutes
-- chutes no alvo
-- gols por 90
-- volume ofensivo
+Formato conceitual:
 
-posicionamento:
-- presença ofensiva
-- xG
-- gols
-- ações na área
+{
+&#x20; "players": [
+&#x20;   {
+&#x20;     "id": "...",
+&#x20;     "transfermarktId": "...",
+&#x20;     "name": "...",
+&#x20;     "dateOfBirth": "...",
+&#x20;     "club": "...",
+&#x20;     "league": "...",
+&#x20;     "country": "...",
+&#x20;     "position": "...",
+&#x20;     "height": 183,
+&#x20;     "marketValue": 12000000
+&#x20;   }
+&#x20; ]
+}
 
-compostura:
-- conversão
-- desempenho em situações de finalização
-- consistência
+Então o robô tenta localizar somente esses jogadores.
 
-PONTA
+\==================================================
+PARTE 5 — PROVIDER INTERFACE
+\==================================================
 
-drible:
-- tentativas
-- dribles certos
-- sucesso em dribles
+Criar interface abstrata de provider.
 
-velocidade:
-se não existir dado objetivo de velocidade, NÃO fingir precisão.
-Usar estimativa conservadora baseada em perfil/posição/fonte secundária disponível.
+Exemplo conceitual:
 
-MEIO-CAMPISTA
+class RatingsProvider(ABC):
 
-visão:
-- passes-chave
-- chances criadas
-- assistências
-- xA
-- passes progressivos, se disponíveis
+&#x20;   name: str
 
-passe curto:
-- volume
-- precisão
-- contexto
+&#x20;   async def find\_player(self, canonical\_player):
+&#x20;       ...
 
-passe longo:
-- passes longos
-- precisão
+&#x20;   async def fetch\_player(self, external\_id):
+&#x20;       ...
 
-VOLANTE/ZAGUEIRO
+&#x20;   async def health\_check(self):
+&#x20;       ...
 
-desarme:
-- tackles
-- tackles ganhos
+Cada provider deve retornar formato comum.
 
-marcação:
-- ações defensivas
-- duelos
-- pressão/recuperações quando disponível
+Exemplo:
 
-antecipação:
-- interceptações
-- recuperações
+{
+&#x20; "provider": "fonte-x",
+&#x20; "externalPlayerId": "...",
 
-jogo aéreo:
-- duelos aéreos
-- percentual vencido
+&#x20; "name": "...",
+&#x20; "dateOfBirth": "...",
+&#x20; "club": "...",
+&#x20; "position": "...",
 
-GOLEIRO
+&#x20; "overall": 78,
+&#x20; "potential": 82,
 
-reflexos/defesa:
-- defesas
-- gols sofridos
-- save percentage
-- post-shot xG, se disponível
-- métricas equivalentes disponíveis
+&#x20; "attributes": {
+&#x20;   ...
+&#x20; },
 
-saída:
-- ações fora do gol / bolas aéreas quando disponíveis
+&#x20; "raw": {
+&#x20;   ...
+&#x20; }
+}
 
-reposição:
-- passes/distribuição.
+\`raw\` pode ser opcional ou salvo somente em cache/debug.
 
-Esses são exemplos.
+\==================================================
+PARTE 6 — NÃO PRENDER O SISTEMA A UMA ÚNICA FONTE
+\==================================================
 
-Primeiro verifique quais estatísticas realmente existem na Sportmonks.
+A arquitetura precisa aceitar:
 
-Não invente dados indisponíveis.
+Fonte A
+\+
+Fonte B
+\+
+futuras fontes C/D.
 
-==================================================
-12. ATRIBUTOS NÃO OBSERVÁVEIS DIRETAMENTE
-==================================================
+Exemplo:
 
-Alguns atributos não possuem estatística real direta.
-
-Exemplos:
-
-- velocidade;
-- aceleração;
-- força;
-- compostura;
-- concentração;
-- liderança.
-
-Nesses casos:
-
-não gerar falsa precisão.
-
-Criar estimativas usando:
-
-- posição;
-- idade;
-- perfil estatístico;
-- altura/peso quando relevante;
-- valor de mercado;
-- nível da liga;
-- heurísticas conservadoras.
-
-Marcar internamente que são estimados.
-
-==================================================
-13. OVERALL
-==================================================
-
-O overall deve continuar usando a lógica própria do Viztto baseada nos atributos e pesos da posição.
-
-Fluxo preferencial:
-
-estatísticas
+Transfermarkt
 ↓
-atributos Viztto
+Jogador X
 ↓
-calcularOverall()
-
-Não fazer:
-
-Sportmonks rating
+Provider A encontrou
+Provider B encontrou
 ↓
-overall direto.
+normalização
+↓
+rating final
 
-Assim o overall continua coerente com o sistema interno do jogo.
+Jogador Y
+↓
+Provider A não encontrou
+Provider B encontrou
+↓
+rating final
 
-==================================================
-14. POTENCIAL
-==================================================
+Jogador Z
+↓
+nenhuma encontrou
+↓
+Rating Engine Viztto
 
-Sportmonks não fornece "potential" estilo videogame.
+\==================================================
+PARTE 7 — MATCHING
+\==================================================
 
-Portanto potencial deve continuar sendo estimado pelo Viztto.
+O matching é uma parte crítica.
 
-Considerar:
+Nunca fazer:
 
-- idade;
-- overall atual;
-- minutos em alto nível;
-- valor de mercado;
-- evolução recente quando dados históricos existirem;
-- nível da competição;
-- papel no clube;
-- reputação;
-- margem de desenvolvimento.
+nome parecido
+→ aceitar automaticamente.
+
+Utilizar combinações de:
+
+\- nome normalizado;
+\- nome completo;
+\- data de nascimento;
+\- clube;
+\- posição;
+\- nacionalidade;
+\- altura;
+\- external ID se previamente conhecido.
+
+Criar níveis:
+
+EXACT
+HIGH
+MEDIUM
+LOW
+UNMATCHED
+AMBIGUOUS
+
+Somente:
+
+EXACT
+HIGH
+
+podem alimentar automaticamente o rating final.
+
+MEDIUM:
+
+\- reportar;
+\- não aplicar automaticamente.
+
+LOW:
+
+\- não aplicar.
+
+AMBIGUOUS:
+
+\- não aplicar.
+
+\==================================================
+MATCHING 1:1
+\==================================================
+
+Garantir relação 1:1 dentro de um provider.
 
 Não permitir:
 
-potencial < overall.
+Transfermarkt jogador A
+→ externalId 123
 
-Não expor potencial interno exato ao jogador.
+Transfermarkt jogador B
+→ externalId 123
 
-==================================================
-15. FALLBACK SEM SPORTMONKS
-==================================================
+O mesmo jogador externo não pode ser atribuído automaticamente a dois jogadores Transfermarkt.
 
-Todo jogador deve receber atributos, mesmo se:
+Criar estrutura:
 
-- não existir na Sportmonks;
-- matching falhar;
-- liga não possuir stats avançados;
-- jogador possuir poucos minutos;
-- for jovem recém-promovido.
+used\_external\_ids
 
-Usar fallback com dados existentes do Transfermarkt e do próprio Viztto.
+por provider/importação.
 
-Considerar:
+Se ocorrer colisão:
 
-- idade;
-- posição;
-- valor de mercado;
-- clube;
-- força do clube;
-- força média/reputação da liga;
-- status no elenco;
-- minutos/gols/assistências existentes no Transfermarkt quando disponíveis.
+→ marcar ambiguous
+→ não aplicar automaticamente.
 
-Nunca deixar jogador sem overall.
+\==================================================
+PARTE 8 — CACHE DE MAPPINGS
+\==================================================
 
-==================================================
-16. CONFIANÇA DO RATING
-==================================================
+Criar mappings persistidos.
 
-Adicionar metadata ao rating.
+Exemplo:
 
-Exemplo conceitual:
+.cache/ratings/mappings/\<provider>.json
 
-ratingMetadata: {
-  source: "sportmonks",
-  confidence: "high",
-  minutes: 2470,
-  season: "...",
-  sportmonksPlayerId: ...
+Estrutura conceitual:
+
+{
+&#x20; "transfermarkt-id": {
+&#x20;   "externalId": "...",
+&#x20;   "confidence": "exact",
+&#x20;   "lastValidatedAt": "...",
+&#x20;   "status": "active"
+&#x20; }
 }
 
-Outros possíveis:
+Status:
 
-source:
-- sportmonks
-- hybrid
-- transfermarkt-estimated
-- generated
+active
+stale
+manual
 
-confidence:
-- high
-- medium
-- low
+Mapping automático precisa ser revalidado.
 
-Essa metadata é principalmente técnica.
+Se externalId não existir mais:
 
-Não precisa necessariamente ser exibida ao jogador.
+→ stale.
 
-==================================================
-17. JOGADORES COM POUCOS MINUTOS
-==================================================
+Manual pode seguir política separada.
 
-Não calcular atributos extremos com amostra pequena.
+Não salvar segredos.
+
+\==================================================
+PARTE 9 — NORMALIZAÇÃO DE OVERALL
+\==================================================
+
+Muito importante:
+
+NÃO assumir:
+
+OVR 80 de uma fonte
+\=
+OVR 80 de outra fonte.
+
+Criar:
+
+RatingNormalizer
+
+por provider.
 
 Exemplo:
 
-Jogador:
-75 minutos
-2 gols
+providerA.normalize\_overall(80)
+providerB.normalize\_overall(80)
 
-não pode automaticamente virar finalização 95.
+↓
 
-Aplicar shrinkage/regressão para médias de referência.
+escala Viztto.
 
-Quanto menor a amostra:
+Inicialmente pode utilizar uma curva simples/configurável.
 
-mais peso em:
+Mas deixar arquitetura preparada para calibração estatística.
 
-- média da posição;
-- força da liga;
-- valor de mercado;
-- perfil do jogador.
+Exemplo:
 
-Quanto maior a amostra:
+config/ratings-calibration.json
 
-mais peso nas estatísticas individuais.
+{
+&#x20; "providerA": {
+&#x20;   "version": 1,
+&#x20;   "method": "piecewise",
+&#x20;   ...
+&#x20; }
+}
 
-==================================================
-18. NORMALIZAÇÃO ENTRE LIGAS
-==================================================
+\==================================================
+PARTE 10 — CALIBRAÇÃO ENTRE FONTES
+\==================================================
 
-Os números brutos não são diretamente comparáveis entre:
+Criar ferramenta offline:
 
+npm run calibrar-ratings
+
+ou:
+
+python -m ratings\_bot.calibrate
+
+Ela deve:
+
+1\. pegar jogadores presentes em múltiplas fontes;
+2\. comparar distribuições;
+3\. calcular:
+&#x20;  \- média;
+&#x20;  \- mediana;
+&#x20;  \- desvio;
+&#x20;  \- diferença por faixa;
+4\. gerar relatório;
+5\. opcionalmente gerar configuração de normalização.
+
+NÃO precisa usar machine learning.
+
+Uma regressão simples ou piecewise já é suficiente inicialmente.
+
+\==================================================
+PARTE 11 — RESOLUÇÃO DO RATING FINAL
+\==================================================
+
+Criar um \`RatingResolver\`.
+
+Exemplo de prioridade:
+
+CASO A:
+
+2+ fontes externas concordam
+→ confiança alta
+→ combinar ratings normalizados.
+
+CASO B:
+
+1 fonte externa confiável
+→ usa rating normalizado
+→ confiança alta/média.
+
+CASO C:
+
+fontes externas divergem muito
+→ combinar com Rating Engine ou rejeitar consenso
+→ confiança média.
+
+CASO D:
+
+nenhuma fonte
+→ Rating Engine Viztto.
+
+CASO E:
+
+matching duvidoso
+→ ignorar fonte
+→ Rating Engine.
+
+\==================================================
+PARTE 12 — NÃO DESCARTAR O RATING ENGINE
+\==================================================
+
+O Rating Engine atual deve ser preservado.
+
+Mas deve ser reposicionado.
+
+Hoje ele tenta produzir OVR baseado em:
+
+\- valor;
+\- idade;
+\- liga;
+\- clube;
+\- posição;
+\- stats Sportmonks.
+
+Remover dependência de stats Sportmonks.
+
+Novo papel:
+
+1\. fallback universal;
+2\. calibrador;
+3\. sanity-check dos ratings externos.
+
+Entrada possível:
+
+Transfermarkt:
+\- idade;
+\- posição;
+\- valor mercado;
+\- reputação liga;
+\- reputação clube;
+\- força liga;
+\- contexto elenco.
+
+Saída:
+
+\- OVR estimado;
+\- potencial;
+\- atributos estimados.
+
+\==================================================
+PARTE 13 — USAR FONTE EXTERNA PARA CALIBRAR O RATING ENGINE
+\==================================================
+
+Essa é uma parte importante.
+
+Quando houver milhares de jogadores com:
+
+dados Transfermarkt
+\+
+OVR externo confiável
+
+usar esses dados para analisar o erro do Rating Engine.
+
+Exemplo:
+
+TM:
+idade 24
+valor €10M
 Premier League
-e
-Brasileirão Série C.
+titular
 
-O Rating Engine precisa considerar força da competição.
+Fonte:
+OVR 75
 
-Não basta:
+Engine:
+OVR 70
 
-5 gols = mesmo peso em qualquer liga.
-
-Usar a reputação/força das ligas já existente ou criar normalização centralizada melhor.
-
-Evitar exagerar diferença entre ligas.
-
-==================================================
-19. DISTRIBUIÇÃO DOS RATINGS
-==================================================
-
-Não criar inflação de overall.
-
-O universo deve manter distribuição plausível.
-
-Exemplo conceitual:
-
-elite mundial:
-85–92+
-
-grandes jogadores:
-80–84
-
-bons titulares:
-74–79
-
-nível médio:
-68–73
-
-divisões inferiores:
-faixas progressivamente inferiores
-
-Não fixe exatamente esses números sem analisar os dados atuais.
-
-Use-os apenas como referência.
-
-Compare com as distribuições atuais do Viztto.
-
-Gerar relatório estatístico:
-
-- média overall por liga;
-- mediana;
-- mínimo;
-- máximo;
-- percentis;
-- média por posição.
-
-Detectar automaticamente anomalias.
-
-==================================================
-20. OVERALL DOS CLUBES
-==================================================
-
-Não tratar um rating inicial do clube como força eterna.
-
-A força do time deve resultar dos jogadores existentes e da escalação.
-
-Após gerar ratings dos jogadores:
-
-elenco
 ↓
-escalação
-↓
-força ataque
-força meio
-força defesa
-força goleiro
-↓
-força geral
 
-Assim, transferências e evolução devem mudar naturalmente a força do clube.
+erro -5.
 
-Sportmonks serve para formar os atributos iniciais dos jogadores.
+Gerar relatório por:
 
-Durante a carreira, o Viztto controla tudo.
+\- liga;
+\- divisão;
+\- idade;
+\- posição;
+\- faixa de valor;
+\- clube/força.
 
-==================================================
-21. SNAPSHOT
-==================================================
+Objetivo:
 
-Os snapshots finais devem continuar sendo autossuficientes.
+melhorar o fallback para jogadores que não têm rating externo.
 
-Cada jogador deve possuir os dados necessários para iniciar uma carreira sem API externa.
+Não precisa criar ML complexo.
 
-Não salvar milhares de estatísticas Sportmonks desnecessárias se elas só foram usadas para gerar atributos.
+Primeiro criar ferramenta estatística e relatório.
 
-Preferir snapshot final enxuto:
+\==================================================
+PARTE 14 — ATRIBUTOS
+\==================================================
 
-identidade
-+
-dados de mercado relevantes
-+
-atributos Viztto
-+
-overall
-+
-potencial
-+
-metadata mínima do rating
+Quando uma fonte tiver atributos detalhados:
 
-As estatísticas brutas podem ficar somente no cache/importador se não forem necessárias em runtime.
+normalizá-los para:
 
-==================================================
-22. ATUALIZAÇÕES FUTURAS NÃO ALTERAM SAVE EXISTENTE
-==================================================
+Atributos Viztto.
 
-CRÍTICO:
-
-Atualizar snapshots não deve alterar jogadores dentro de uma carreira já criada.
+Criar mapping explícito por provider.
 
 Exemplo:
 
-01/09
-Pedro = overall inicial 78
+external:
+pace
+finishing
+passing
+dribbling
 
-criei carreira.
-
-01/10
-novo snapshot:
-Pedro = 80.
-
-Minha carreira antiga NÃO deve magicamente mudar Pedro para 80.
-
-Snapshots servem para iniciar novos universos.
-
-Depois da criação:
-
-a carreira é controlada exclusivamente pelo motor Viztto.
-
-==================================================
-23. TEMPORADAS
-==================================================
-
-Não assumir que:
-
-Brasil 2026
-=
-Europa 2026
-
-possuem a mesma estrutura temporal.
-
-Criar configuração apropriada para mapear:
-
-liga
-→ temporada Transfermarkt
-→ temporada Sportmonks.
-
-Não usar um único seasonId global.
-
-==================================================
-24. ATUALIZAÇÃO ATÔMICA
-==================================================
-
-O processo deve ser seguro.
-
-Não sobrescrever snapshots válidos conforme cada liga termina.
-
-Fluxo:
-
-baixar
 ↓
-processar em diretório temporário
-↓
-validar tudo
-↓
-somente após sucesso:
-substituir snapshots oficiais.
 
-Se ocorrer erro no meio:
+Viztto:
+velocidade
+aceleracao
+finalizacao
+passeCurto
+etc.
 
-snapshots anteriores permanecem intactos.
+Não inventar conversões obscuras.
 
-==================================================
-25. RELATÓRIO DO COMANDO
-==================================================
+Campos sem equivalente:
 
-Ao final de:
+→ Rating Engine estima.
+
+Guardar em metadata:
+
+estimatedAttributes
+
+para sabermos quais foram estimados.
+
+\==================================================
+PARTE 15 — POTENCIAL
+\==================================================
+
+Não confiar cegamente no potencial de jogos externos.
+
+Criar separação:
+
+externalPotential
+
+vs
+
+vizttoPotential.
+
+Viztto deve combinar:
+
+\- potencial externo, se houver;
+\- idade;
+\- OVR;
+\- valor de mercado;
+\- contexto do clube;
+\- minutos/posição quando disponíveis;
+\- Rating Engine.
+
+Manter potencial real escondido do usuário.
+
+\==================================================
+PARTE 16 — PIPELINE FINAL
+\==================================================
+
+O comando final deve funcionar assim:
 
 npm run atualizar-dados-futebol
 
-mostrar algo como:
+↓
 
-==================================
-ATUALIZAÇÃO DE DADOS CONCLUÍDA
-==================================
+1\. Transfermarkt importa todas as ligas.
+2\. Valida clubes.
+3\. Gera canonical players file.
+4\. Chama ratings bot.
+5\. Ratings bot consulta providers permitidos.
+6\. Matching.
+7\. Cache.
+8\. Normalização.
+9\. RatingResolver.
+10\. Rating Engine fallback.
+11\. Snapshot final.
+12\. Validação.
+13\. Release.
+14\. active.json.
+
+\==================================================
+PARTE 17 — EXECUÇÃO SEPARADA DO ROBÔ
+\==================================================
+
+Também quero poder executar somente o robô.
+
+Exemplo:
+
+npm run atualizar-ratings
+
+e opções equivalentes:
+
+\--league brasileirao
+\--provider x
+\--refresh
+\--dry-run
+
+Não precisa usar exatamente essa CLI, mas deve haver execução isolada.
+
+\==================================================
+DRY-RUN
+\==================================================
+
+Criar:
+
+\--dry-run
+
+que:
+
+\- consulta/cacheia;
+\- faz matching;
+\- gera relatório;
+\- NÃO modifica snapshots oficiais;
+\- NÃO publica release.
+
+\==================================================
+PARTE 18 — RATE LIMIT
+\==================================================
+
+Todo provider deve respeitar limites.
+
+Criar:
+
+\- concurrency configurável;
+\- delay;
+\- retry exponencial;
+\- timeout;
+\- cache;
+\- 429 handling;
+\- 5xx retry controlado.
+
+Nunca bombardear o provider.
+
+Default conservador.
+
+\==================================================
+PARTE 19 — USER AGENT
+\==================================================
+
+Quando aplicável/legalmente permitido:
+
+usar User-Agent identificável.
+
+Não fingir ser navegador humano com intenção de contornar proteção.
+
+\==================================================
+PARTE 20 — CACHE
+\==================================================
+
+Criar cache:
+
+.cache/ratings/\<provider>/
+
+Exemplo:
+
+search/
+players/
+mappings/
+
+TTL configurável.
+
+Evitar refazer centenas/milhares de requests sem necessidade.
+
+\==================================================
+PARTE 21 — RELATÓRIO
+\==================================================
+
+Gerar:
+
+relatorios/ratings-import.json
+
+Formato:
+
+{
+&#x20; "generatedAt": "...",
+
+&#x20; "providers": {
+&#x20;   "providerA": {
+&#x20;     "requests": 0,
+&#x20;     "cacheHits": 0,
+&#x20;     "errors": 0
+&#x20;   }
+&#x20; },
+
+&#x20; "players": {
+&#x20;   "totalTransfermarkt": 7000,
+&#x20;   "matchedExternal": 5000,
+&#x20;   "multiSource": 3000,
+&#x20;   "fallbackEngine": 2000,
+&#x20;   "ambiguous": 30,
+&#x20;   "unmatched": 1970
+&#x20; },
+
+&#x20; "byLeague": {
+&#x20;   ...
+&#x20; }
+}
+
+Também reportar:
+
+\- exact
+\- high
+\- medium
+\- low
+\- ambiguous
+\- unmatched
+\- collision
+\- stale mappings
+\- fallback
+\- providers usados
+
+\==================================================
+PARTE 22 — COVERAGE REPORT
+\==================================================
+
+Mostrar no terminal:
+
+══════════════════════════════
+VIZTTO — RATINGS
+══════════════════════════════
 
 Transfermarkt:
-13/13 ligas
-260 clubes
-7.412 jogadores
+7.124 jogadores
 
-Sportmonks:
-6.103 jogadores encontrados
-5.847 matches confiáveis
-256 matches pendentes
+Provider A:
+5.020 encontrados
 
-Ratings:
-5.200 alta confiança
-1.400 média
-812 baixa
+Provider B:
+3.811 encontrados
 
-Fallback:
-1.565 jogadores
+Com pelo menos 1 rating externo:
+5.890
 
-Erros:
-0 críticos
-23 avisos
+Somente Rating Engine:
+1.234
 
-Snapshots:
-13 atualizados
+Matching:
+Exact: ...
+High: ...
+Medium: ...
+Ambiguous: ...
 
-Tempo:
-XXm XXs
+Cobertura externa:
+82.7%
 
-Os números são apenas exemplo.
+\==================================================
+PARTE 23 — NÃO FAZER REQUEST EM TEMPO REAL NO JOGO
+\==================================================
 
-==================================================
-26. RELATÓRIO DE MATCHING
-==================================================
+Nenhum request a provider externo pode ocorrer:
 
-Gerar arquivo técnico, por exemplo:
+\- ao criar carreira;
+\- ao avançar semana;
+\- ao abrir jogador;
+\- durante partida;
+\- em produção runtime.
 
-relatorios/sportmonks-matching.json
+Tudo deve ser snapshot offline.
 
-ou equivalente.
+\==================================================
+PARTE 24 — CARREIRAS ANTIGAS
+\==================================================
 
-Contendo:
+Preservar isolamento já implementado.
 
-- matched;
-- ambiguous;
-- unmatched;
-- duplicated;
-- coverage por liga.
+Snapshot A
+↓
+cria carreira A
 
-Não colocar token ou informações sensíveis nesse relatório.
+atualização futura
+↓
+snapshot B
 
-==================================================
-27. IDEMPOTÊNCIA
-==================================================
+carreira A continua com:
 
-Executar duas vezes o importador sobre os mesmos dados deve produzir essencialmente o mesmo snapshot.
+\- OVR A;
+\- potencial A;
+\- atributos A;
+\- metadata A.
 
-Não usar Math.random() na geração de ratings.
+Nova carreira usa B.
 
-Se alguma heurística precisar de variação:
+\==================================================
+PARTE 25 — RELEASES
+\==================================================
 
-usar seed determinística.
+Preservar arquitetura atual:
 
-==================================================
-28. ERROS DA SPORTMONKS
-==================================================
+active.json
+\+
+releases/\<release-id>
 
-Se Sportmonks falhar:
+Não remover atomicidade.
 
-não destruir os dados existentes.
+Não misturar release e legado.
 
-Diferenciar:
+Não permitir publicação parcial oficial.
 
-- timeout;
-- rate limit;
-- autenticação;
-- liga não coberta;
-- jogador sem stats;
-- resposta inválida.
+\==================================================
+PARTE 26 — PROVIDER DE EXEMPLO
+\==================================================
 
-Se possível, permitir fallback para Transfermarkt somente quando a falha for de ausência de cobertura/dados.
+Quero que pelo menos UM provider real possa ser implementado SOMENTE se:
 
-Para falha global de autenticação ou API durante uma atualização completa, preferir abortar antes de publicar snapshots parcialmente diferentes.
+1\. a fonte permitir automação;
+2\. a implementação estiver de acordo com os termos;
+3\. não exigir bypass anti-bot.
 
-==================================================
-29. PERFORMANCE
-==================================================
+Se nenhuma fonte candidata tiver permissão clara:
 
-A importação pode demorar alguns minutos.
+implementar:
 
-Isso é aceitável.
+MockRatingsProvider
 
-Prioridade:
-
-CORREÇÃO > VELOCIDADE.
-
-Mas:
-
-- não fazer request por jogador se houver endpoint agregado;
-- evitar trabalho duplicado;
-- limitar concorrência;
-- reutilizar cache;
-- reutilizar mapping existente.
-
-==================================================
-30. NÃO ALTERAR O GAMEPLAY SEM NECESSIDADE
-==================================================
-
-Esta implementação deve trocar/melhorar os DADOS INICIAIS.
-
-Não reescrever arbitrariamente:
-
-- mercado;
-- transferências;
-- evolução;
-- treinamento;
-- motor de partidas;
-- contratos;
-
-exceto quando necessário para receber corretamente os novos atributos.
-
-==================================================
-31. COMPATIBILIDADE
-==================================================
-
-Preservar saves existentes.
-
-Jogadores de saves antigos devem continuar funcionando.
-
-Se o schema dos snapshots mudar:
-
-criar compatibilidade adequada entre:
-
-snapshot antigo
-snapshot novo
-save existente.
-
-==================================================
-32. TESTES
-==================================================
-
-Criar testes para:
-
-1. cliente Sportmonks;
-2. paginação;
-3. rate limiting;
-4. retry;
-5. dados inválidos;
-6. autenticação ausente;
-7. matching exato;
-8. matching por data de nascimento;
-9. nomes com acentos;
-10. nomes iguais;
-11. jogadores homônimos;
-12. transferência entre clubes;
-13. jogador sem Sportmonks;
-14. liga sem stats avançados;
-15. poucos minutos;
-16. grande amostra;
-17. atacante;
-18. ponta;
-19. meia;
-20. volante;
-21. zagueiro;
-22. lateral;
-23. goleiro;
-24. overall;
-25. potencial >= overall;
-26. distribuição;
-27. normalização por liga;
-28. confiança do rating;
-29. fallback Transfermarkt;
-30. snapshot;
-31. atualização atômica;
-32. determinismo;
-33. save antigo;
-34. carreira nova;
-35. atualização de snapshot sem modificar save já criado.
-
-==================================================
-33. VALIDAÇÃO DE QUALIDADE
-==================================================
-
-Depois de gerar uma base completa, analise automaticamente alguns casos.
-
-Selecionar:
-
-- melhores jogadores de cada liga;
-- piores;
-- jovens;
-- veteranos;
-- goleiros;
-- atacantes;
-- jogadores muito valorizados;
-- jogadores pouco valorizados.
-
-Detectar inconsistências como:
-
-jogador €80M overall 58
-
-ou
-
-reserva Série C overall 91
-
-ou
-
-goleiro com finalização determinando overall.
-
-Falhar ou avisar quando houver outliers absurdos.
-
-==================================================
-34. DOCUMENTAÇÃO
-==================================================
+e toda a arquitetura completa.
 
 Documentar:
 
-- como configurar SPORTMONKS_API_TOKEN;
-- como executar atualização;
-- arquitetura Transfermarkt + Sportmonks;
-- onde snapshots são gerados;
-- como funciona matching;
-- como funciona fallback;
-- significado de rating confidence;
-- como atualizar mapeamentos de temporada.
+"Provider real pendente de fonte autorizada."
 
-Não colocar token real na documentação.
+NÃO escolher ilegalmente uma fonte só para cumprir a tarefa.
 
-==================================================
-35. FLUXO FINAL DESEJADO
-==================================================
+\==================================================
+PARTE 27 — FONTES CANDIDATAS
+\==================================================
 
-O resultado final deve ser:
+Investigar candidatos como:
 
-DESENVOLVEDOR
+\- APIs públicas de ratings;
+\- dumps/datasets licenciados;
+\- fontes abertas;
+\- APIs oficiais;
+\- provedores que explicitamente permitem automação.
+
+SoFIFA/eFootball/PES podem ser avaliados, mas NÃO assumir que podem ser raspados.
+
+Verificar termos antes.
+
+Não depender de endpoints privados descobertos por engenharia reversa.
+
+\==================================================
+PARTE 28 — PYTHON
+\==================================================
+
+Seguir padrões profissionais:
+
+\- Python 3.11+;
+\- typing;
+\- dataclasses ou Pydantic se necessário;
+\- async HTTP se houver ganho;
+\- httpx preferencialmente;
+\- testes;
+\- separação provider/domain/infrastructure;
+\- sem secrets em logs.
+
+Adicionar requirements/pyproject conforme a arquitetura atual do projeto.
+
+Evitar dependências grandes sem necessidade.
+
+\==================================================
+PARTE 29 — INTEGRAÇÃO NODE ↔ PYTHON
+\==================================================
+
+Criar contrato simples.
+
+Preferência:
+
+JSON files.
+
+Exemplo:
+
+Node:
+canonical-players.json
+
+↓
+
+Python:
+ratings-results.json
+
+↓
+
+Node:
+merge.
+
+Evitar:
+
+Node chamar uma função Python jogador por jogador.
+
+Um processo Python por lote.
+
+\==================================================
+PARTE 30 — FALHA DO ROBÔ
+\==================================================
+
+Se o ratings bot falhar completamente:
+
+por padrão:
+
+NÃO destruir snapshot anterior.
+
+Definir política:
+
+primeira geração:
+→ pode usar Rating Engine puro SOMENTE se explicitamente permitido.
+
+snapshot anterior já enriquecido:
+→ queda severa de cobertura deve bloquear publicação.
+
+Reaproveitar o health/gate genérico que já existe, renomeando o que era Sportmonks.
+
+\==================================================
+PARTE 31 — HEALTH GENÉRICO
+\==================================================
+
+Transformar:
+
+saude-enriquecimento Sportmonks
+
+em:
+
+saude-ratings
+
+Métricas:
+
+\- playersTotal
+\- providerCandidates
+\- matched
+\- exact
+\- high
+\- ambiguous
+\- externalRatings
+\- fallbackEngine
+\- requestFailures
+\- coverage
+\- previousCoverage
+
+Bloquear regressões severas.
+
+\==================================================
+PARTE 32 — TESTES
+\==================================================
+
+Criar testes para:
+
+1\. Sportmonks não existe mais no pipeline.
+2\. Nenhum env Sportmonks necessário.
+3\. Transfermarkt continua sendo a fonte do universo.
+4\. Provider não pode adicionar jogador estranho.
+5\. EXACT aplica rating.
+6\. HIGH aplica rating.
+7\. MEDIUM não aplica automaticamente.
+8\. ambiguous não aplica.
+9\. external ID não pode ser usado por dois jogadores.
+10\. mapping stale é revalidado.
+11\. duas fontes podem enriquecer mesmo jogador.
+12\. rating de fontes diferentes é normalizado.
+13\. ausência total externa usa Rating Engine.
+14\. atributos ausentes são estimados.
+15\. metadata registra fonte.
+16\. metadata round-trip no save.
+17\. snapshot A → carreira A permanece A após snapshot B.
+18\. dry-run não publica.
+19\. provider failure não sobrescreve snapshot bom.
+20\. regressão severa de cobertura bloqueia.
+21\. cache reduz requests.
+22\. rate limiting funciona.
+23\. JSON Python → Node é validado.
+24\. JSON inválido é rejeitado.
+25\. release continua atômica.
+26\. lote parcial não publica oficialmente.
+
+\==================================================
+PARTE 33 — REMOVER TESTES SPORTMONKS SEM PERDER COBERTURA
+\==================================================
+
+Não simplesmente apagar testes.
+
+Para cada teste Sportmonks existente:
+
+classificar:
+
+A)
+específico da Sportmonks
+→ remover.
+
+B)
+conceito reutilizável:
+\- health;
+\- matching;
+\- cache;
+\- retries;
+\- release;
+\- metadata;
+→ migrar para infraestrutura genérica.
+
+\==================================================
+PARTE 34 — DOCUMENTAÇÃO
+\==================================================
+
+Criar:
+
+docs/ratings-pipeline.md
+
+Explicar:
+
+Transfermarkt
+↓
+canonical players
+↓
+ratings bot
+↓
+providers
+↓
+matching
+↓
+normalização
+↓
+resolver
+↓
+fallback
+↓
+snapshot.
+
+Também documentar:
+
+\- como adicionar provider;
+\- quais fontes estão habilitadas;
+\- quais estão desabilitadas;
+\- motivo;
+\- cache;
+\- dry-run;
+\- atualização oficial;
+\- política de matching;
+\- política de regressão.
+
+\==================================================
+PARTE 35 — COMANDOS DESEJADOS
+\==================================================
+
+Ao final quero algo conceitualmente parecido com:
 
 npm run atualizar-dados-futebol
 
-↓
+npm run atualizar-ratings
 
-TRANSFERMARKT
-identidade / elenco / valores
+npm run ratings:dry-run
 
-↓
+npm run ratings:report
 
+Não precisa usar exatamente esses nomes se houver alternativa mais coerente.
+
+\==================================================
+PARTE 36 — LIMPEZA SPORTMONKS
+\==================================================
+
+Ao terminar, pesquisar no repositório inteiro:
+
+sportmonks
 SPORTMONKS
-estatísticas reais
 
-↓
+O resultado deve conter SOMENTE:
 
-MATCHING
+\- migration docs antigas caso deliberadamente preservadas;
+\- ou zero ocorrências.
 
-↓
+Não devem restar dependências runtime.
 
-VIZTTO RATING ENGINE
+\==================================================
+PARTE 37 — NÃO ALTERAR SNAPSHOTS OFICIAIS
+\==================================================
 
-↓
+Durante esta fase:
 
-ATRIBUTOS
-OVERALL
-POTENCIAL
+NÃO rodar importação oficial.
 
-↓
+Não criar release oficial.
 
-VALIDAÇÃO
+Não substituir:
 
-↓
+src/dados/futebol/active.json
+src/dados/futebol/releases/\*
+src/dados/futebol/\*.json
 
-SNAPSHOTS LOCAIS
+Usar somente:
 
-↓
+tmpdir
+fixtures
+mocks
+.cache de teste.
 
-COMMIT / DEPLOY
-
-=============================
-
-JOGADOR ABRE VIZTTO
-
-↓
-
-snapshots locais
-
-↓
-
-cria carreira
-
-↓
-
-ZERO chamadas externas
-
-↓
-
-motor do Viztto controla o universo dali em diante.
-
-==================================================
-ORDEM DE IMPLEMENTAÇÃO
-==================================================
-
-Implemente em etapas:
-
-A. Auditoria da arquitetura existente.
-
-B. Configuração de ligas/temporadas Sportmonks.
-
-C. SportmonksClient:
-- paginação;
-- auth;
-- retry;
-- rate limiting;
-- concorrência.
-
-D. Importação de estatísticas.
-
-E. Matching Transfermarkt ↔ Sportmonks.
-
-F. Rating Engine.
-
-G. Fallback.
-
-H. Metadata/confiança.
-
-I. Integração com snapshots existentes.
-
-J. Integração com npm run atualizar-dados-futebol.
-
-K. Atualização atômica.
-
-L. Relatórios.
-
-M. Testes.
-
-N. Validação da base completa.
-
-==================================================
-REGRAS DE EXECUÇÃO
-==================================================
-
-Antes de implementar:
-
-leia o projeto inteiro relevante para essa integração.
-
-Não crie código paralelo ao sistema atual sem necessidade.
-
-Reutilize:
-
-- tipos existentes;
-- estrutura de snapshots;
-- scripts;
-- validações;
-- LIGAS_SUPORTADAS;
-- calcularOverall;
-- mecanismos de importação já existentes.
-
-Se alguma premissa deste documento não corresponder à API atual da Sportmonks:
-
-NÃO force a implementação.
-
-Consulte a documentação atual e adapte a solução mantendo o objetivo arquitetural.
-
-Não faça commit.
-Não faça push.
-Não faça deploy.
-Não altere infraestrutura de produção.
-
-==================================================
+\==================================================
 VALIDAÇÃO FINAL
-==================================================
+\==================================================
 
-Ao terminar execute:
+Ao finalizar executar:
 
 npm run typecheck
+
 npm test
+
 npm run build
 
-E, se as credenciais locais estiverem disponíveis, execute também uma atualização real controlada da base.
+E os testes Python, por exemplo:
 
-Ao final apresente relatório com:
+pytest
 
-- arquitetura implementada;
-- arquivos criados;
-- arquivos modificados;
-- endpoints Sportmonks utilizados;
-- quantidade de requests;
-- quantidade de jogadores Transfermarkt;
-- matches Sportmonks;
-- unmatched;
-- cobertura por liga;
-- distribuição de overall por liga;
-- ratings por nível de confiança;
-- fallbacks;
-- tempo total da atualização;
-- testes executados;
-- limitações encontradas;
-- pontos que ainda podem ser melhorados.
+ou o comando correspondente implementado.
 
-O objetivo final é melhorar muito a qualidade inicial dos jogadores do Viztto sem criar dependência da Sportmonks durante o jogo.
+Se criar formatter/linter Python, também executar.
+
+\==================================================
+RELATÓRIO FINAL
+\==================================================
+
+Entregar:
+
+1\. problemas encontrados;
+2\. componentes Sportmonks removidos;
+3\. arquivos removidos;
+4\. arquivos criados;
+5\. arquivos modificados;
+6\. arquitetura final do ratings bot;
+7\. contrato Node ↔ Python;
+8\. providers disponíveis;
+9\. providers desabilitados e motivo;
+10\. matching final;
+11\. prevenção de duplicidade de external IDs;
+12\. sistema de cache;
+13\. rate limiter;
+14\. normalização;
+15\. estratégia multi-source;
+16\. fallback Rating Engine;
+17\. health/gate final;
+18\. RatingMetadata final;
+19\. compatibilidade com saves antigos;
+20\. testes adicionados;
+21\. resultado dos testes Python;
+22\. resultado npm run typecheck;
+23\. resultado npm test;
+24\. resultado npm run build;
+25\. riscos restantes;
+26\. quais fontes reais ainda precisam de autorização;
+27\. próximo passo recomendado para teste real.
+
+NÃO faça commit.
+NÃO faça push.
+NÃO faça deploy.
+NÃO altere snapshots oficiais.
+
+Comece auditando o commit atual antes de modificar qualquer coisa.

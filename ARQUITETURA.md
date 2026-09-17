@@ -9,11 +9,11 @@ Componentes → Zustand → Casos de uso → Simulação → Domínio
                   ↓
         Serialização → API de carreira → PostgreSQL
 
-CLI → Transfermarkt API local → Sportmonks (enrichment) → Rating Engine → staging → validação → snapshots versionados
+CLI → Transfermarkt API local → Ratings Bot Python → matching → normalização → resolver → Rating Engine → staging → validação → snapshots versionados
 Criação → GET /api/futebol/ligas e /api/futebol → snapshots → save da carreira
 ```
 
-Sportmonks e Transfermarkt só entram no importador (`npm run atualizar-dados-futebol`). Runtime e rotas públicas leem snapshots locais; ver `documentacao/BASE-FUTEBOL.md`.
+Providers de ratings e Transfermarkt só entram no importador (`npm run atualizar-dados-futebol`). Runtime e rotas públicas leem snapshots locais; ver `documentacao/BASE-FUTEBOL.md`.
 
 O runtime (versão 2) contém o mundo vivo: ligas, clubes, `JogadorMundo`, temporadas, decisões, relacionamentos e transferências. O formato persistido v3 guarda suas referências e partes dinâmicas.
 
