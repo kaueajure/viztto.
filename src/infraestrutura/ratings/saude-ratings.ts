@@ -1,5 +1,6 @@
 import type { Clube } from "@/dominio/entidades/modelos";
 import { normalizarRatingMetadata } from "@/dominio/rating-metadata";
+import type { ResultadoBot } from "./contrato";
 
 export const HEALTH_THRESHOLDS = {
   enriquecidoMinimo: 0.15,
@@ -9,18 +10,81 @@ export const HEALTH_THRESHOLDS = {
 } as const;
 export type StatusEnriquecimento =
   "ok" | "fallback_esperado" | "degradado" | "falha_critica";
+/** Distingue ausência de provider de falha técnica do provider. */
+export type StatusProvider =
+  | "not-configured"
+  | "healthy"
+  | "degraded"
+  | "failed";
 export interface MetricasRatings {
   playersTotal: number;
   providerCandidates: number;
   matched: number;
   exact: number;
   high: number;
+  medium: number;
+  low: number;
   ambiguous: number;
+  unmatched: number;
   externalRatings: number;
   fallbackEngine: number;
   requestFailures: number;
   coverage: number;
   previousCoverage: number;
+  providerStatus: StatusProvider;
+}
+
+/**
+ * Métricas de UMA liga, derivadas dos diagnósticos por jogador.
+ * Contadores globais do lote (`resultado.providers`) descrevem o processo
+ * inteiro e nunca são atribuídos a uma liga isolada.
+ */
+export function metricasDaLiga(
+  jogadores: Set<string>,
+  resultado: ResultadoBot,
+  coverage: number,
+  previousCoverage: number,
+): MetricasRatings {
+  const providers = Object.keys(resultado.providers).length;
+  const diagnosticos = Object.values(resultado.diagnostics).flatMap((d) =>
+    Object.entries(d)
+      .filter(([id]) => jogadores.has(id))
+      .map(([, m]) => m),
+  );
+  const nivel = (c: string) =>
+    diagnosticos.filter((d) => d.confidence === c).length;
+  const externalRatings = resultado.players.filter(
+    (p) =>
+      jogadores.has(p.id) &&
+      p.sources.some((s) => ["exact", "high"].includes(s.confidence)),
+  ).length;
+  const requestFailures = diagnosticos.filter((d) => d.error).length;
+  return {
+    playersTotal: jogadores.size,
+    providerCandidates: diagnosticos.reduce(
+      (n, d) => n + d.candidateCount,
+      0,
+    ),
+    matched: externalRatings,
+    exact: nivel("exact"),
+    high: nivel("high"),
+    medium: nivel("medium"),
+    low: nivel("low"),
+    ambiguous: nivel("ambiguous"),
+    unmatched: nivel("unmatched"),
+    externalRatings,
+    fallbackEngine: jogadores.size - externalRatings,
+    requestFailures,
+    coverage,
+    previousCoverage,
+    providerStatus: !providers
+      ? "not-configured"
+      : requestFailures >= jogadores.size * providers
+        ? "failed"
+        : requestFailures
+          ? "degraded"
+          : "healthy",
+  };
 }
 export function taxaEnriquecimento(clubes: Clube[] | null | undefined): number {
   const jogadores = clubes?.flatMap((c) => c.elenco) ?? [];

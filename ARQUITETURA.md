@@ -36,7 +36,7 @@ O runtime (versão 2) contém o mundo vivo: ligas, clubes, `JogadorMundo`, tempo
 
 ## Mundo multi-liga
 
-`EstadoCarreira.ligas` + `temporadasExternas`. Ligas já importadas entram no início da carreira. O catálogo contempla 13 divisões de seis países. `divisao` preserva a hierarquia; não há promoção/rebaixamento. A disponibilidade é centralizada em `base-futebol.ts`.
+`EstadoCarreira.ligas` + `temporadasExternas`. Ligas já importadas entram no início da carreira. O catálogo contempla 12 divisões de seis países. `divisao` preserva a hierarquia; não há promoção/rebaixamento. A disponibilidade é centralizada em `base-futebol.ts`.
 
 ## Mercado e decisões
 

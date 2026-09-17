@@ -8,6 +8,8 @@ class RatingsProvider(ABC):
     authorized: bool = False
     synthetic: bool = False
     cache_namespace: str = "v1"
+    # Normalized position label -> Viztto group (GOL/DEF/MEI/ATA), per provider.
+    position_aliases: dict[str, str] = {}
 
     @abstractmethod
     async def find_player(self, player: CanonicalPlayer) -> list[ExternalPlayer]: ...

@@ -14,8 +14,37 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate:
+    name: Barreira obrigatória de validação
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependências
+        run: npm ci
+
+      # Ordem coerente: qualquer falha aqui impede o deploy.
+      - run: npm run snapshots:check-git
+      - run: npm run typecheck
+      - run: npm test
+      # Provisiona .venv-ratings na primeira execução; nada é instalado globalmente.
+      - run: npm run test:ratings
+      - run: npm run build
+
   deploy:
     name: Deploy to viztto.site
+    needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 20
 

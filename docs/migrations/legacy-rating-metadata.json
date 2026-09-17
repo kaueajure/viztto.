@@ -1,8 +1,0 @@
-{
-  "sources": {
-    "sportmonks": "external",
-    "hybrid": "external"
-  },
-  "playerId": "sportmonksPlayerId",
-  "provider": "sportmonks"
-}

@@ -22,7 +22,7 @@ A Transfermarkt API local (`API/`, felipeall/transfermarkt-api) precisa consegui
 npm run atualizar-dados-futebol
 ```
 
-Esse é o único fluxo oficial de atualização. O comando carrega o `.env`, reutiliza a API local ou inicia `API/iniciar.sh`, sem subir Next.js. Ao terminar ou receber SIGINT/SIGTERM, encerra apenas os processos que iniciou. Atualiza as 13 ligas **sequencialmente**, usando o importador e os normalizadores existentes.
+Esse é o único fluxo oficial de atualização. O comando carrega o `.env`, reutiliza a API local ou inicia `API/iniciar.sh`, sem subir Next.js. Ao terminar ou receber SIGINT/SIGTERM, encerra apenas os processos que iniciou. Atualiza as 12 ligas **sequencialmente**, usando o importador e os normalizadores existentes.
 
 Os resultados são escritos primeiro em `src/dados/futebol/.staging/`. Cada liga só substitui o JSON oficial após validar schema, edição e pelo menos dois clubes válidos. Falhas totais preservam o snapshot anterior, com aviso explícito; resultados parciais publicam somente clubes atualizados e válidos. O comando continua após falhas e retorna código 1 se houver problemas. Staging com falhas permanece disponível para diagnóstico; não entra no Git.
 
@@ -41,7 +41,7 @@ O catálogo e os códigos verificados estão em [documentacao/BASE-FUTEBOL.md](d
 ## O que está implementado
 
 - Criação em seis etapas: identidade, jogador, estilo, liga, clube e confirmação.
-- 13 ligas configuradas centralmente, incluindo divisões secundárias; seleção condicionada aos snapshots disponíveis.
+- 12 ligas configuradas centralmente, incluindo divisões secundárias; seleção condicionada aos snapshots disponíveis.
 - Base aos 15/16 anos, profissional aos 17+, promoção por avaliação e encerramento do ciclo da base aos 20.
 - Calendários separados para base e profissional, turno e returno e suporte a quantidade ímpar de clubes.
 - Simulação de todos os jogos da liga, tabela e resultados por rodada.

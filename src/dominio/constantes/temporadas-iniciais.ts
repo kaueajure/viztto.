@@ -18,11 +18,6 @@ export const TEMPORADAS_INICIAIS: Record<
     temporadaTransfermarkt: "2025",
     inicio: "2026-04-10",
   },
-  "brasileirao-c": {
-    ano: 2026,
-    temporadaTransfermarkt: "2025",
-    inicio: "2026-04-10",
-  },
   "premier-league": {
     ano: 2026,
     temporadaTransfermarkt: "2026",
@@ -76,7 +71,8 @@ export const TEMPORADAS_INICIAIS: Record<
 };
 
 export function formatarTemporada(ligaId: string, ano: number): string {
-  return ["brasileirao", "brasileirao-b", "brasileirao-c"].includes(ligaId)
+  // Prefixo cobre as séries brasileiras atuais e as de saves antigos.
+  return ligaId.startsWith("brasileirao")
     ? String(ano)
     : `${ano}/${String(ano + 1).slice(2)}`;
 }

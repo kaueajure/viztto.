@@ -23,8 +23,10 @@ import {
   validarResultadoBot,
   type ResultadoBot,
 } from "@/infraestrutura/ratings/contrato";
+import { preflightRatings } from "@/infraestrutura/ratings/preflight";
 import {
   avaliarSaudeRatings,
+  metricasDaLiga,
   taxaEnriquecimento,
   type StatusEnriquecimento,
 } from "@/infraestrutura/ratings/saude-ratings";
@@ -57,6 +59,7 @@ interface OpcoesAtualizacao {
   importar?: typeof importarLiga;
   informar?: (linha: string) => void;
   executarBot?: typeof executarRatingsBot;
+  preflight?: typeof preflightRatings;
   providers?: string[];
   fixture?: string;
   cacheDir?: string;
@@ -97,6 +100,19 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
   try {
     if (!ligas.length || new Set(ligas.map((l) => l.id)).size !== ligas.length)
       throw new Error("Universo de ligas vazio ou duplicado.");
+    if (!opcoes.providers?.length)
+      informar(
+        "Nenhum provider externo habilitado. A release não será publicada somente com Rating Engine." +
+          (opcoes.permitirEnginePuro
+            ? " Autorizado por --allow-engine-only."
+            : " Use --allow-engine-only para autorizar explicitamente."),
+      );
+    // Configuração inválida aborta antes de qualquer request ao Transfermarkt.
+    for (const linha of await (opcoes.preflight ?? preflightRatings)(
+      opcoes.providers ?? [],
+      { cacheDir: opcoes.cacheDir },
+    ))
+      informar(linha);
     // Importa e valida TODAS as ligas antes do único processo Python.
     for (const liga of ligas) {
       const item: ResumoAtualizacaoLiga = {
@@ -175,9 +191,18 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
       throw new Error(
         "Provider sintético não pode alimentar publicação oficial.",
       );
+    const configurados = Object.values(resultado.providers);
+    // Provider ausente não é falha; provider selecionado que falhou inteiro é.
     falhaBot ||=
-      Object.values(resultado.providers).some((p) => p.errors > 0) &&
-      !resultado.players.some((p) => p.sources.length);
+      configurados.length > 0 &&
+      configurados.every((p) => p.status === "failed");
+    informar(
+      configurados.length
+        ? `Providers externos: ${Object.entries(resultado.providers)
+            .map(([nome, p]) => `${nome} (${p.status})`)
+            .join(", ")}`
+        : "Providers externos habilitados: nenhum — todos os jogadores usarão o Rating Engine.",
+    );
     const enriquecidas = aplicarResultados(universo, resultado);
     for (const [i, c] of candidatos.entries()) {
       c.dados.clubes = enriquecidas[i].clubes;
@@ -185,37 +210,13 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
       const ids = new Set(
         c.dados.clubes.flatMap((c) => c.elenco.map((j) => j.id)),
       );
-      const diagnosticos = Object.values(resultado.diagnostics).flatMap((d) =>
-        Object.entries(d)
-          .filter(([id]) => ids.has(id))
-          .map(([, m]) => m),
-      );
-      const externalRatings = resultado.players.filter(
-        (p) =>
-          ids.has(p.id) &&
-          p.sources.some((s) => ["exact", "high"].includes(s.confidence)),
-      ).length;
       const avaliacao = avaliarSaudeRatings(
-        {
-          playersTotal: ids.size,
-          providerCandidates: Object.values(resultado.providers).reduce(
-            (n, p) => n + p.providerCandidates,
-            0,
-          ),
-          matched: externalRatings,
-          exact: diagnosticos.filter((d) => d.confidence === "exact").length,
-          high: diagnosticos.filter((d) => d.confidence === "high").length,
-          ambiguous: diagnosticos.filter((d) => d.confidence === "ambiguous")
-            .length,
-          externalRatings,
-          fallbackEngine: ids.size - externalRatings,
-          requestFailures: Object.values(resultado.providers).reduce(
-            (n, p) => n + p.errors,
-            falhaBot ? 1 : 0,
-          ),
-          coverage: taxaEnriquecimento(c.dados.clubes),
-          previousCoverage: taxaEnriquecimento(c.anterior?.clubes),
-        },
+        metricasDaLiga(
+          ids,
+          resultado,
+          taxaEnriquecimento(c.dados.clubes),
+          taxaEnriquecimento(c.anterior?.clubes),
+        ),
         opcoes.permitirEnginePuro,
         falhaBot,
       );

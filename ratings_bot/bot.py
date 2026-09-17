@@ -51,6 +51,8 @@ async def run(data: dict, providers: list[RatingsProvider], calibrations: dict, 
             cache.put(category, cache_key, serialized)
             return serialized
 
+        aliases = provider.position_aliases
+
         async def resolve(player: CanonicalPlayer):
             async with semaphore:
                 mapping = mappings.get(player.transfermarktId)
@@ -62,15 +64,16 @@ async def run(data: dict, providers: list[RatingsProvider], calibrations: dict, 
                         mapped = ExternalPlayer(**raw) if raw else None
                         if mapped and mapped.externalPlayerId != mapping["externalId"]:
                             raise ValueError("Provider returned another identity")
-                        if not mapped or choose(player, [mapped]).confidence not in ACCEPTED:
+                        if not mapped or choose(player, [mapped], aliases).confidence not in ACCEPTED:
                             mapping["status"] = "stale"
                             counts["staleMappings"] += 1
                         else:
                             candidates.append(mapped)
                     raw_candidates = await call("search", json.dumps(asdict(player), sort_keys=True), lambda: provider.find_player(player))
                     candidates.extend(ExternalPlayer(**p) for p in raw_candidates)
-                    counts["providerCandidates"] += len({p.externalPlayerId for p in candidates})
-                    match = choose(player, candidates)
+                    encontrados = len({p.externalPlayerId for p in candidates})
+                    counts["providerCandidates"] += encontrados
+                    match = choose(player, candidates, aliases)
                     # Search results are identity candidates; fetch full, current rating record.
                     if match.confidence in ACCEPTED and match.player:
                         external_id = match.player.externalPlayerId
@@ -79,12 +82,13 @@ async def run(data: dict, providers: list[RatingsProvider], calibrations: dict, 
                         if not fetched or fetched.externalPlayerId != external_id:
                             match = Match()
                         else:
-                            match = choose(player, [fetched])
+                            match = choose(player, [fetched], aliases)
+                    match.candidate_count = encontrados
                     matches[player.id] = match
                 except (Exception,):
                     # Untrusted provider exception text can contain credentials.
                     counts["errors"] += 1
-                    matches[player.id] = Match()
+                    matches[player.id] = Match(error=True)
                     if isinstance(mapping, dict):
                         mapping["status"] = "stale"
 
@@ -95,8 +99,9 @@ async def run(data: dict, providers: list[RatingsProvider], calibrations: dict, 
         if healthy:
             await asyncio.gather(*(resolve(p) for p in players))
         else:
+            # Provider offline atinge todos os jogadores; a falha é de todas as ligas.
             counts["errors"] += 1
-            matches = {p.id: Match() for p in players}
+            matches = {p.id: Match(error=True) for p in players}
         enforce_one_to_one(matches)
         for player in players:
             match = matches[player.id]
@@ -110,12 +115,17 @@ async def run(data: dict, providers: list[RatingsProvider], calibrations: dict, 
                 except ValueError:
                     counts["errors"] += 1
                     match.confidence = "low"
+                    match.error = True
             elif player.transfermarktId in mappings:
                 mappings[player.transfermarktId]["status"] = "stale"
         write_json(mapping_path, mappings)
         diagnostics[name] = {key: {"confidence": m.confidence, "collision": m.collision,
-                                  "matchedBy": m.matched_by} for key, m in matches.items()}
+                                  "matchedBy": m.matched_by, "candidateCount": m.candidate_count,
+                                  "error": m.error} for key, m in matches.items()}
         counts["synthetic"] = provider.synthetic
+        # Status global do provider; o Node deriva o status de cada liga por jogador.
+        falhas = sum(m.error for m in matches.values())
+        counts["status"] = "failed" if not healthy or falhas == len(players) else "degraded" if falhas else "healthy"
     result = {"version": 1, "batchId": data["batchId"], "players": list(rows.values()),
               "providers": metrics, "diagnostics": diagnostics}
     return result, build_report(players, result)

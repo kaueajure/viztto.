@@ -60,6 +60,7 @@ const esquemaResultado = z
         })
         .strict(),
     ),
+    // Contadores do LOTE inteiro; nunca use como métrica de uma liga.
     providers: z.record(
       z.string(),
       z
@@ -70,6 +71,7 @@ const esquemaResultado = z
           staleMappings: contador,
           providerCandidates: contador,
           synthetic: z.boolean(),
+          status: z.enum(["healthy", "degraded", "failed"]),
         })
         .strict(),
     ),
@@ -89,6 +91,9 @@ const esquemaResultado = z
             ]),
             collision: z.boolean(),
             matchedBy: z.array(z.string()),
+            // Por jogador: base para agregar candidatos e falhas por liga.
+            candidateCount: contador,
+            error: z.boolean(),
           })
           .strict(),
       ),

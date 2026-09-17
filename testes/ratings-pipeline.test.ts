@@ -21,7 +21,11 @@ import {
   type EntradaRatingEngine,
 } from "@/infraestrutura/ratings/rating-engine";
 import { resolverRating } from "@/infraestrutura/ratings/resolver";
-import { avaliarSaudeRatings } from "@/infraestrutura/ratings/saude-ratings";
+import {
+  avaliarSaudeRatings,
+  metricasDaLiga,
+  type MetricasRatings,
+} from "@/infraestrutura/ratings/saude-ratings";
 import { atualizarBaseFutebol } from "@/infraestrutura/transfermarkt/atualizar-base";
 import {
   salvarDadosLiga,
@@ -29,7 +33,7 @@ import {
   type DadosLigaImportados,
 } from "@/infraestrutura/persistencia/importacao-futebol";
 import { esquemaRatingMetadata } from "@/dominio/rating-metadata";
-import legado from "../docs/migrations/legacy-rating-metadata.json";
+import { RATING_METADATA_LEGADO as legado } from "@/dominio/migracoes/rating-metadata-legado";
 import type { Liga } from "@/dominio/entidades/modelos";
 
 const dirs: string[] = [];
@@ -115,6 +119,7 @@ function resultado(lote: LoteCanonico, externo = false): ResultadoBot {
             staleMappings: 0,
             providerCandidates: lote.players.length,
             synthetic: true,
+            status: "healthy" as const,
           },
         }
       : {},
@@ -127,6 +132,8 @@ function resultado(lote: LoteCanonico, externo = false): ResultadoBot {
                 confidence: "exact",
                 collision: false,
                 matchedBy: ["name", "dateOfBirth"],
+                candidateCount: 1,
+                error: false,
               },
             ]),
           ),
@@ -196,11 +203,11 @@ it("engine mantém contexto de liga, posição, idade e valor sem inflação ext
   );
 });
 it("migra metadata histórica sem alterar OVR nem perder identidade externa", () => {
-  const source = Object.keys(legado.sources)[0];
+  const source = Object.keys(legado.fontes)[0];
   const meta = esquemaRatingMetadata.parse({
     source,
     confidence: "high",
-    [legado.playerId]: 123,
+    [legado.campoIdExterno]: 123,
     coverageLevel: "A",
     minutes: 2000,
     season: "2026",
@@ -251,18 +258,22 @@ it("contrato rejeita jogador estranho, faltante, duplicado, lote antigo, JSON in
   expect(() => validarResultadoBot("not-json", lote)).toThrow();
 });
 it("gate exige opt-in e bloqueia regressão mesmo com opt-in", () => {
-  const m = {
+  const m: MetricasRatings = {
     playersTotal: 100,
     providerCandidates: 0,
     matched: 0,
     exact: 0,
     high: 0,
+    medium: 0,
+    low: 0,
     ambiguous: 0,
+    unmatched: 100,
     externalRatings: 0,
     fallbackEngine: 100,
     requestFailures: 0,
     coverage: 0,
     previousCoverage: 0,
+    providerStatus: "not-configured",
   };
   expect(avaliarSaudeRatings(m).abortarPublicacao).toBe(true);
   expect(avaliarSaudeRatings(m, true).abortarPublicacao).toBe(false);
@@ -302,6 +313,8 @@ async function setup() {
       reportDir: join(dir, "reports"),
       cacheDir: join(dir, "cache"),
       informar: () => {},
+      // O preflight real é exercitado em testes próprios; aqui o bot é dublê.
+      preflight: async () => [],
     },
   };
 }
@@ -423,8 +436,13 @@ it("Python → Node com fixtures produz contrato validado sem alterar universo",
     JSON.parse(await readFile(join(dir, "report.json"), "utf8")).dryRun,
   ).toBe(true);
 });
-it("Sportmonks não sobrevive no pipeline nem em envs exigidos", async () => {
+it("Sportmonks sobrevive apenas na migração legada e em envs limpos", async () => {
   const ignorados = new Set(["node_modules", ".next", ".git", "__pycache__"]);
+  // Interpretar saves antigos exige o mapa legado; este teste é o único outro caso.
+  const permitidos = new Set([
+    "src/dominio/migracoes/rating-metadata-legado.ts",
+    "testes/ratings-pipeline.test.ts",
+  ]);
   const encontrados: string[] = [];
   async function varrer(dir: string) {
     for (const item of await readdir(dir, { withFileTypes: true })) {
@@ -432,7 +450,7 @@ it("Sportmonks não sobrevive no pipeline nem em envs exigidos", async () => {
       const caminho = join(dir, item.name);
       if (item.isDirectory()) await varrer(caminho);
       else if (
-        caminho !== "testes/ratings-pipeline.test.ts" &&
+        !permitidos.has(caminho) &&
         /\.(ts|tsx|py|json|sh|mjs)$/.test(item.name)
       ) {
         if (/sportmonks/i.test(await readFile(caminho, "utf8")))
@@ -445,4 +463,16 @@ it("Sportmonks não sobrevive no pipeline nem em envs exigidos", async () => {
   // O histórico de migração em docs/ é deliberadamente preservado.
   expect(encontrados).toEqual([]);
   expect(await readFile(".env.example", "utf8")).not.toMatch(/sportmonks/i);
+  // Runtime não pode depender da pasta de documentação.
+  const fontes: string[] = [];
+  async function coletar(dir: string) {
+    for (const item of await readdir(dir, { withFileTypes: true }))
+      if (item.isDirectory()) await coletar(join(dir, item.name));
+      else if (/\.tsx?$/.test(item.name)) fontes.push(join(dir, item.name));
+  }
+  await coletar("src");
+  for (const arquivo of fontes)
+    expect(await readFile(arquivo, "utf8")).not.toMatch(
+      /from\s+"[.\/]+docs\//,
+    );
 });

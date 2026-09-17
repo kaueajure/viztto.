@@ -28,18 +28,6 @@ export const LIGAS_SUPORTADAS: Liga[] = [
     quantidadeClubes: 20,
   },
   {
-    id: "brasileirao-c",
-    idTransfermarkt: "BRA3",
-    termoBusca: "Brasileirão Série C",
-    nome: "Brasileirão Série C",
-    pais: "Brasil",
-    bandeira: "BR",
-    divisao: 3,
-    reputacao: 52,
-    forcaMedia: 57,
-    quantidadeClubes: 20,
-  },
-  {
     id: "premier-league",
     idTransfermarkt: "GB1",
     termoBusca: "Premier League",

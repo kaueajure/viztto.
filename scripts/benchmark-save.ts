@@ -67,7 +67,7 @@ const carreira = criarCarreira({
     arquetipo: "criador",
   },
   origem: "api",
-  seed: "benchmark-13-ligas",
+  seed: `benchmark-${ligas.length}-ligas`,
   dataInicio: "2026-06-01",
   liga: ligas[0],
   clubes: clubes.filter((c) => c.ligaId === ligas[0].id),

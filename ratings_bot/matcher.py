@@ -6,11 +6,33 @@ from difflib import SequenceMatcher
 from .models import CanonicalPlayer, ExternalPlayer
 
 ACCEPTED = {"exact", "high"}
+# Grupos amplos: comparar "Centre-Forward" com "ST" textualmente nunca funciona.
+POSITION_GROUPS = {
+    "GOL": ("goalkeeper", "goleiro", "gk"),
+    "DEF": ("back", "defender", "zagueiro", "lateral", "cb", "rb", "lb", "sweeper", "df"),
+    "MEI": ("midfield", "meia", "volante", "mc", "cm", "dm", "am", "cdm", "cam", "mf"),
+    "ATA": ("forward", "winger", "striker", "atacante", "ponta", "st", "cf", "lw", "rw", "fw"),
+}
 
 
 def normalize(text: str | None) -> str:
     decomposed = unicodedata.normalize("NFKD", text or "")
     return re.sub(r"[^a-z0-9]+", " ", "".join(c for c in decomposed if not unicodedata.combining(c)).lower()).strip()
+
+
+def position_group(text: str | None, aliases: dict[str, str] | None = None) -> str:
+    """Grupo posicional comparável. Aliases do provider têm precedência."""
+    key = normalize(text)
+    if not key:
+        return ""
+    mapped = (aliases or {}).get(key)
+    if mapped:
+        return mapped
+    tokens = key.split()
+    for group, termos in POSITION_GROUPS.items():
+        if any(t == termo or t.endswith(termo) for t in tokens for termo in termos):
+            return group
+    return ""
 
 
 @dataclass
@@ -20,18 +42,25 @@ class Match:
     score: float = 0
     matched_by: list[str] = field(default_factory=list)
     collision: bool = False
+    # Por jogador: permite ao Node agregar candidatos e falhas por liga.
+    candidate_count: int = 0
+    error: bool = False
 
 
-def score(player: CanonicalPlayer, candidate: ExternalPlayer) -> Match:
+def score(player: CanonicalPlayer, candidate: ExternalPlayer,
+          position_aliases: dict[str, str] | None = None) -> Match:
     name = SequenceMatcher(None, normalize(player.name), normalize(candidate.name)).ratio()
     evidence = []
     if player.dateOfBirth and candidate.dateOfBirth:
         if player.dateOfBirth != candidate.dateOfBirth:
             return Match("low", candidate, 0, ["birth-date-conflict"])
         evidence.append("dateOfBirth")
-    for key in ("club", "position", "country"):
+    for key in ("club", "country"):
         if normalize(getattr(player, key)) and normalize(getattr(player, key)) == normalize(getattr(candidate, key)):
             evidence.append(key)
+    grupo = position_group(player.position, position_aliases)
+    if grupo and grupo == position_group(candidate.position, position_aliases):
+        evidence.append("position")
     if player.height and candidate.height and abs(player.height - candidate.height) <= 3:
         evidence.append("height")
     points = name * 55 + (30 if "dateOfBirth" in evidence else 0) + 5 * len([e for e in evidence if e != "dateOfBirth"])
@@ -49,12 +78,15 @@ def score(player: CanonicalPlayer, candidate: ExternalPlayer) -> Match:
     return Match(confidence, candidate, points, ["name", *evidence])
 
 
-def choose(player: CanonicalPlayer, candidates: list[ExternalPlayer]) -> Match:
+def choose(player: CanonicalPlayer, candidates: list[ExternalPlayer],
+           position_aliases: dict[str, str] | None = None) -> Match:
     unique = {p.externalPlayerId: p for p in candidates}
-    ranked = sorted((score(player, p) for p in unique.values()), key=lambda m: (-m.score, m.player.externalPlayerId))
+    ranked = sorted((score(player, p, position_aliases) for p in unique.values()),
+                    key=lambda m: (-m.score, m.player.externalPlayerId))
     if not ranked:
         return Match()
     best = ranked[0]
+    best.candidate_count = len(unique)
     if best.confidence in ACCEPTED and len(ranked) > 1 and best.score - ranked[1].score < 8:
         best.confidence = "ambiguous"
     return best

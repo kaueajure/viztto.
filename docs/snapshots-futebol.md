@@ -2,7 +2,7 @@
 
 A fonte versionada após a primeira publicação é a release (opção A).
 A opção B exigiria desmontar a leitura por manifesto ou manter outro protocolo
-de exportação: trocar 13 arquivos da raiz perderia o ponto único de commit.
+de exportação: trocar os arquivos da raiz perderia o ponto único de commit.
 Mantemos o rename atômico de active.json e a leitura exclusiva da release ativa.
 
 Estrutura após atualização:
@@ -12,9 +12,9 @@ src/dados/futebol/
   active.json
   releases/
     r-<atual>/
-      <cada uma das 13 ligas>.json
+      <cada liga de LIGAS_SUPORTADAS>.json
     r-<anterior>/                 # opcional para rollback
-      <cada uma das 13 ligas>.json
+      <cada liga de LIGAS_SUPORTADAS>.json
 ```
 
 O manifesto mantém versao: 1, releaseId, atualizadoEm e ligas.
@@ -29,8 +29,10 @@ Se restarem JSONs legados por falha de limpeza, o verificador do Git rejeita
 essa duplicação até sua remoção. O runtime continua lendo só a release.
 
 Antes da primeira publicação, o layout legado permanece compatível.
-O commit 46bea9a contém 12 snapshots, sem Série C e sem active.json.
-Esta correção não migra esses dados: a próxima publicação oficial exige 13.
+O commit 46bea9a contém os 12 snapshots legados, sem active.json. Esses dados
+não são migrados: a próxima publicação oficial exige todas as ligas de
+LIGAS_SUPORTADAS — hoje as mesmas 12, já que a Série C saiu do universo.
+Releases históricas não são reescritas nem removidas.
 
 ## Fluxo de Git
 
@@ -68,7 +70,7 @@ O gate genérico compara cada liga com sua release anterior. Base enriquecida
 absoluta >=40 pontos bloqueia. Falha total do bot sobre qualquer cobertura
 externa anterior também bloqueia. Ver [ratings-pipeline.md](ratings-pipeline.md).
 
-`npm run benchmark:save` gera 13 ligas, 258 clubes, 28 NPCs por clube,
+`npm run benchmark:save` gera todas as ligas suportadas, 28 NPCs por clube,
 atributos e metadata completos, classificações e 12 temporadas externas.
 Calendários vazios evitam confundir custo de NPCs com partidas.
 Serialização, stringify, parse e hidratação usam o mesmo save grande.

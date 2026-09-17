@@ -1,5 +1,5 @@
 import { z } from "zod";
-import legado from "../../docs/migrations/legacy-rating-metadata.json";
+import { RATING_METADATA_LEGADO as legado } from "./migracoes/rating-metadata-legado";
 
 export const esquemaFonteRating = z.enum([
   "external",
@@ -37,18 +37,18 @@ const atual = z.object({
 function migrar(valor: unknown): unknown {
   if (!valor || typeof valor !== "object" || Array.isArray(valor)) return valor;
   const v = { ...valor } as Record<string, unknown>;
-  const source = legado.sources[v.source as keyof typeof legado.sources];
+  const source = legado.fontes[v.source as keyof typeof legado.fontes];
   if (!source) return valor;
   v.source = source;
   v.sources = [
     {
       provider: legado.provider,
-      ...(typeof v[legado.playerId] === "number"
-        ? { externalPlayerId: String(v[legado.playerId]) }
+      ...(typeof v[legado.campoIdExterno] === "number"
+        ? { externalPlayerId: String(v[legado.campoIdExterno]) }
         : {}),
     },
   ];
-  delete v[legado.playerId];
+  delete v[legado.campoIdExterno];
   delete v.coverageLevel;
   return v;
 }

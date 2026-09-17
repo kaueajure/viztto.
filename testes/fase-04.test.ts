@@ -60,13 +60,12 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-describe("catálogo de 13 ligas", () => {
+describe("catálogo de ligas suportadas", () => {
   it("tem IDs únicos e divisões corretas na ordem dos países", () => {
     expect(LIGAS_SUPORTADAS.map((l) => [l.idTransfermarkt, l.divisao])).toEqual(
       [
         ["BRA1", 1],
         ["BRA2", 2],
-        ["BRA3", 3],
         ["GB1", 1],
         ["GB2", 2],
         ["ES1", 1],
@@ -79,9 +78,14 @@ describe("catálogo de 13 ligas", () => {
         ["FR2", 2],
       ],
     );
-    expect(new Set(LIGAS_SUPORTADAS.map((l) => l.id)).size).toBe(13);
+    // O universo atual são 12 divisões de seis países; a Série C foi removida.
+    expect(LIGAS_SUPORTADAS).toHaveLength(12);
+    expect(LIGAS_SUPORTADAS.some((l) => l.id === "brasileirao-c")).toBe(false);
+    expect(new Set(LIGAS_SUPORTADAS.map((l) => l.id)).size).toBe(
+      LIGAS_SUPORTADAS.length,
+    );
     expect(new Set(LIGAS_SUPORTADAS.map((l) => l.idTransfermarkt)).size).toBe(
-      13,
+      LIGAS_SUPORTADAS.length,
     );
   });
   it("separa ano exibido do identificador Transfermarkt e cobre todos os calendários", () => {
@@ -192,8 +196,8 @@ describe("disponibilidade local", () => {
     delete legado.liga.divisao;
     legado.ligas.forEach((l: { divisao?: number }) => delete l.divisao);
     const restaurado = validarSave(legado);
-    expect(restaurado.liga.divisao).toBe(2);
-    expect(restaurado.ligas[1]!.divisao).toBe(3);
+    expect(restaurado.liga.divisao).toBe(b.divisao);
+    expect(restaurado.ligas[1]!.divisao).toBe(c.divisao);
   });
   it("frontend não possui POST, polling nem catálogo de opções hardcoded", async () => {
     const texto = await readFile(
@@ -273,7 +277,7 @@ describe("atualização segura", () => {
     expect(resumo.publicou).toBe(false);
     expect(await lerDadosLiga(liga.id)).toEqual(anterior);
   });
-  it("processa todas as 13 ligas por padrão sem acessar a rede", async () => {
+  it("processa todas as ligas suportadas por padrão sem acessar a rede", async () => {
     const ordem: string[] = [];
     const importar: typeof importarLiga = async (l, opcoes) => {
       ordem.push(l.id);
@@ -309,7 +313,7 @@ describe("atualização segura", () => {
     expect(ordem).toEqual(LIGAS_SUPORTADAS.map((l) => l.id));
     expect(resumo.temFalhas).toBe(false);
     expect(resumo.ligas.every((l) => l.publicado)).toBe(true);
-    expect(await obterLigasDisponiveis()).toHaveLength(13);
+    expect(await obterLigasDisponiveis()).toHaveLength(LIGAS_SUPORTADAS.length);
     expect(consulta).not.toHaveBeenCalled();
   });
   it("resultado inválido no staging não sobrescreve o snapshot oficial", async () => {

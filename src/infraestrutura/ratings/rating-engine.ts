@@ -33,7 +33,6 @@ export interface EntradaRatingEngine {
   forcaMediaLiga: number;
   indiceNoElenco: number;
   tamanhoElenco: number;
-  seasonLabel?: string;
 }
 
 export interface ResultadoRating {
@@ -156,7 +155,6 @@ function potencialDe(
   idade: number,
   valorMercado: number | null,
   reputacaoLiga: number,
-  minutos: number,
   seed: string,
 ): number {
   const rng = new GeradorAleatorio(gerarSeedNumerica(`pot-${seed}`));
@@ -172,7 +170,6 @@ function potencialDe(
           : rng.inteiro(1, 5);
   if (idade <= 22 && (valorMercado ?? 0) > 15_000_000) margem += 2;
   if (reputacaoLiga >= 90 && idade <= 21) margem += 2;
-  if (minutos >= 1500 && idade <= 23) margem += 1;
   return Math.round(limitar(overall + margem, overall, 97));
 }
 
@@ -211,7 +208,6 @@ export function calcularRatingViztto(
     entrada.idade,
     entrada.valorMercado,
     entrada.reputacaoLiga,
-    0,
     entrada.seed,
   );
 

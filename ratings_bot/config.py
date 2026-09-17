@@ -11,5 +11,6 @@ class Config:
     timeout: float = 30
 
     def __post_init__(self) -> None:
-        if not 1 <= self.concurrency <= 8 or self.ttl < 0 or self.timeout <= 0:
+        # TTL positivo: para reconsultar tudo existe --refresh, não TTL zero.
+        if not 1 <= self.concurrency <= 8 or self.ttl <= 0 or self.timeout <= 0:
             raise ValueError("Invalid bot limits")

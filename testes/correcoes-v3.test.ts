@@ -69,7 +69,7 @@ function snapshot(liga = LIGAS_SUPORTADAS[0]): DadosLigaImportados {
   };
 }
 
-it("publica 13; rejeita 12, 1, duplicada e inesperada preservando active", async () => {
+it("publica o universo inteiro; rejeita incompleto, único, duplicado e inesperado preservando active", async () => {
   const dir = await temporario();
   const todos = LIGAS_SUPORTADAS.map((l) => ({
     ligaId: l.id,
@@ -78,10 +78,10 @@ it("publica 13; rejeita 12, 1, duplicada e inesperada preservando active", async
   await publicarReleaseAtomica(todos, dir);
   const antes = await readFile(join(dir, "active.json"), "utf8");
   for (const candidatos of [
-    todos.slice(0, 12),
+    todos.slice(0, -1),
     todos.slice(0, 1),
-    [...todos.slice(0, 12), todos[0]],
-    [...todos.slice(0, 12), { ...todos[12], ligaId: "inesperada" }],
+    [...todos.slice(0, -1), todos[0]],
+    [...todos.slice(0, -1), { ...todos.at(-1)!, ligaId: "inesperada" }],
   ]) {
     await expect(publicarReleaseAtomica(candidatos, dir)).rejects.toThrow();
     expect(await readFile(join(dir, "active.json"), "utf8")).toBe(antes);

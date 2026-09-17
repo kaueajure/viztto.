@@ -73,6 +73,10 @@ export function criarLoteCanonico(ligas: LigaCanonica[]): LoteCanonico {
     throw new Error("Universo Transfermarkt contém jogadores duplicados.");
   return { version: 1, batchId: randomUUID(), players };
 }
+/** Interpretador do lote Python; a venv isolada é provisionada pelos scripts. */
+export function interpretadorPython(): string {
+  return process.env.RATINGS_PYTHON ?? "python3";
+}
 export interface OpcoesBot {
   diretorio: string;
   cacheDir?: string;
@@ -106,7 +110,7 @@ export async function executarRatingsBot(
   if (opcoes.fixture) args.push("--fixture", opcoes.fixture);
   if (opcoes.dryRun) args.push("--dry-run");
   try {
-    await promisify(execFile)(process.env.RATINGS_PYTHON ?? "python3", args, {
+    await promisify(execFile)(interpretadorPython(), args, {
       timeout: 3_600_000,
       maxBuffer: 4 * 1024 * 1024,
     });
