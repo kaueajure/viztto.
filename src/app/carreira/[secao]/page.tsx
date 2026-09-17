@@ -9,6 +9,9 @@ const SECOES = [
   "mercado",
   "noticias",
   "historico",
+  "desempenho",
+  "contrato",
+  "objetivos",
 ];
 export function generateStaticParams() {
   return SECOES.map((secao) => ({ secao }));

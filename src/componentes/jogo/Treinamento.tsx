@@ -17,9 +17,9 @@ export function Treinamento({ carreira: c }: { carreira: EstadoCarreira }) {
   return (
     <>
       <p className="sobretitulo">
-        {livre ? "TREINO INDIVIDUAL" : "CENTRO DE TREINAMENTO"}
+        {livre ? "TREINO INDIVIDUAL" : "PERSONALIZAÇÃO"}
       </p>
-      <h1>{livre ? "SEM CLUBE, SEM COMISSÃO." : "O TRABALHO INVISÍVEL."}</h1>
+      <h1>{livre ? "Treino sem comissão" : "Personalização"}</h1>
       <p className="texto-suave">
         {livre
           ? "Você treina por conta própria. O ritmo é menor do que no centro de treinamento de um clube: evolução mais lenta e sem ganho de confiança de treinador."

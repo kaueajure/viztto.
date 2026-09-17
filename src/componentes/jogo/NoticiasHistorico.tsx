@@ -19,15 +19,11 @@ export function NoticiasHistorico({
   return (
     <>
       <p className="sobretitulo">
-        {secao === "historico"
-          ? "MEMÓRIA DA CARREIRA"
-          : "CAIXA DE ENTRADA / IMPRENSA"}
+        {secao === "historico" ? "ESTATÍSTICAS" : "MENSAGENS"}
       </p>
       <div className="linha-titulo">
         <h1>
-          {secao === "historico"
-            ? "CADA CAPÍTULO CONTA."
-            : "FORA DAS QUATRO LINHAS."}
+          {secao === "historico" ? "Estatísticas" : "Mensagens"}
         </h1>
         {secao === "noticias" && (
           <button className="botao-texto" onClick={ler}>

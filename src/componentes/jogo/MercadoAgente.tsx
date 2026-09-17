@@ -102,8 +102,8 @@ export function MercadoAgente({ carreira: c }: { carreira: EstadoCarreira }) {
 
   return (
     <>
-      <p className="sobretitulo">CARREIRA / MERCADO</p>
-      <h1>SEU PRÓXIMO CAPÍTULO.</h1>
+      <p className="sobretitulo">TRANSFERÊNCIAS</p>
+      <h1>Mercado</h1>
       <div className="mercado-vinculo">
         {clubeAtual ? (
           <Escudo clube={clubeAtual} tamanho={48} />

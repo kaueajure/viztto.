@@ -29,7 +29,7 @@ export function CalendarioCompeticao({
           <p className="sobretitulo">
             {c.liga.nome} / {formatarTemporada(c.liga.id, c.temporada.ano)}
           </p>
-          <h1>{secao === "competicao" ? "A DISPUTA." : "SEMANA A SEMANA."}</h1>
+          <h1>{secao === "competicao" ? "Mundo do futebol" : "Calendário"}</h1>
         </div>
         <div className="alternador">
           <button

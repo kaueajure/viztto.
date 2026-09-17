@@ -34,8 +34,8 @@ export function MercadoClube({
     if (livre || !clube) {
       return (
         <>
-          <p className="sobretitulo">ESTRUTURA / EQUIPE</p>
-          <h1>SEM CLUBE</h1>
+          <p className="sobretitulo">CLUBE</p>
+          <h1>Sem clube</h1>
           <ConversaTreinador carreira={c} />
           <ConversaContrato carreira={c} />
           <section className="painel espaco">
@@ -67,8 +67,8 @@ export function MercadoClube({
     }
     return (
       <>
-        <p className="sobretitulo">ESTRUTURA / EQUIPE</p>
-        <h1>{clube.nome.toUpperCase()}</h1>
+        <p className="sobretitulo">CLUBE</p>
+        <h1>{clube.nome}</h1>
         <ConversaTreinador carreira={c} />
         <ConversaContrato carreira={c} />
         <PainelEquipe clube={clube} jogadorUsuario={c.jogador} />

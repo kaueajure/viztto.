@@ -8,16 +8,18 @@ import {
   House,
   UserRound,
   CalendarDays,
-  Shield,
-  Trophy,
   Dumbbell,
   ArrowLeftRight,
   Newspaper,
-  History,
   Settings,
   Menu,
   X,
   LogOut,
+  Bell,
+  Target,
+  FileText,
+  Activity,
+  ChartColumn,
 } from "lucide-react";
 import { EstadoPersistencia } from "./EstadoPersistencia";
 import { badgeMercado } from "./AtencaoCarreira";
@@ -30,18 +32,32 @@ import { MercadoClube } from "./MercadoClube";
 import { NoticiasHistorico } from "./NoticiasHistorico";
 import { ResumoPartida } from "@/componentes/partida/ResumoPartida";
 import { Escudo } from "@/componentes/clube/Escudo";
-import { formatarData } from "@/utilitarios/formatacao";
-const NAVEGACAO = [
+import { ConversaContrato } from "@/componentes/clube/ConversaContrato";
+import { PainelDesempenho } from "./PainelDesempenho";
+import { PainelObjetivos } from "./PainelObjetivos";
+import { dataCarreiraTopo } from "@/utilitarios/apresentacao-carreira";
+
+const SIDEBAR = [
   ["", "Início", House],
-  ["jogador", "Jogador", UserRound],
+  ["jogador", "Perfil", UserRound],
+  ["desempenho", "Desempenho", Activity],
   ["calendario", "Calendário", CalendarDays],
-  ["clube", "Clube", Shield],
-  ["competicao", "Competição", Trophy],
-  ["treinamento", "Treinamento", Dumbbell],
-  ["mercado", "Mercado", ArrowLeftRight],
-  ["noticias", "Notícias", Newspaper],
-  ["historico", "Histórico", History],
+  ["noticias", "Mensagens", Newspaper],
+  ["mercado", "Transferências", ArrowLeftRight],
+  ["contrato", "Contrato", FileText],
+  ["objetivos", "Objetivos", Target],
+  ["historico", "Estatísticas", ChartColumn],
+  ["treinamento", "Personalização", Dumbbell],
 ] as const;
+
+const TOP_NAV = [
+  ["", "Início"],
+  ["jogador", "Minha Carreira"],
+  ["clube", "Clube"],
+  ["mercado", "Transferências"],
+  ["competicao", "Mundo do Futebol"],
+] as const;
+
 export function CentralCarreira({ secao = "" }: { secao?: string }) {
   const {
       carreira: c,
@@ -72,14 +88,18 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
   if (!hidratado)
     return (
       <main className="carregamento">
-        <span className="marca">viztto.</span>
+        <span className="marca">
+          viztto<span>.</span>
+        </span>
         <p>Carregando sua carreira…</p>
       </main>
     );
   if (!c)
     return (
       <main className="carregamento">
-        <span className="marca">viztto.</span>
+        <span className="marca">
+          viztto<span>.</span>
+        </span>
         <h1>SEU CAMINHO COMEÇA AQUI.</h1>
         <p>{erro ?? "Nenhuma carreira encontrada."}</p>
         <EstadoPersistencia />
@@ -96,6 +116,25 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
   const ultima = [...c.temporada.partidas, ...c.temporada.partidasBase].find(
     (p) => p.id === c.ultimaPartidaId,
   );
+  const naoLidas = c.noticias.filter((n) => !n.lida).length;
+  const topSecao =
+    secao === "" || secao === "noticias"
+      ? ""
+      : secao === "jogador" ||
+          secao === "desempenho" ||
+          secao === "historico" ||
+          secao === "treinamento" ||
+          secao === "objetivos" ||
+          secao === "contrato"
+        ? "jogador"
+        : secao === "clube"
+          ? "clube"
+          : secao === "mercado"
+            ? "mercado"
+            : secao === "competicao" || secao === "calendario"
+              ? "competicao"
+              : "";
+
   async function avancarTempo() {
     if (ocupado) return;
     definirOcupado(true);
@@ -110,12 +149,13 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
     }
     definirOcupado(false);
   }
+
   return (
-    <div className="estrutura-jogo">
+    <div className="estrutura-jogo vz-shell">
       <aside className={`barra-lateral ${menu ? "aberta" : ""}`}>
         <div className="marca-lateral">
-          <Link href="/" className="marca">
-            viztto<span>.</span>
+          <Link href="/carreira" className="marca vz-logo">
+            VIZTTO <span>CARREIRA</span>
           </Link>
           <button
             className="botao-icone fechar-menu"
@@ -125,29 +165,42 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
             <X />
           </button>
         </div>
-        <span className="rotulo legenda-navegacao">MODO CARREIRA</span>
         <nav aria-label="Navegação da carreira">
-          {NAVEGACAO.map(([rota, nome, Icone]) => (
-            <Link
-              key={rota}
-              href={`/carreira${rota ? `/${rota}` : ""}`}
-              className={secao === rota ? "ativo" : ""}
-              onClick={() => definirMenu(false)}
-              aria-current={secao === rota ? "page" : undefined}
-            >
-              <Icone size={18} strokeWidth={1.7} />
-              {nome}
-              {rota === "noticias" && c.noticias.some((n) => !n.lida) && (
-                <span className="ponto" />
-              )}
-              {rota === "mercado" && badgeMercado(c) > 0 && (
-                <span className="ponto" aria-label={`${badgeMercado(c)} pendências`} />
-              )}
-            </Link>
-          ))}
+          {SIDEBAR.map(([rota, nome, Icone]) => {
+            const ativo = secao === rota;
+            const badge =
+              rota === "noticias"
+                ? naoLidas
+                : rota === "mercado"
+                  ? badgeMercado(c)
+                  : 0;
+            return (
+              <Link
+                key={rota}
+                href={`/carreira${rota ? `/${rota}` : ""}`}
+                className={ativo ? "ativo" : ""}
+                onClick={() => definirMenu(false)}
+                aria-current={ativo ? "page" : undefined}
+              >
+                <Icone size={18} strokeWidth={1.7} />
+                <span>{nome}</span>
+                {badge > 0 && (
+                  <span
+                    className="vz-nav-badge"
+                    aria-label={`${badge} pendências`}
+                  >
+                    {badge}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
         </nav>
+        <p className="vz-slogan" aria-hidden="true">
+          Disciplina hoje, resultados amanhã.
+        </p>
         <div className="rodape-lateral">
-          <Escudo clube={clube} tamanho={38} />
+          <Escudo clube={clube} tamanho={34} />
           <div>
             <b>{clube.codigo}</b>
             <span>
@@ -177,25 +230,53 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
           >
             <Menu />
           </button>
-          <div className="temporada-topo">
-            <b>{formatarTemporada(c.liga.id, c.temporada.ano)}</b>
-            <span>TEMPORADA</span>
+          <nav className="vz-top-nav" aria-label="Seções principais">
+            {TOP_NAV.map(([rota, nome]) => (
+              <Link
+                key={rota + nome}
+                href={`/carreira${rota ? `/${rota}` : ""}`}
+                className={topSecao === rota ? "ativo" : ""}
+                aria-current={topSecao === rota ? "page" : undefined}
+              >
+                {nome}
+              </Link>
+            ))}
+            <button
+              type="button"
+              className={configuracoes ? "ativo" : ""}
+              onClick={() => definirConfiguracoes(true)}
+            >
+              Opções
+            </button>
+          </nav>
+          <div className="vz-topo-direita">
+            <Link
+              href="/carreira/noticias"
+              className="botao-icone"
+              aria-label={
+                naoLidas > 0
+                  ? `Notificações, ${naoLidas} não lidas`
+                  : "Notificações"
+              }
+            >
+              <Bell size={18} />
+              {naoLidas > 0 && <span className="vz-dot" />}
+            </Link>
+            <button
+              className="botao-icone"
+              aria-label="Configurações da carreira"
+              onClick={() => definirConfiguracoes(true)}
+            >
+              <Settings size={18} />
+            </button>
+            <span className="vz-sep" aria-hidden="true" />
+            <time className="data-topo" dateTime={c.dataAtual}>
+              {dataCarreiraTopo(c.dataAtual)}
+            </time>
+            <span className="vz-temp-chip" title="Temporada">
+              {formatarTemporada(c.liga.id, c.temporada.ano)}
+            </span>
           </div>
-          <span className="data-topo">{formatarData(c.dataAtual)}</span>
-          <div className="clube-topo">
-            <Escudo clube={clube} tamanho={26} />
-            <span>{clube.nome}</span>
-          </div>
-          <span className="jogador-topo">
-            {c.jogador.nome} {c.jogador.sobrenome}
-          </span>
-          <button
-            className="botao-icone"
-            aria-label="Configurações da carreira"
-            onClick={() => definirConfiguracoes(true)}
-          >
-            <Settings size={19} />
-          </button>
         </header>
         {c.origem === "demonstracao" && (
           <div className="faixa-demonstracao">
@@ -220,17 +301,34 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
               ocupado={ocupado}
               abrirResumo={() => definirResumo(true)}
             />
-          )}{" "}
-          {secao === "jogador" && <PainelJogador carreira={c} />}{" "}
+          )}
+          {secao === "jogador" && <PainelJogador carreira={c} />}
+          {secao === "desempenho" && <PainelDesempenho carreira={c} />}
           {(secao === "calendario" || secao === "competicao") && (
-            <CalendarioCompeticao carreira={c} secao={secao} />
-          )}{" "}
-          {secao === "treinamento" && <Treinamento carreira={c} />}{" "}
+            <CalendarioCompeticao
+              carreira={c}
+              secao={secao as "calendario" | "competicao"}
+            />
+          )}
+          {secao === "treinamento" && <Treinamento carreira={c} />}
           {(secao === "mercado" || secao === "clube") && (
-            <MercadoClube carreira={c} secao={secao} />
-          )}{" "}
+            <MercadoClube carreira={c} secao={secao as "mercado" | "clube"} />
+          )}
+          {secao === "contrato" && (
+            <div className="vz-pagina">
+              <header className="vz-page-head">
+                <p className="vz-card-sub">VÍNCULO</p>
+                <h1>Contrato</h1>
+              </header>
+              <ConversaContrato carreira={c} />
+            </div>
+          )}
+          {secao === "objetivos" && <PainelObjetivos carreira={c} />}
           {(secao === "noticias" || secao === "historico") && (
-            <NoticiasHistorico carreira={c} secao={secao} />
+            <NoticiasHistorico
+              carreira={c}
+              secao={secao as "noticias" | "historico"}
+            />
           )}
         </main>
         <footer className="rodape-jogo">
@@ -257,7 +355,7 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
           carreira={c}
           fechar={() => definirResumo(false)}
         />
-      )}{" "}
+      )}
       {configuracoes && (
         <div className="sobreposicao">
           <section
@@ -267,7 +365,7 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
             className="dialogo"
           >
             <div className="linha-titulo">
-              <h2 id="config-titulo">CARREIRA SALVA</h2>
+              <h2 id="config-titulo">OPÇÕES DA CARREIRA</h2>
               <button
                 autoFocus
                 className="botao-icone"

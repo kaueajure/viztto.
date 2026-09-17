@@ -61,8 +61,8 @@ export function PainelJogador({ carreira: c }: { carreira: EstadoCarreira }) {
     agente: 60,
   };
   return (
-    <>
-      <section className="perfil-completo">
+    <div className="vz-pagina">
+      <section className="perfil-completo vz-card vz-perfil-hero">
         <div className="overall">
           <strong>{j.overall}</strong>
           <span>GERAL</span>
@@ -213,6 +213,6 @@ export function PainelJogador({ carreira: c }: { carreira: EstadoCarreira }) {
           </ul>
         </section>
       )}
-    </>
+    </div>
   );
 }
