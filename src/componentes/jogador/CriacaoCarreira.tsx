@@ -264,61 +264,64 @@ export function CriacaoCarreira() {
       definirConfirmando(false);
     }
   }
+  const ligasPorPais = ligas.reduce<Record<string, typeof ligas>>((acc, l) => {
+    (acc[l.pais] ??= []).push(l);
+    return acc;
+  }, {});
+
+  const tituloEtapa = [
+    "Quem é você?",
+    "Perfil em campo",
+    capitulo >= 4 ? "História concluída" : "Sua história",
+    "Escolha a liga",
+    "Escolha o clube",
+    "Confirmar carreira",
+  ][etapa]!;
+
+  const ctaContinuar =
+    etapa === 2 && capitulo >= 4
+      ? "Continuar para a liga"
+      : etapa === 2 && capitulo < 3
+        ? "Próximo capítulo"
+        : etapa === 2
+          ? "Concluir história"
+          : "Continuar";
+
   return (
-    <main className="criacao">
-      <header className="cabecalho-inicial">
+    <main className="vz-wizard">
+      <header className="vz-wizard-head">
         <Link href="/" className="marca">
           viztto<span>.</span>
         </Link>
-        <span className="rotulo">NOVA CARREIRA</span>
+        <span className="rotulo">Nova carreira</span>
         <Link href="/" className="botao-texto">
-          <ArrowLeft size={16} /> Voltar ao menu
+          <ArrowLeft size={16} /> Voltar
         </Link>
       </header>
-      <nav className="etapas" aria-label="Etapas da criação">
+
+      <nav className="vz-wizard-steps" aria-label="Etapas da criação">
         {ETAPAS.map((nome, i) => (
           <div
             key={nome}
             className={i === etapa ? "atual" : i < etapa ? "concluida" : ""}
           >
             <span>
-              {i < etapa ? <Check size={16} /> : String(i + 1).padStart(2, "0")}
+              {i < etapa ? <Check size={14} /> : String(i + 1).padStart(2, "0")}
             </span>
             {nome}
           </div>
         ))}
       </nav>
-      <div className="criacao-corpo">
-        <section className="formulario">
-          <p className="sobretitulo">
-            CAPÍTULO ZERO / {String(etapa + 1).padStart(2, "0")}
+
+      <div className="vz-wizard-body">
+        <section className="vz-wizard-main">
+          <p className="vz-card-sub">
+            Etapa {String(etapa + 1).padStart(2, "0")}
           </p>
-          <h1>
-            {
-              [
-                "QUEM É VOCÊ?",
-                "DENTRO DE CAMPO.",
-                "SUA HISTÓRIA.",
-                "ESCOLHA SEU PALCO.",
-                "SEU PRIMEIRO ESCUDO.",
-                "COMEÇA A HISTÓRIA.",
-              ][etapa]
-            }
-          </h1>
-          <p className="texto-suave">
-            {
-              [
-                "Todo jogador tem um começo. Este é o seu.",
-                "Defina o perfil do atleta que vai entrar em campo.",
-                "Construa o passado do atleta. Cada escolha traz qualidades e desafios.",
-                `${ligas.length} ligas disponíveis. Diferentes caminhos para conquistar espaço.`,
-                "Escolha onde você vai disputar sua primeira oportunidade.",
-                "Confira os detalhes antes de entrar no vestiário.",
-              ][etapa]
-            }
-          </p>
+          <h1>{tituloEtapa}</h1>
+
           {etapa === 0 && (
-            <div className="campos">
+            <div className="vz-wizard-campos">
               <label>
                 Nome
                 <input
@@ -348,10 +351,11 @@ export function CriacaoCarreira() {
               </label>
             </div>
           )}
+
           {etapa === 1 && (
-            <div className="campos">
+            <div className="vz-wizard-perfil">
               <label>
-                Idade inicial
+                Idade
                 <input
                   type="number"
                   min={15}
@@ -360,40 +364,62 @@ export function CriacaoCarreira() {
                   onChange={(e) => alterar("idade", Number(e.target.value))}
                 />
               </label>
-              <label>
-                Pé dominante
-                <select
-                  value={identidade.peDominante}
-                  onChange={(e) =>
-                    alterar(
-                      "peDominante",
-                      e.target.value as IdentidadeJogador["peDominante"],
-                    )
-                  }
-                >
-                  <option value="direito">Direito</option>
-                  <option value="esquerdo">Esquerdo</option>
-                  <option value="ambos">Ambos</option>
-                </select>
-              </label>
-              <label>
-                Posição principal
-                <select
-                  value={identidade.posicao}
-                  onChange={(e) =>
-                    alterar(
-                      "posicao",
-                      e.target.value as IdentidadeJogador["posicao"],
-                    )
-                  }
-                >
-                  {Object.entries(POSICOES).map(([codigo, nome]) => (
-                    <option key={codigo} value={codigo}>
-                      {codigo} — {nome}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="vz-segmented" role="group" aria-label="Pé dominante">
+                {(
+                  [
+                    ["direito", "Direito"],
+                    ["esquerdo", "Esquerdo"],
+                    ["ambos", "Ambos"],
+                  ] as const
+                ).map(([v, rotulo]) => (
+                  <button
+                    key={v}
+                    type="button"
+                    className={identidade.peDominante === v ? "ativo" : ""}
+                    aria-pressed={identidade.peDominante === v}
+                    onClick={() => alterar("peDominante", v)}
+                  >
+                    {rotulo}
+                  </button>
+                ))}
+              </div>
+
+              <div className="vz-pos-grupos">
+                {(
+                  [
+                    ["Goleiro", ["GOL"]],
+                    ["Defesa", ["LD", "ZAG", "LE"]],
+                    ["Meio", ["VOL", "MC", "MEI"]],
+                    ["Ataque", ["PD", "PE", "CA"]],
+                  ] as const
+                ).map(([grupo, codigos]) => (
+                  <div key={grupo}>
+                    <span className="vz-card-sub">{grupo}</span>
+                    <div className="vz-pos-grid">
+                      {codigos.map((codigo) => (
+                        <button
+                          key={codigo}
+                          type="button"
+                          className={
+                            identidade.posicao === codigo ? "ativo" : ""
+                          }
+                          aria-pressed={identidade.posicao === codigo}
+                          onClick={() =>
+                            alterar(
+                              "posicao",
+                              codigo as IdentidadeJogador["posicao"],
+                            )
+                          }
+                        >
+                          <b>{codigo}</b>
+                          <span>{POSICOES[codigo]}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
               <label>
                 Posição secundária
                 <select
@@ -415,168 +441,201 @@ export function CriacaoCarreira() {
                     ))}
                 </select>
               </label>
-              <label>
-                Altura (cm)
-                <input
-                  type="number"
-                  min={150}
-                  max={215}
-                  value={identidade.altura}
-                  onChange={(e) => alterar("altura", Number(e.target.value))}
-                />
-              </label>
-              <label>
-                Peso (kg)
-                <input
-                  type="number"
-                  min={45}
-                  max={120}
-                  value={identidade.peso}
-                  onChange={(e) => alterar("peso", Number(e.target.value))}
-                />
-              </label>
-              <p className="aviso campo-inteiro">
-                {identidade.idade < 17
-                  ? "Você começa na categoria de base. A promoção depende da avaliação da comissão técnica."
-                  : "Você começa no elenco profissional, disputando espaço com os demais jogadores."}
-              </p>
+
+              <div className="vz-wizard-fisico">
+                <label>
+                  Altura (cm)
+                  <input
+                    type="number"
+                    min={150}
+                    max={215}
+                    value={identidade.altura}
+                    onChange={(e) => alterar("altura", Number(e.target.value))}
+                  />
+                </label>
+                <label>
+                  Peso (kg)
+                  <input
+                    type="number"
+                    min={45}
+                    max={120}
+                    value={identidade.peso}
+                    onChange={(e) => alterar("peso", Number(e.target.value))}
+                  />
+                </label>
+              </div>
             </div>
           )}
-          {etapa === 2 && seed && <SuaHistoria seed={seed} identidade={identidade} capitulo={capitulo} escolhas={escolhas} escolher={(c,id) => definirEscolhas(atuais => ({...atuais,[c]:id}))} />}
-          {etapa === 3 && (
-            <>
-              <div className="opcoes grade-dupla">
-                {ligas.map((l) => (
-                  <button
-                    aria-pressed={ligaId === l.id}
-                    key={l.id}
-                    className={`opcao opcao-liga ${ligaId === l.id ? "selecionada" : ""}`}
-                    onClick={() => definirLiga(l.id)}
-                  >
-                    <span
-                      className={`bandeira bandeira-${l.bandeira.toLowerCase()}`}
-                    >
-                      {l.bandeira}
-                    </span>
-                    <div>
-                      <strong>{l.nome}</strong>
-                      <span>
-                        {l.pais} · {l.clubesDisponiveis} clubes
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-              {carregandoLigas && (
-                <p className="aviso" role="status">
-                  Carregando ligas disponíveis…
-                </p>
-              )}
-              {!carregandoLigas && !ligas.length && (
-                <p className="estado-vazio" role="status">
-                  Nenhuma liga disponível nesta edição. Você pode voltar mais
-                  tarde.
-                </p>
-              )}
-              {carregando && (
-                <p className="aviso" role="status">
-                  Carregando clubes…
-                </p>
-              )}
-              {aviso && (
-                <p className="aviso" role="status">
-                  {aviso}
-                </p>
-              )}
-            </>
+
+          {etapa === 2 && seed && (
+            <SuaHistoria
+              seed={seed}
+              identidade={identidade}
+              capitulo={capitulo}
+              escolhas={escolhas}
+              escolher={(c, id) =>
+                definirEscolhas((atuais) => ({ ...atuais, [c]: id }))
+              }
+            />
           )}
-          {etapa === 4 && (
-            <>
-              {aviso && (
-                <p role="status" className="aviso">
-                  {aviso}
-                </p>
-              )}
-              <div className="linha-titulo">
-                <span className="rotulo">{liga?.nome}</span>
-                <button
-                  className="botao-texto"
-                  disabled={carregando}
-                  onClick={() => definirTentativa((t) => t + 1)}
-                >
-                  <RefreshCw size={14} /> Recarregar
-                </button>
-              </div>
-              {carregando ? (
-                <p className="estado-vazio" role="status">
-                  Carregando clubes…
-                </p>
-              ) : (
-                <div className="selecao-clubes">
-                  {clubes.map((c) => (
-                    <button
-                      key={c.id}
-                      aria-pressed={clubeId === c.id}
-                      className={`opcao opcao-clube ${clubeId === c.id ? "selecionada" : ""}`}
-                      onClick={() => definirClube(c.id)}
-                    >
-                      <Escudo clube={c} tamanho={36} />
-                      <div>
-                        <strong>{c.nome}</strong>
-                        <span>
-                          {c.estadio}
-                          {c.elenco.length > 0
-                            ? ` · ${c.elenco.length} jogadores`
-                            : ""}
-                        </span>
-                      </div>
-                      <b className="forca-clube">{c.forcaGeral}</b>
-                    </button>
+
+          {etapa === 3 && (
+            <div className="vz-ligas">
+              {carregandoLigas && (
+                <div className="vz-skel-grid" aria-busy="true">
+                  {Array.from({ length: 6 }, (_, i) => (
+                    <div key={i} className="vz-skel" />
                   ))}
                 </div>
               )}
-            </>
+              {!carregandoLigas &&
+                Object.entries(ligasPorPais).map(([pais, lista]) => (
+                  <div key={pais} className="vz-liga-pais">
+                    <h3>{pais}</h3>
+                    <div className="vz-liga-row">
+                      {lista.map((l) => (
+                        <button
+                          key={l.id}
+                          type="button"
+                          aria-pressed={ligaId === l.id}
+                          className={`vz-liga-card${ligaId === l.id ? " selecionada" : ""}`}
+                          onClick={() => definirLiga(l.id)}
+                        >
+                          <span className={`bandeira bandeira-${l.bandeira.toLowerCase()}`}>
+                            {l.bandeira}
+                          </span>
+                          <strong>{l.nome}</strong>
+                          <span>
+                            {l.clubesDisponiveis} clubes
+                            {l.divisao ? ` · Div. ${l.divisao}` : ""}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              {!carregandoLigas && !ligas.length && (
+                <p className="estado-vazio">Nenhuma liga disponível.</p>
+              )}
+              {aviso && (
+                <p className="aviso" role="status">
+                  {aviso}
+                </p>
+              )}
+            </div>
           )}
+
+          {etapa === 4 && (
+            <div className="vz-clube-sel">
+              <div className="vz-clube-lista">
+                <div className="linha-titulo">
+                  <span className="rotulo">{liga?.nome}</span>
+                  <button
+                    type="button"
+                    className="botao-texto"
+                    disabled={carregando}
+                    onClick={() => definirTentativa((t) => t + 1)}
+                  >
+                    <RefreshCw size={14} /> Recarregar
+                  </button>
+                </div>
+                {carregando ? (
+                  <div className="vz-skel-lista" aria-busy="true">
+                    {Array.from({ length: 8 }, (_, i) => (
+                      <div key={i} className="vz-skel" />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="vz-clube-scroll">
+                    {clubes.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        aria-pressed={clubeId === c.id}
+                        className={`vz-clube-item${clubeId === c.id ? " selecionada" : ""}`}
+                        onClick={() => definirClube(c.id)}
+                      >
+                        <Escudo clube={c} tamanho={32} />
+                        <span>{c.nome}</span>
+                        <b>{c.forcaGeral}</b>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <aside className="vz-clube-detalhe">
+                {clube ? (
+                  <>
+                    <Escudo clube={clube} tamanho={64} />
+                    <h2>{clube.nome}</h2>
+                    <p>{liga?.nome}</p>
+                    <dl className="ficha">
+                      <div>
+                        <dt>Força</dt>
+                        <dd>{clube.forcaGeral}</dd>
+                      </div>
+                      <div>
+                        <dt>Estádio</dt>
+                        <dd>{clube.estadio}</dd>
+                      </div>
+                      <div>
+                        <dt>Elenco</dt>
+                        <dd>{clube.elenco.length} jogadores</dd>
+                      </div>
+                      <div>
+                        <dt>Início</dt>
+                        <dd>
+                          {identidade.idade < 17
+                            ? "Categoria de base"
+                            : "Elenco profissional"}
+                        </dd>
+                      </div>
+                    </dl>
+                  </>
+                ) : (
+                  <p className="vz-empty">Selecione um clube na lista.</p>
+                )}
+              </aside>
+            </div>
+          )}
+
           {etapa === 5 && (
-            <div className="confirmacao">
-              <dl>
-                <div>
-                  <dt>Nome</dt>
-                  <dd>
-                    {identidade.nome} {identidade.sobrenome}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Perfil</dt>
-                  <dd>
-                    {identidade.idade} anos · {POSICOES[identidade.posicao]}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Clube</dt>
-                  <dd>{clube?.nome}</dd>
-                </div>
-                <div>
-                  <dt>Competição</dt>
-                  <dd>
-                    {liga?.nome}
-                    {identidade.idade < 17 ? " · Base" : ""}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Temporada inicial</dt>
-                  <dd>
-                    {formatarTemporada(
-                      liga?.id ?? "",
-                      Number(inicio.slice(0, 4)),
-                    )}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Mundo inicial</dt>
-                  <dd>Clubes reais · Base local Transfermarkt</dd>
-                </div>
-              </dl>
+            <div className="vz-confirm">
+              <div className="vz-confirm-card">
+                <p className="vz-card-sub">Jogador</p>
+                <h2>
+                  {identidade.nome} {identidade.sobrenome}
+                </h2>
+                <p>
+                  {identidade.idade} anos · {POSICOES[identidade.posicao]} · Pé{" "}
+                  {identidade.peDominante} · {identidade.altura} cm
+                </p>
+              </div>
+              <div className="vz-confirm-card">
+                <p className="vz-card-sub">Clube</p>
+                {clube && (
+                  <div className="vz-confirm-clube">
+                    <Escudo clube={clube} tamanho={40} />
+                    <div>
+                      <h3>{clube.nome}</h3>
+                      <p>
+                        {liga?.nome}
+                        {identidade.idade < 17 ? " · Base" : ""}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="vz-confirm-card">
+                <p className="vz-card-sub">Temporada</p>
+                <p>
+                  {formatarTemporada(
+                    liga?.id ?? "",
+                    Number(inicio.slice(0, 4)),
+                  )}
+                </p>
+                <p className="texto-suave">Mundo inicial com elencos atualizados</p>
+              </div>
               {existente && (
                 <label className="aceite">
                   <input
@@ -589,87 +648,110 @@ export function CriacaoCarreira() {
               )}
             </div>
           )}
+
           <EstadoPersistencia />
           {erro && (
             <p role="alert" className="aviso erro">
               {erro}
             </p>
           )}
-          <footer className="navegacao-formulario">
-            <button
-              className="botao-texto"
-              disabled={etapa === 0 || confirmando}
-              onClick={() => {
-                if (etapa === 2 && capitulo > 0) definirCapitulo(capitulo - 1);
-                else definirEtapa(etapa - 1);
-                definirErro(null);
-              }}
-            >
-              <ArrowLeft size={17} /> Anterior
-            </button>
-            {etapa < 5 ? (
-              <button
-                className="botao principal"
-                disabled={
-                  (etapa === 3 && (!liga || carregando || clubes.length < 2)) ||
-                  (etapa === 4 && (!clube || carregando))
-                }
-                onClick={avancar}
-              >
-                Continuar <ArrowRight size={18} />
-              </button>
-            ) : (
-              <button
-                className="botao principal"
-                disabled={
-                  !hidratado ||
-                  operando ||
-                  confirmando ||
-                  !liga ||
-                  !clube ||
-                  (!!existente && !substituir)
-                }
-                onClick={confirmar}
-              >
-                {confirmando ? "Criando carreira…" : "Iniciar carreira"}{" "}
-                <ArrowRight size={18} />
-              </button>
-            )}
-          </footer>
         </section>
-        <aside className="preview-jogador">
-          <div className="camisa-abstrata" aria-hidden="true">
+
+        <aside className="vz-wizard-preview">
+          <div className="vz-preview-camisa" aria-hidden>
             <span>{identidade.posicao === "GOL" ? "1" : "10"}</span>
           </div>
-          <div className="preview-dados">
-            <span className="rotulo">
-              {identidade.idade < 17
-                ? "CATEGORIA DE BASE"
-                : "ELENCO PROFISSIONAL"}
-            </span>
-            <h2>
-              {identidade.nome || "SEU NOME"}
-              <br />
-              <span>{identidade.sobrenome || "SUA HISTÓRIA"}</span>
-            </h2>
-            <div className="perfil-resumo">
-              <b>{identidade.posicao}</b>
-              <span>{identidade.idade} anos</span>
-              <span>{identidade.nacionalidade}</span>
-            </div>
-            {clube && (
-              <div className="preview-clube">
-                <Escudo clube={clube} tamanho={32} />
-                <span>{clube.nome}</span>
-              </div>
-            )}
-          </div>
-          <p className="nota-preview">
-            O talento abre a porta.
-            <br />O que vem depois depende de você.
+          <p className="vz-card-sub">
+            {identidade.idade < 17
+              ? "Início de carreira · Base"
+              : "Elenco profissional"}
           </p>
+          <h2>
+            {(identidade.nome || "Seu nome").trim()}
+            <br />
+            <span>{(identidade.sobrenome || "Sobrenome").trim()}</span>
+          </h2>
+          <div className="perfil-resumo">
+            <b>{identidade.posicao}</b>
+            <span>{identidade.idade} anos</span>
+            <span>{identidade.nacionalidade}</span>
+          </div>
+          {identidade.idade < 17 ? (
+            <p className="vz-preview-nota">
+              Você começa na categoria de base. A promoção depende da comissão
+              técnica.
+            </p>
+          ) : (
+            <p className="vz-preview-nota">
+              Você disputa espaço no elenco profissional desde o início.
+            </p>
+          )}
+          {clube && (
+            <div className="preview-clube">
+              <Escudo clube={clube} tamanho={28} />
+              <span>{clube.nome}</span>
+            </div>
+          )}
         </aside>
       </div>
+
+      <footer className="vz-wizard-foot">
+        <button
+          type="button"
+          className="botao-texto"
+          disabled={etapa === 0 || confirmando}
+          onClick={() => {
+            if (etapa === 2 && capitulo > 0) definirCapitulo(capitulo - 1);
+            else definirEtapa(etapa - 1);
+            definirErro(null);
+          }}
+        >
+          <ArrowLeft size={17} /> Voltar
+        </button>
+        {etapa < 5 ? (
+          <button
+            type="button"
+            className="botao principal"
+            disabled={
+              (etapa === 3 && (!liga || carregando || clubes.length < 2)) ||
+              (etapa === 4 && (!clube || carregando))
+            }
+            onClick={avancar}
+          >
+            {ctaContinuar} <ArrowRight size={18} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="botao principal"
+            disabled={
+              !hidratado ||
+              operando ||
+              confirmando ||
+              !liga ||
+              !clube ||
+              (!!existente && !substituir)
+            }
+            onClick={confirmar}
+          >
+            {confirmando ? "Criando seu mundo…" : "Iniciar carreira"}{" "}
+            <ArrowRight size={18} />
+          </button>
+        )}
+      </footer>
+
+      {confirmando && (
+        <div className="vz-wizard-overlay" role="status" aria-live="polite">
+          <p className="vz-card-sub">Preparando</p>
+          <h2>Criando seu mundo…</h2>
+          <ul>
+            <li>Carregando clubes</li>
+            <li>Preparando competições</li>
+            <li>Montando calendário</li>
+          </ul>
+        </div>
+      )}
     </main>
   );
 }
+

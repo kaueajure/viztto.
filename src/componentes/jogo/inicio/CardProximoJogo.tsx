@@ -39,8 +39,8 @@ export function CardProximoJogo({
 
       {livre ? (
         <div className="vz-empty-block">
-          <p className="vz-empty-title">Sem clube</p>
-          <p>Você não disputa partidas até assinar um novo contrato.</p>
+          <p className="vz-empty-title">Buscando oportunidade</p>
+          <p>Sem partidas de clube até assinar um novo contrato.</p>
         </div>
       ) : c.temporada.encerrada ? (
         <div className="vz-empty-block">

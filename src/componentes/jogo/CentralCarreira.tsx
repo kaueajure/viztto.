@@ -1,5 +1,4 @@
 "use client";
-import { formatarTemporada } from "@/dominio/constantes/temporadas-iniciais";
 import { useFocoModal } from "@/componentes/interface/useFocoModal";
 import { useState } from "react";
 import Link from "next/link";
@@ -20,6 +19,7 @@ import {
   FileText,
   Activity,
   ChartColumn,
+  ArrowRight,
 } from "lucide-react";
 import { EstadoPersistencia } from "./EstadoPersistencia";
 import { badgeMercado } from "./AtencaoCarreira";
@@ -47,7 +47,7 @@ const SIDEBAR = [
   ["contrato", "Contrato", FileText],
   ["objetivos", "Objetivos", Target],
   ["historico", "Estatísticas", ChartColumn],
-  ["treinamento", "Personalização", Dumbbell],
+  ["treinamento", "Treinamento", Dumbbell],
 ] as const;
 
 const TOP_NAV = [
@@ -151,7 +151,7 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
   }
 
   return (
-    <div className="estrutura-jogo vz-shell">
+    <div className={`estrutura-jogo vz-shell${secao === "" ? " vz-shell-home" : ""}`}>
       <aside className={`barra-lateral ${menu ? "aberta" : ""}`}>
         <div className="marca-lateral">
           <Link href="/carreira" className="marca vz-logo">
@@ -196,17 +196,25 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
             );
           })}
         </nav>
-        <p className="vz-slogan" aria-hidden="true">
-          Disciplina hoje, resultados amanhã.
-        </p>
         <div className="rodape-lateral">
-          <Escudo clube={clube} tamanho={34} />
+          <Escudo clube={clube} tamanho={28} />
           <div>
             <b>{clube.codigo}</b>
             <span>
               {c.jogador.categoria === "base"
                 ? "CATEGORIA DE BASE"
                 : "PROFISSIONAL"}
+            </span>
+            <span className="vz-save-status">
+              {statusPersistencia === "conflito"
+                ? "Conflito de save"
+                : statusPersistencia === "salvando" || salvando
+                  ? "Salvando…"
+                  : statusPersistencia === "erro" || erroPersistencia
+                    ? "Erro ao salvar"
+                    : alteracoesPendentes || statusPersistencia === "pendente"
+                      ? "Save pendente"
+                      : "Progresso salvo"}
             </span>
           </div>
         </div>
@@ -273,18 +281,29 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
             <time className="data-topo" dateTime={c.dataAtual}>
               {dataCarreiraTopo(c.dataAtual)}
             </time>
-            <span className="vz-temp-chip" title="Temporada">
-              {formatarTemporada(c.liga.id, c.temporada.ano)}
-            </span>
+            <button
+              type="button"
+              className="vz-cta-semana"
+              onClick={avancarTempo}
+              disabled={ocupado || !!c.aposentado}
+            >
+              {c.aposentado
+                ? "Aposentado"
+                : ocupado
+                  ? "Simulando…"
+                  : c.temporada.encerrada
+                    ? "Próxima temporada"
+                    : c.jogador.lesao
+                      ? "Avançar (lesão)"
+                      : "Avançar semana"}
+              {!c.aposentado && <ArrowRight size={16} />}
+            </button>
           </div>
         </header>
         {c.origem === "demonstracao" && (
           <div className="faixa-demonstracao">
             MODO DEMONSTRAÇÃO{" "}
-            <span>
-              Clubes fictícios · importe uma liga via Transfermarkt para iniciar
-              com elencos reais.
-            </span>
+            <span>Clubes fictícios para exploração.</span>
           </div>
         )}
         <EstadoPersistencia />
@@ -293,12 +312,10 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
             {erro}
           </p>
         )}
-        <main className="conteudo-jogo">
+        <main className={`conteudo-jogo${secao === "" ? " conteudo-home" : ""}`}>
           {secao === "" && (
             <InicioCarreira
               carreira={c}
-              avancar={avancarTempo}
-              ocupado={ocupado}
               abrirResumo={() => definirResumo(true)}
             />
           )}
@@ -331,23 +348,6 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
             />
           )}
         </main>
-        <footer className="rodape-jogo">
-          <span>
-            <span className="ponto" />{" "}
-            {statusPersistencia === "conflito"
-              ? "CONFLITO DE SAVE"
-              : statusPersistencia === "salvando" || salvando
-                ? "SALVANDO…"
-                : statusPersistencia === "retentando"
-                  ? "TENTANDO SALVAR NOVAMENTE…"
-                  : statusPersistencia === "erro" || erroPersistencia
-                    ? "ERRO AO SALVAR"
-                    : alteracoesPendentes || statusPersistencia === "pendente"
-                      ? "SALVAMENTO PENDENTE"
-                      : "PROGRESSO SALVO"}
-          </span>
-          <span>VIZTTO / CARREIRA DE JOGADOR</span>
-        </footer>
       </div>
       {resumo && ultima && (
         <ResumoPartida

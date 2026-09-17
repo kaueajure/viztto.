@@ -3201,7 +3201,7 @@ details[open] summary {
 }
 
 .vz-shell .barra-superior {
-  height: 58px;
+  height: 52px;
   padding: 0 28px;
   background: rgba(255, 255, 255, 0.72);
   border-bottom: 1px solid var(--border);
@@ -3286,7 +3286,7 @@ details[open] summary {
 }
 
 .vz-shell .conteudo-jogo {
-  padding: 22px 28px 40px;
+  padding: 12px 20px 16px;
   max-width: 1480px;
 }
 
@@ -3417,8 +3417,9 @@ details[open] summary {
 .vz-hero {
   position: relative;
   overflow: hidden;
-  min-height: 280px;
-  padding: 22px 24px 20px;
+  min-height: 0;
+  height: 100%;
+  padding: 14px 16px;
   background:
     linear-gradient(105deg, #ffffff 0%, #ffffff 42%, #f4f7fb 100%);
 }
@@ -3524,7 +3525,7 @@ details[open] summary {
 
 .vz-hero-nome {
   font-family: "Barlow Condensed", sans-serif;
-  font-size: clamp(36px, 4.2vw, 56px);
+  font-size: clamp(28px, 3.2vw, 48px);
   font-weight: 800;
   line-height: 0.92;
   letter-spacing: 0.01em;
@@ -3584,7 +3585,7 @@ details[open] summary {
 
 .vz-ovr strong {
   font-family: "Barlow Condensed", sans-serif;
-  font-size: clamp(64px, 7vw, 84px);
+  font-size: clamp(44px, 5vw, 72px);
   font-weight: 800;
   color: var(--navy);
 }
@@ -4322,3 +4323,616 @@ main:has(.formulario) {
   color: var(--text-primary);
   min-height: 100svh;
 }
+
+
+/* ========== V2 HOME VIEWPORT + WIZARD ========== */
+.vz-shell-home {
+  height: 100dvh;
+  overflow: hidden;
+}
+.vz-shell-home .area-jogo {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+.vz-shell-home .conteudo-home {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 8px 16px 12px;
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+}
+.vz-shell-home .rodape-jogo { display: none; }
+
+.vz-home {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+}
+.vz-home-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 0.85fr) minmax(0, 0.95fr);
+  grid-template-rows: minmax(0, 1.45fr) minmax(0, 1fr) minmax(0, 0.95fr);
+  grid-template-areas:
+    "hero hero clube"
+    "proximo calendario mensagens"
+    "desempenho objetivos mercado";
+  gap: 12px;
+}
+.vz-home-grid > * {
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.vz-card {
+  padding: 12px 14px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.vz-card-head { margin-bottom: 8px; }
+.vz-card-head h3,
+.vz-card h3 {
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.vz-rail {
+  flex: 0 0 auto;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: #fff8e8;
+  border: 1px solid #ead9a8;
+  color: #6b5420;
+  font-size: 12px;
+}
+.vz-rail-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+.vz-rail-texto {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vz-rail-cta {
+  border: 0;
+  background: var(--navy);
+  color: #fff;
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.vz-cta-semana {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 0;
+  background: var(--navy);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.vz-cta-semana:disabled { opacity: 0.4; }
+.vz-cta-semana:hover:not(:disabled) { background: #2a3140; }
+
+.vz-save-status {
+  display: block !important;
+  font-size: 9px !important;
+  letter-spacing: 0.04em;
+  color: var(--text-muted) !important;
+  margin-top: 2px;
+}
+
+.vz-ultima-linha {
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.vz-ultima-placar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.vz-ultima-nota {
+  font-family: "Barlow Condensed", sans-serif;
+  font-weight: 800;
+  margin-left: 4px;
+}
+
+.vz-subnav {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.vz-subnav button {
+  border: 0;
+  background: transparent;
+  padding: 8px 12px;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+}
+.vz-subnav button.ativo {
+  color: var(--navy);
+  font-weight: 700;
+  border-bottom-color: var(--accent);
+}
+.vz-subnav-link {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 600;
+}
+.vz-lista-clubes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.vz-lista-clubes li {
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.vz-lista-clubes b { display: block; }
+.vz-lista-clubes span { font-size: 12px; color: var(--text-muted); }
+.vz-lista-meta { font-size: 12px; color: var(--text-secondary); }
+
+.vz-dialogo-acoes {
+  max-width: min(720px, 94vw);
+  max-height: 80dvh;
+  overflow: auto;
+}
+
+/* Compact height desktop */
+@media (max-height: 820px) and (min-width: 1100px) {
+  .vz-shell .barra-superior { height: 46px; }
+  .vz-top-nav a, .vz-top-nav button { padding: 12px 8px 10px; font-size: 12px; }
+  .vz-shell-home .conteudo-home { padding: 6px 12px 8px; }
+  .vz-home { gap: 6px; }
+  .vz-home-grid {
+    gap: 8px;
+    grid-template-rows: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 0.9fr);
+  }
+  .vz-card { padding: 8px 10px; }
+  .vz-card-head { margin-bottom: 4px; }
+  .vz-hero { padding: 10px 14px; }
+  .vz-hero-nome { font-size: 28px; line-height: 0.95; }
+  .vz-hero-meta { font-size: 12px; margin: 2px 0; }
+  .vz-hero-detalhes { font-size: 11px; gap: 8px; margin: 4px 0 6px; }
+  .vz-ovr strong { font-size: 42px; }
+  .vz-attr-grid b { font-size: 14px; }
+  .vz-hero-tags,
+  .vz-hero-script,
+  .vz-hero-numero,
+  .vz-hero-link { display: none; }
+  .vz-hero-silhueta { width: 24%; opacity: 0.55; }
+  .vz-msg-lista li:nth-child(n + 3) { display: none; }
+  .vz-cal-lista li:nth-child(n + 3) { display: none; }
+  .vz-obj-lista li:nth-child(n + 3) { display: none; }
+  .vz-forma { display: none; }
+  .vz-nota-anillo svg { width: 48px; height: 48px; }
+  .vz-desemp-nums strong { font-size: 18px; }
+  .vz-cta-semana { height: 30px; font-size: 11px; padding: 0 10px; }
+  .vz-rail { height: 28px; font-size: 11px; padding: 0 10px; }
+  .vz-ultima-linha { padding-top: 4px; }
+}
+
+.vz-obj-lista {
+  min-height: 0;
+  overflow: auto;
+}
+.vz-desempenho,
+.vz-mercado-contrato,
+.vz-objetivos {
+  overflow: hidden;
+}
+
+@media (max-width: 1100px) {
+  .vz-shell-home { height: auto; overflow: visible; }
+  .vz-shell-home .area-jogo { height: auto; overflow: visible; }
+  .vz-shell-home .conteudo-home { overflow: visible; height: auto; }
+  .vz-home-grid {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: none;
+    grid-template-areas:
+      "hero hero"
+      "clube clube"
+      "proximo calendario"
+      "mensagens mensagens"
+      "desempenho objetivos"
+      "mercado mercado";
+  }
+  .vz-home-grid > * { overflow: visible; height: auto; }
+}
+
+@media (max-width: 768px) {
+  .vz-home-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "hero" "clube" "proximo" "calendario" "mensagens" "desempenho" "objetivos" "mercado";
+  }
+  .vz-cta-semana { display: none; }
+}
+
+/* Wizard criação */
+.vz-wizard {
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  background: var(--bg);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+.vz-wizard-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 5%;
+  border-bottom: 1px solid var(--border);
+}
+.vz-wizard-head .marca { margin-right: auto; font-size: 28px; }
+.vz-wizard-steps {
+  display: flex;
+  gap: 4px;
+  padding: 10px 5%;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+.vz-wizard-steps > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.vz-wizard-steps > div span {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--elevado);
+  font-size: 10px;
+  font-weight: 700;
+}
+.vz-wizard-steps > div.atual {
+  background: var(--navy);
+  color: #fff;
+}
+.vz-wizard-steps > div.atual span { background: rgba(255,255,255,.15); color: #fff; }
+.vz-wizard-steps > div.concluida { color: var(--accent); }
+.vz-wizard-body {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(260px, 0.7fr);
+  gap: 20px;
+  padding: 20px 5%;
+  overflow: hidden;
+}
+.vz-wizard-main {
+  min-height: 0;
+  overflow: auto;
+  padding-right: 8px;
+}
+.vz-wizard-main h1 {
+  font-size: clamp(28px, 4vw, 40px);
+  margin: 4px 0 16px;
+}
+.vz-wizard-preview {
+  min-height: 0;
+  overflow: auto;
+  background: var(--navy);
+  color: #fff;
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.vz-wizard-preview .vz-card-sub { color: rgba(255,255,255,.55); }
+.vz-wizard-preview h2 {
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 36px;
+  line-height: 0.95;
+  margin: 0;
+}
+.vz-wizard-preview h2 span { color: rgba(255,255,255,.7); }
+.vz-preview-camisa {
+  width: 72px;
+  height: 88px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #3d8b5a, #2a6140);
+  display: grid;
+  place-items: center;
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 32px;
+  font-weight: 800;
+}
+.vz-preview-nota { font-size: 13px; color: rgba(255,255,255,.7); line-height: 1.45; }
+.vz-wizard-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 5%;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+.vz-wizard-campos,
+.vz-wizard-perfil {
+  display: grid;
+  gap: 14px;
+  max-width: 560px;
+}
+.vz-wizard-campos label,
+.vz-wizard-perfil label,
+.vz-wizard-fisico label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.vz-wizard-campos input,
+.vz-wizard-perfil input,
+.vz-wizard-perfil select,
+.vz-wizard-fisico input {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--surface);
+  color: var(--text-primary);
+}
+.vz-wizard-campos input:focus,
+.vz-wizard-perfil input:focus,
+.vz-wizard-perfil select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.vz-segmented {
+  display: flex;
+  gap: 4px;
+  background: var(--elevado);
+  padding: 4px;
+  border-radius: 10px;
+}
+.vz-segmented button {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  padding: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.vz-segmented button.ativo {
+  background: var(--navy);
+  color: #fff;
+}
+.vz-pos-grupos { display: flex; flex-direction: column; gap: 12px; }
+.vz-pos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+.vz-pos-grid button {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 10px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.vz-pos-grid button b { font-family: "Barlow Condensed", sans-serif; font-size: 18px; }
+.vz-pos-grid button span { font-size: 11px; color: var(--text-muted); }
+.vz-pos-grid button.ativo {
+  border-color: var(--navy);
+  background: var(--navy);
+  color: #fff;
+}
+.vz-pos-grid button.ativo span { color: rgba(255,255,255,.7); }
+.vz-wizard-fisico { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+.vz-hist-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.vz-hist-progress span {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--elevado);
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.vz-hist-progress span.atual { background: var(--navy); color: #fff; }
+.vz-hist-progress span.feito { color: var(--success); }
+.vz-hist-opcoes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.vz-hist-card {
+  position: relative;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 14px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.vz-hist-card.selecionada {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.vz-hist-card strong { font-size: 14px; }
+.vz-hist-desc { font-size: 12px; color: var(--text-secondary); }
+.vz-hist-plus { font-size: 11px; color: var(--success); }
+.vz-hist-minus { font-size: 11px; color: var(--danger); }
+.vz-hist-check {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+
+.vz-liga-pais { margin-bottom: 18px; }
+.vz-liga-pais h3 { font-size: 13px; margin-bottom: 8px; color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase; }
+.vz-liga-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.vz-liga-card {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 12px 14px;
+  min-width: 180px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.vz-liga-card.selecionada { border-color: var(--navy); background: var(--navy); color: #fff; }
+.vz-liga-card span { font-size: 12px; color: var(--text-muted); }
+.vz-liga-card.selecionada span { color: rgba(255,255,255,.7); }
+
+.vz-clube-sel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(220px, 0.9fr);
+  gap: 16px;
+  min-height: 0;
+  height: min(52dvh, 420px);
+}
+.vz-clube-lista { min-height: 0; display: flex; flex-direction: column; }
+.vz-clube-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.vz-clube-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.vz-clube-item.selecionada { background: rgba(0,85,255,.08); }
+.vz-clube-detalhe {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--surface);
+  overflow: auto;
+}
+.vz-clube-detalhe h2 { font-size: 22px; margin: 8px 0 4px; }
+
+.vz-confirm { display: grid; gap: 12px; max-width: 560px; }
+.vz-confirm-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--surface);
+}
+.vz-confirm-clube { display: flex; gap: 12px; align-items: center; }
+.vz-confirm-card h2, .vz-confirm-card h3 { margin: 4px 0; }
+
+.vz-wizard-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(26,31,43,.55);
+  display: grid;
+  place-content: center;
+  text-align: center;
+  color: #fff;
+  z-index: 50;
+  gap: 8px;
+}
+.vz-wizard-overlay ul { list-style: none; padding: 0; margin: 8px 0 0; color: rgba(255,255,255,.75); font-size: 13px; }
+.vz-skel { height: 48px; border-radius: 10px; background: linear-gradient(90deg, var(--elevado), #fff, var(--elevado)); background-size: 200% 100%; animation: vz-shimmer 1.2s infinite; }
+.vz-skel-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.vz-skel-lista { display: flex; flex-direction: column; gap: 8px; }
+@keyframes vz-shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+
+@media (max-width: 900px) {
+  .vz-wizard { height: auto; min-height: 100dvh; overflow: visible; }
+  .vz-wizard-body { grid-template-columns: 1fr; overflow: visible; }
+  .vz-wizard-preview { order: -1; max-height: 220px; }
+  .vz-clube-sel { grid-template-columns: 1fr; height: auto; }
+  .vz-clube-scroll { max-height: 280px; }
+}
+
+.criacao { /* legado: redireciona ao wizard se ainda referenciado */ }

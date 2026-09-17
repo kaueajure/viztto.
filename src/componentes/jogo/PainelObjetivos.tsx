@@ -1,5 +1,4 @@
 import type { EstadoCarreira } from "@/dominio/entidades/modelos";
-import { CentralSemana } from "./CentralSemana";
 import { Check } from "lucide-react";
 
 const ROTULOS_PESSOAL: Record<string, string> = {
@@ -21,8 +20,6 @@ export function PainelObjetivos({ carreira: c }: { carreira: EstadoCarreira }) {
         <p className="vz-card-sub">METAS</p>
         <h1>Objetivos</h1>
       </header>
-
-      <CentralSemana carreira={c} />
 
       <section className="vz-card espaco">
         <h3>Temporada</h3>
