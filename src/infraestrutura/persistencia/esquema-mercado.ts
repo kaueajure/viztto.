@@ -62,6 +62,8 @@ export const esquemaMercado = z
         ofertaClube: numero.optional(),
         rodadasClube: numero.int().optional(),
         propostaId: z.string().optional(),
+        novidadeEm: data.optional(),
+        lidoEm: data.optional(),
       }),
     ),
     clubesDesejados: z.array(z.string()),

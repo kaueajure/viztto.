@@ -72,9 +72,8 @@ export class ClienteSportmonks {
   private readonly cacheDir: string;
   private readonly usarCache: boolean;
   private readonly fetchImpl: typeof fetch;
-  private fila: Promise<void> = Promise.resolve();
-  private ativos = 0;
-  private ultimoRequest = 0;
+  private filaInicio: Promise<void> = Promise.resolve();
+  private proximoSlot = 0;
   requests = 0;
 
   constructor(opcoes: OpcoesClienteSportmonks = {}) {
@@ -139,25 +138,53 @@ export class ClienteSportmonks {
     return itens;
   }
 
-  private async comFila<T>(fn: () => Promise<T>): Promise<T> {
-    while (this.ativos >= this.concorrencia) {
-      await this.fila;
+  private ativos = 0;
+  private esperaConcorrencia: Array<() => void> = [];
+
+  private async adquirirConcorrencia(): Promise<void> {
+    if (this.ativos < this.concorrencia) {
+      this.ativos++;
+      return;
     }
-    this.ativos++;
-    const espera = Math.max(0, this.intervaloMs - (Date.now() - this.ultimoRequest));
-    const trabalho = (async () => {
-      if (espera) await new Promise((r) => setTimeout(r, espera));
-      this.ultimoRequest = Date.now();
-      return fn();
-    })();
-    this.fila = trabalho.then(
+    await new Promise<void>((resolve) => {
+      this.esperaConcorrencia.push(() => {
+        this.ativos++;
+        resolve();
+      });
+    });
+  }
+
+  private liberarConcorrencia(): void {
+    this.ativos--;
+    const proximo = this.esperaConcorrencia.shift();
+    if (proximo) proximo();
+  }
+
+  /**
+   * Scheduler: intervalo global mínimo entre inícios (serializado) +
+   * limite de requisições em voo. Sem race em proximoSlot.
+   */
+  private async comFila<T>(fn: () => Promise<T>): Promise<T> {
+    const reservar = async () => {
+      const agora = Date.now();
+      const inicioEm = Math.max(agora, this.proximoSlot);
+      this.proximoSlot = inicioEm + this.intervaloMs;
+      return inicioEm;
+    };
+    const agendado = this.filaInicio.then(reservar, reservar);
+    this.filaInicio = agendado.then(
       () => undefined,
       () => undefined,
     );
+    const inicioEm = await agendado;
+    const espera = inicioEm - Date.now();
+    if (espera > 0) await new Promise((r) => setTimeout(r, espera));
+
+    await this.adquirirConcorrencia();
     try {
-      return await trabalho;
+      return await fn();
     } finally {
-      this.ativos--;
+      this.liberarConcorrencia();
     }
   }
 

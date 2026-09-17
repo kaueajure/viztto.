@@ -2,7 +2,7 @@
 import Link from "next/link";
 import type { EstadoCarreira } from "@/dominio/entidades/modelos";
 import { NOMES_ATRIBUTOS } from "@/dominio/entidades/modelos";
-import { OBJETIVOS_PESSOAIS, atributosTecnicaPosicao, objetivoBloqueadoPorCooldown } from "@/simulacao/carreira/acompanhamento";
+import { OBJETIVOS_PESSOAIS, atributosTecnicaPosicao, avaliarDisponibilidadeObjetivo, rotuloObjetivo } from "@/simulacao/carreira/acompanhamento";
 import type { ObjetivoPessoalTipo } from "@/dominio/desenvolvimento";
 import { categoriaPartidaDaSemana } from "@/simulacao/base/formacao";
 import { estaSemClube } from "@/simulacao/carreira/agente-livre";
@@ -236,12 +236,13 @@ export function CentralSemana({ carreira: c }: { carreira: EstadoCarreira }) {
             }}
           >
             <option value="">Escolha seu foco</option>
-            {Object.entries(OBJETIVOS_PESSOAIS).map(([id, nome]) => {
-              const tipo = id as ObjetivoPessoalTipo;
-              const bloqueado = objetivoBloqueadoPorCooldown(c, tipo).bloqueado;
+            {(Object.keys(OBJETIVOS_PESSOAIS) as ObjetivoPessoalTipo[]).map((tipo) => {
+              const disp = avaliarDisponibilidadeObjetivo(c, tipo);
+              const nome = rotuloObjetivo(c, tipo);
               return (
-                <option key={id} value={id} disabled={bloqueado}>
-                  {nome}{bloqueado ? " (já alcançado)" : ""}
+                <option key={tipo} value={tipo} disabled={!disp.disponivel}>
+                  {nome}
+                  {!disp.disponivel && disp.motivo ? ` (${disp.motivo})` : ""}
                 </option>
               );
             })}
@@ -249,7 +250,7 @@ export function CentralSemana({ carreira: c }: { carreira: EstadoCarreira }) {
         </label>
         {o && (
           <p role="status">
-            {OBJETIVOS_PESSOAIS[o.tipo]} ·{" "}
+            {rotuloObjetivo(c, o.tipo)} ·{" "}
             {o.concluido
               ? "Alcançado"
               : `${Math.round(o.progresso)}% do caminho`}

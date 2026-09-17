@@ -30,9 +30,15 @@ export SPORTMONKS_API_TOKEN=seu_token_aqui
 - Mapa estável opcional: `.cache/sportmonks/tm-sm-mapping.json`.
 - Cobertura por liga em `src/dominio/constantes/sportmonks-ligas.ts` (níveis A–D). Atualize `seasonIdPreferido` / `nomeTemporadaBusca` quando a temporada Sportmonks mudar (Brasil ≠ Europa).
 
-### Relatórios
+### Publicação atômica (fase de hardening)
 
-Após o comando: resumo no terminal + `relatorios/sportmonks-matching.json` (matched / unmatched / ambiguous / requests por liga).
+O lote inteiro é preparado em staging. **Nenhum** JSON oficial é alterado até todas as ligas solicitadas validarem. Só então ocorre a publicação controlada (tmp → rename) com rollback se um rename falhar no meio.
+
+Status do lote no resumo:
+
+- `sucesso`
+- `sucesso_fallback_esperado` (cobertura D / token ausente sem base enriquecida prévia)
+- `atualizacao_degradada` / `falha_critica` — **não publica** se a Sportmonks falhar sobre base já enriquecida
 
 ### Metadata de rating (técnica)
 

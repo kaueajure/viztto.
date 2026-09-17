@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { EstadoCarreira } from "@/dominio/entidades/modelos";
-import { criarMercado, marcarRespostasMercadoLidas } from "@/dominio/mercado";
+import { criarMercado, marcarRespostasMercadoLidas, interesseComNovidadeNaoLida } from "@/dominio/mercado";
 import { obterSituacaoJanela } from "@/simulacao/transferencias/necessidade";
 import {
   alertaFimContrato,
@@ -220,15 +220,7 @@ export function badgeMercado(c: EstadoCarreira): number {
     !m.respostaEmprestimoLida
   )
     n += 1;
-  if (
-    m.interesses.some(
-      (i) =>
-        i.status === "sondagem" ||
-        i.status === "negociando" ||
-        (i.status === "interessado" && i.semanasObservando <= 1),
-    )
-  )
-    n += 1;
+  n += m.interesses.filter(interesseComNovidadeNaoLida).length;
   return n;
 }
 

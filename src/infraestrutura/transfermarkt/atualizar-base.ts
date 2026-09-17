@@ -1,6 +1,7 @@
 import "server-only";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { LIGAS_SUPORTADAS } from "@/dominio/constantes/ligas";
 import { TEMPORADAS_INICIAIS } from "@/dominio/constantes/temporadas-iniciais";
 import type { Liga } from "@/dominio/entidades/modelos";
@@ -9,22 +10,33 @@ import {
   lerDadosLiga,
   salvarDadosLiga,
   obterDiretorioImportacao,
+  type DadosLigaImportados,
 } from "@/infraestrutura/persistencia/importacao-futebol";
 import {
   enriquecerLigaComSportmonks,
+  snapshotEstavaEnriquecido,
   type RelatorioMatchingLiga,
+  type StatusEnriquecimento,
 } from "@/infraestrutura/sportmonks/enriquecer-liga";
 import { importarLiga, type ErroImportacaoClube } from "./importar-liga";
+
+export type StatusPublicacaoLote =
+  | "sucesso"
+  | "sucesso_fallback_esperado"
+  | "atualizacao_degradada"
+  | "falha_critica";
 
 export interface ResumoAtualizacaoLiga {
   ligaId: string;
   nome: string;
   publicado: boolean;
+  prontoEmStaging: boolean;
   total: number;
   clubes: number;
   jogadores: number;
   falhas: ErroImportacaoClube[];
   erro?: string;
+  statusEnriquecimento?: StatusEnriquecimento;
   sportmonks?: {
     matched: number;
     unmatched: number;
@@ -33,19 +45,96 @@ export interface ResumoAtualizacaoLiga {
     cobertura: string;
   };
 }
+
 interface OpcoesAtualizacao {
   diretorio?: string;
   ligas?: Liga[];
   importar?: typeof importarLiga;
   informar?: (linha: string) => void;
-  /** Se true, falha sem SPORTMONKS_API_TOKEN. Default: false (fallback TM). */
+  /** Se true, falha sem SPORTMONKS_API_TOKEN. Default: false. */
   exigirSportmonks?: boolean;
   enriquecer?: typeof enriquecerLigaComSportmonks;
 }
+
+interface CandidatoStaging {
+  liga: Liga;
+  dados: DadosLigaImportados;
+  item: ResumoAtualizacaoLiga;
+}
+
+/**
+ * Publica o lote de staging → destino de forma controlada.
+ * Escreve todos os .tmp primeiro; só então renomeia. Em falha no meio dos renames,
+ * tenta rollback dos já publicados a partir do backup em `rollbackDir`.
+ */
+export async function publicarLoteAtomico(
+  candidatos: Array<{ ligaId: string; dados: DadosLigaImportados }>,
+  destino: string,
+  rollbackDir: string,
+): Promise<void> {
+  await mkdir(destino, { recursive: true });
+  await mkdir(rollbackDir, { recursive: true });
+  const preparados: Array<{ ligaId: string; tmp: string; final: string; backup?: string }> =
+    [];
+
+  for (const c of candidatos) {
+    const anterior = await lerDadosLiga(c.ligaId, destino);
+    if (anterior) {
+      await salvarDadosLiga(anterior, rollbackDir);
+    }
+    const final = join(destino, `${c.ligaId}.json`);
+    const tmp = join(destino, `${c.ligaId}-${randomUUID()}.tmp`);
+    await writeFile(tmp, JSON.stringify(c.dados, null, 2), "utf8");
+    preparados.push({
+      ligaId: c.ligaId,
+      tmp,
+      final,
+      backup: anterior ? join(rollbackDir, `${c.ligaId}.json`) : undefined,
+    });
+  }
+
+  const publicados: typeof preparados = [];
+  try {
+    for (const p of preparados) {
+      await rename(p.tmp, p.final);
+      publicados.push(p);
+    }
+  } catch (erro) {
+    for (const p of publicados.reverse()) {
+      if (p.backup) await rename(p.backup, p.final);
+      else await rm(p.final, { force: true });
+    }
+    for (const p of preparados) {
+      await rm(p.tmp, { force: true }).catch(() => undefined);
+    }
+    throw erro;
+  }
+}
+
+function classificarLote(
+  resumo: ResumoAtualizacaoLiga[],
+  abortar: boolean,
+  publicou: boolean,
+): StatusPublicacaoLote {
+  if (abortar || !publicou) return "falha_critica";
+  if (resumo.some((l) => l.statusEnriquecimento === "degradado"))
+    return "atualizacao_degradada";
+  if (
+    resumo.some(
+      (l) =>
+        l.statusEnriquecimento === "fallback_esperado" ||
+        (l.falhas.length > 0 && l.prontoEmStaging),
+    )
+  )
+    return "sucesso_fallback_esperado";
+  return "sucesso";
+}
+
 export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
   const destino = opcoes.diretorio ?? obterDiretorioImportacao();
   await mkdir(join(destino, ".staging"), { recursive: true });
   const staging = await mkdtemp(join(destino, ".staging", "atualizacao-"));
+  const rollbackDir = await mkdtemp(join(destino, ".staging", "rollback-"));
   const importar = opcoes.importar ?? importarLiga;
   const enriquecer = opcoes.enriquecer ?? enriquecerLigaComSportmonks;
   const informar = opcoes.informar ?? console.log;
@@ -53,10 +142,14 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
   const inicio = Date.now();
   const resumo: ResumoAtualizacaoLiga[] = [];
   const relatoriosMatching: RelatorioMatchingLiga[] = [];
+  const prontos: CandidatoStaging[] = [];
   let abortarTudo = false;
+  let motivoAbort = "";
+
   informar(
-    "════════════════════════════════════════\nVIZTTO — ATUALIZAÇÃO DA BASE DE FUTEBOL\nTransfermarkt + Sportmonks (enrichment)\n════════════════════════════════════════",
+    "════════════════════════════════════════\nVIZTTO — ATUALIZAÇÃO DA BASE DE FUTEBOL\nTransfermarkt + Sportmonks (enrichment)\nLote atômico: nada oficial até validar tudo\n════════════════════════════════════════",
   );
+
   for (const [indice, liga] of ligas.entries()) {
     if (abortarTudo) break;
     informar(
@@ -66,6 +159,7 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
       ligaId: liga.id,
       nome: liga.nome,
       publicado: false,
+      prontoEmStaging: false,
       total: 0,
       clubes: 0,
       jogadores: 0,
@@ -92,12 +186,15 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
       const temporadaLabel =
         TEMPORADAS_INICIAIS[liga.id]?.temporadaTransfermarkt ??
         String(candidato.temporada);
+      const anteriorOficial = await lerDadosLiga(liga.id, destino);
       const enriquecido = await enriquecer(liga, candidato.clubes, {
         informar,
         exigirToken: opcoes.exigirSportmonks,
         temporadaLabel,
+        anteriorEnriquecido: snapshotEstavaEnriquecido(anteriorOficial?.clubes),
       });
       relatoriosMatching.push(enriquecido.relatorio);
+      item.statusEnriquecimento = enriquecido.status;
       item.sportmonks = {
         matched: enriquecido.relatorio.matched.length,
         unmatched: enriquecido.relatorio.unmatched.length,
@@ -105,17 +202,19 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
         requests: enriquecido.relatorio.requests,
         cobertura: enriquecido.relatorio.cobertura,
       };
+
       if (enriquecido.abortarPublicacao) {
         abortarTudo = true;
-        item.erro =
+        motivoAbort =
           enriquecido.erro ??
-          "Falha crítica Sportmonks — publicação abortada para preservar snapshots.";
+          "Falha crítica Sportmonks — lote não será publicado.";
+        item.erro = motivoAbort;
         informar(`✗ ${liga.nome}: ${item.erro}`);
         resumo.push(item);
         break;
       }
-      candidato.clubes = enriquecido.clubes;
 
+      candidato.clubes = enriquecido.clubes;
       const validado = validarDisponibilidadeLiga(liga, candidato);
       if (!validado)
         throw new Error(
@@ -128,19 +227,23 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
         falhas: resultado.erros.length,
         clubeAtual: null,
       };
-      await salvarDadosLiga(validado, destino);
-      item.publicado = true;
+      // Persiste apenas no staging — oficial intacto até o lote fechar.
+      await salvarDadosLiga(validado, staging);
+      item.prontoEmStaging = true;
       item.total = resultado.progresso.total;
       item.clubes = validado.clubes.length;
       item.jogadores = validado.clubes.reduce(
         (total, clube) => total + clube.elenco.length,
         0,
       );
+      prontos.push({ liga, dados: validado, item });
       informar(
-        `${item.falhas.length ? "⚠" : "✓"} ${liga.nome}: ${item.clubes}/${item.total} clubes, ${item.jogadores} jogadores.`,
+        `${item.falhas.length ? "⚠" : "✓"} ${liga.nome}: staging OK · ${item.clubes}/${item.total} clubes · ${item.statusEnriquecimento ?? "ok"}`,
       );
     } catch (erro) {
+      abortarTudo = true;
       item.erro = erro instanceof Error ? erro.message : String(erro);
+      motivoAbort = item.erro;
       try {
         item.falhas =
           (await lerDadosLiga(liga.id, staging))?.erros ?? item.falhas;
@@ -148,12 +251,42 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
         item.erro += ` Falha ao ler staging: ${leitura instanceof Error ? leitura.message : String(leitura)}`;
       }
       informar(
-        `✗ ${liga.nome}: ${item.erro} Snapshot anterior preservado, se existente.`,
+        `✗ ${liga.nome}: ${item.erro} — lote abortado; oficiais intactos.`,
       );
     }
     for (const falha of item.falhas)
       informar(`  - ${falha.nome}: ${falha.motivo}`);
     resumo.push(item);
+  }
+
+  // Lote incompleto: qualquer liga solicitada que não entrou em staging → abort.
+  if (!abortarTudo && prontos.length !== ligas.length) {
+    abortarTudo = true;
+    motivoAbort = "Nem todas as ligas solicitadas ficaram prontas em staging.";
+  }
+
+  let publicou = false;
+  if (!abortarTudo && prontos.length === ligas.length) {
+    try {
+      informar(`\nPublicando lote atômico (${prontos.length} ligas)…`);
+      await publicarLoteAtomico(
+        prontos.map((p) => ({ ligaId: p.liga.id, dados: p.dados })),
+        destino,
+        rollbackDir,
+      );
+      publicou = true;
+      for (const p of prontos) p.item.publicado = true;
+      informar("✓ Lote publicado. Base oficial atualizada.");
+    } catch (erro) {
+      abortarTudo = true;
+      motivoAbort =
+        erro instanceof Error ? erro.message : "Falha na publicação atômica.";
+      informar(`✗ Publicação abortada/revertida: ${motivoAbort}`);
+    }
+  } else {
+    informar(
+      `\n✗ Nenhuma alteração oficial. ${motivoAbort || "Lote incompleto."}`,
+    );
   }
 
   try {
@@ -164,6 +297,8 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
       JSON.stringify(
         {
           geradoEm: new Date().toISOString(),
+          statusLote: classificarLote(resumo, abortarTudo, publicou),
+          motivoAbort: motivoAbort || null,
           ligas: relatoriosMatching.map((r) => ({
             ligaId: r.ligaId,
             cobertura: r.cobertura,
@@ -185,11 +320,7 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
     /* best-effort */
   }
 
-  const temFalhas =
-    abortarTudo ||
-    resumo.some(
-      (l) => !l.publicado || l.falhas.length > 0 || l.clubes !== l.total,
-    );
+  const statusLote = classificarLote(resumo, abortarTudo, publicou);
   const duracaoSegundos = Math.round((Date.now() - inicio) / 1000);
   const jogadoresTm = resumo.reduce((s, l) => s + l.jogadores, 0);
   const matches = resumo.reduce((s, l) => s + (l.sportmonks?.matched ?? 0), 0);
@@ -200,8 +331,9 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
   informar(
     "\n════════════════════════════════════════\nATUALIZAÇÃO DE DADOS CONCLUÍDA\n════════════════════════════════════════",
   );
+  informar(`Status do lote: ${statusLote.toUpperCase()}`);
   informar(
-    `Transfermarkt:\n${resumo.filter((l) => l.publicado).length}/${resumo.length} ligas publicadas\n${resumo.reduce((s, l) => s + l.clubes, 0)} clubes\n${jogadoresTm} jogadores`,
+    `Transfermarkt:\n${resumo.filter((l) => l.publicado).length}/${ligas.length} ligas publicadas\n${resumo.reduce((s, l) => s + l.clubes, 0)} clubes\n${jogadoresTm} jogadores`,
   );
   informar(
     `Sportmonks:\n${matches} matches confiáveis\n${unmatched} unmatched/fallback\n${resumo.reduce((s, l) => s + (l.sportmonks?.requests ?? 0), 0)} requests`,
@@ -213,7 +345,23 @@ export async function atualizarBaseFutebol(opcoes: OpcoesAtualizacao = {}) {
   informar(
     `Tempo: ${Math.floor(duracaoSegundos / 60)}m ${duracaoSegundos % 60}s`,
   );
-  if (!temFalhas) await rm(staging, { recursive: true, force: true });
-  else informar(`Diagnóstico da tentativa: ${staging}`);
-  return { ligas: resumo, temFalhas, duracaoSegundos, abortarTudo };
+  if (publicou && !abortarTudo) {
+    await rm(staging, { recursive: true, force: true });
+    await rm(rollbackDir, { recursive: true, force: true });
+  } else {
+    informar(`Diagnóstico: staging=${staging}`);
+  }
+  return {
+    ligas: resumo,
+    temFalhas:
+      !publicou ||
+      statusLote === "atualizacao_degradada" ||
+      resumo.some(
+        (l) => !l.publicado || l.falhas.length > 0 || l.clubes !== l.total,
+      ),
+    duracaoSegundos,
+    abortarTudo,
+    publicou,
+    statusLote,
+  };
 }

@@ -93,23 +93,44 @@ export function PainelJogador({ carreira: c }: { carreira: EstadoCarreira }) {
           <Barra nome="Condicionamento" valor={j.condicionamento} />
           <Barra nome="Fadiga" valor={j.fadiga} />
           <Barra nome="Ritmo de jogo" valor={j.ritmo} />
-          <Barra nome="Confiança do treinador" valor={j.confianca} />
+          {!livre && (
+            <Barra nome="Confiança do treinador" valor={j.confianca} />
+          )}
         </section>
         <section className="painel">
           <h2>RELACIONAMENTOS</h2>
           <dl className="ficha">
-            <div>
-              <dt>Treinador</dt>
-              <dd>{rotuloRelacao(rel.treinador)}</dd>
-            </div>
-            <div>
-              <dt>Diretoria</dt>
-              <dd>{rotuloRelacao(rel.diretoria)}</dd>
-            </div>
-            <div>
-              <dt>Agente</dt>
-              <dd>{rotuloRelacao(rel.agente)}</dd>
-            </div>
+            {livre ? (
+              <>
+                <div>
+                  <dt>Agente</dt>
+                  <dd>{rotuloRelacao(rel.agente)}</dd>
+                </div>
+                <div>
+                  <dt>Treinador (último clube)</dt>
+                  <dd>{rotuloRelacao(rel.treinador)}</dd>
+                </div>
+                <div>
+                  <dt>Diretoria (último clube)</dt>
+                  <dd>{rotuloRelacao(rel.diretoria)}</dd>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <dt>Treinador</dt>
+                  <dd>{rotuloRelacao(rel.treinador)}</dd>
+                </div>
+                <div>
+                  <dt>Diretoria</dt>
+                  <dd>{rotuloRelacao(rel.diretoria)}</dd>
+                </div>
+                <div>
+                  <dt>Agente</dt>
+                  <dd>{rotuloRelacao(rel.agente)}</dd>
+                </div>
+              </>
+            )}
             <div>
               <dt>Contrato</dt>
               <dd>

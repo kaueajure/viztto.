@@ -1,4 +1,5 @@
 import type {
+  Atributos,
   Clube,
   Escalacao,
   Jogador,
@@ -144,40 +145,57 @@ function pesosSetor(posicao: Posicao): {
 }
 
 /**
- * Ajusta forças do clube do usuário conforme minutos e atributos.
- * Titulares já contados na sincronização: refina por attrs e escala por minutos.
- * Entrada do banco: adiciona contribuição proporcional aos minutos.
+ * Contribuição setorial ponderada por minutos no slot.
+ * Titular A 60' + reserva B 30' ≈ A*(60/90) + B*(30/90).
+ *
+ * `substituido`: jogador NPC que saiu (overall/attrs); se omitido no banco,
+ * usa a média do setor do clube como proxy do titular removido.
  */
 export function ajustarClubePeloJogador(
   clube: Clube,
   jogador: Jogador,
   minutos: number,
   jaNaEscalacao: boolean,
+  substituido?: { overall: number; atributos?: Atributos; posicao?: Posicao } | null,
 ): Clube {
   if (minutos <= 0 && !jaNaEscalacao) return clube;
 
   const prop = limitar(minutos / 90, 0, 1);
+  const propRestante = 1 - prop;
   const fator = fatorEstadoJogador(jogador);
   const q = qualidadeSetorialJogador(jogador);
   const pesos = pesosSetor(jogador.posicao);
-  const ataqueEfetivo = q.ataque * fator;
-  const meioEfetivo = q.meio * fator;
-  const defesaEfetivo = q.defesa * fator;
-  const refEfetivo = jogador.overall * fator;
+  const ataqueUser = q.ataque * fator;
+  const meioUser = q.meio * fator;
+  const defesaUser = q.defesa * fator;
+  const refUser = jogador.overall * fator;
 
   let dAtaque: number;
   let dMeio: number;
   let dDefesa: number;
 
   if (jaNaEscalacao) {
-    // Força já inclui overall×estado; troca por qualidade×estado×minutos.
-    dAtaque = (ataqueEfetivo * prop - refEfetivo) * pesos.ataque;
-    dMeio = (meioEfetivo * prop - refEfetivo) * pesos.meio;
-    dDefesa = (defesaEfetivo * prop - refEfetivo) * pesos.defesa;
+    // Já embutido com overall×90': troca por qualidade×minutos (tempo fora sai do slot).
+    dAtaque = (ataqueUser * prop - refUser) * pesos.ataque;
+    dMeio = (meioUser * prop - refUser) * pesos.meio;
+    dDefesa = (defesaUser * prop - refUser) * pesos.defesa;
   } else {
-    dAtaque = (ataqueEfetivo - clube.forcaAtaque) * pesos.ataque * prop;
-    dMeio = (meioEfetivo - clube.forcaMeio) * pesos.meio * prop;
-    dDefesa = (defesaEfetivo - clube.forcaDefesa) * pesos.defesa * prop;
+    // Banco: força ainda contém o titular substituído por 90'.
+    // Slot efetivo = substituído*(1-prop) + usuário*prop.
+    const ovSub = substituido?.overall ?? clube.forcaGeral;
+    const qSub = substituido?.atributos
+      ? qualidadeSetorialDeAtributos(
+          substituido.atributos,
+          substituido.posicao ?? jogador.posicao,
+          ovSub,
+        )
+      : { ataque: ovSub, meio: ovSub, defesa: ovSub };
+    const ataqueSlot = qSub.ataque * propRestante + ataqueUser * prop;
+    const meioSlot = qSub.meio * propRestante + meioUser * prop;
+    const defesaSlot = qSub.defesa * propRestante + defesaUser * prop;
+    dAtaque = (ataqueSlot - ovSub) * pesos.ataque;
+    dMeio = (meioSlot - ovSub) * pesos.meio;
+    dDefesa = (defesaSlot - ovSub) * pesos.defesa;
   }
 
   return {
@@ -185,6 +203,43 @@ export function ajustarClubePeloJogador(
     forcaAtaque: limitar(clube.forcaAtaque + dAtaque, 35, 99),
     forcaMeio: limitar(clube.forcaMeio + dMeio, 35, 99),
     forcaDefesa: limitar(clube.forcaDefesa + dDefesa, 35, 99),
+  };
+}
+
+function qualidadeSetorialDeAtributos(
+  a: Atributos,
+  posicao: Posicao,
+  fallback: number,
+): { ataque: number; meio: number; defesa: number } {
+  return qualidadeSetorialJogador({
+    posicao,
+    overall: fallback,
+    atributos: a,
+  } as Jogador);
+}
+
+/** NPC titular mais próximo da posição do usuário (proxy do substituído). */
+export function aproximarTitularSubstituido(
+  clube: Clube,
+  posicao: Posicao,
+): { overall: number; atributos?: Atributos; posicao?: Posicao } | null {
+  const ids = [
+    ...(clube.goleiroTitularId ? [clube.goleiroTitularId] : []),
+    ...clube.titularesIds,
+  ].filter((id) => id !== "usuario");
+  const elenco = clube.elenco;
+  const candidatos = ids
+    .map((id) => elenco.find((j) => j.id === id))
+    .filter(Boolean);
+  if (!candidatos.length) return null;
+  const mesmoGrupo = candidatos.filter(
+    (j) => j!.posicaoPrincipal === posicao || j!.posicoesSecundarias.includes(posicao),
+  );
+  const escolhido = (mesmoGrupo[0] ?? candidatos[0])!;
+  return {
+    overall: escolhido.overall,
+    atributos: escolhido.atributos,
+    posicao: escolhido.posicaoPrincipal,
   };
 }
 
@@ -367,11 +422,15 @@ export function simularPartida(
     const jaNaEscalacao =
       clube.titularesIds.includes("usuario") ||
       clube.goleiroTitularId === "usuario";
+    const substituido = !jaNaEscalacao
+      ? aproximarTitularSubstituido(clube, jogador.posicao)
+      : null;
     const clubeAjustado = ajustarClubePeloJogador(
       clube,
       jogador,
       minutos,
       jaNaEscalacao,
+      substituido,
     );
     if (clubeJogadorId === mandante.id) mandanteEfetivo = clubeAjustado;
     else visitanteEfetivo = clubeAjustado;

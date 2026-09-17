@@ -7,6 +7,7 @@ import type {
 import {
   criarMercado,
   PAPEIS_MERCADO,
+  marcarNovidadeStatusInteresse,
   type InteresseClube,
   type PreferenciasCarreira,
   type TermosContrato,
@@ -26,6 +27,10 @@ import {
   estaSemClube,
   semanasSemClube,
 } from "@/simulacao/carreira/agente-livre";
+import {
+  clubeDoContrato,
+  clubesDePaisesDiferentes,
+} from "./pais-clube";
 
 const LIMIAR_ELEGIBILIDADE = 38;
 const MAX_NOVOS_INTERESSES_SEMANA = 2;
@@ -314,8 +319,12 @@ export function avaliarAlvo(c: EstadoCarreira, clube: Clube) {
     ? Math.max(500, j.valorMercado * 0.0015)
     : Math.max(500, j.contrato.salario * 1.1, j.valorMercado * 0.0015);
   const salario = Math.round(salarioRef);
+  const donoContrato = clubeDoContrato(c);
   const preContrato =
-    !livre && diasContrato(c) <= 180 && clube.ligaId !== c.liga.id;
+    !livre &&
+    diasContrato(c) <= 180 &&
+    !!donoContrato &&
+    clubesDePaisesDiferentes(donoContrato, clube);
   const custo = livre || preContrato ? 0 : precoPedido(c);
   const cabe =
     salario <= tetoSalario(clube) && custo + salario * 52 <= clube.orcamento;
@@ -445,6 +454,7 @@ function observar(
     resposta: a.resposta,
     papel: a.papel,
     reabrirEm: !a.viavel ? somarDias(c.dataAtual, 56) : undefined,
+    ...(conhecido ? { novidadeEm: c.dataAtual } : {}),
   };
   c.mercado.interesses.push(i);
   registrarNegociacao(
@@ -801,7 +811,11 @@ function negociarClubes(
     };
     c.propostas.push(proposta);
     i.propostaId = proposta.id;
-    i.status = "negociando";
+    {
+      const anterior = i.status;
+      i.status = "negociando";
+      marcarNovidadeStatusInteresse(i, anterior, c.dataAtual);
+    }
     registrarNegociacao(
       c,
       clube.id,
@@ -1076,7 +1090,9 @@ export function avancarInteresses(
         i.resposta =
           "Há sondagem avançada, mas novas propostas espontâneas estão bloqueadas pelo seu agente.";
       } else {
+        const anterior = i.status;
         i.status = "negociando";
+        marcarNovidadeStatusInteresse(i, anterior, c.dataAtual);
         registrarNegociacao(
           c,
           clube.id,
@@ -1086,14 +1102,18 @@ export function avancarInteresses(
         );
       }
     } else if (i.status === "interessado" && i.nivelInteresse >= 45) {
+      const anterior = i.status;
       i.status = "sondagem";
+      marcarNovidadeStatusInteresse(i, anterior, c.dataAtual);
       registrarNegociacao(
         c,
         clube.id,
         "Após acompanhar suas atuações, o clube fez uma sondagem ao agente.",
       );
     } else if (i.status === "observando" && i.nivelInteresse >= 20) {
+      const anterior = i.status;
       i.status = "interessado";
+      marcarNovidadeStatusInteresse(i, anterior, c.dataAtual);
       registrarNegociacao(
         c,
         clube.id,

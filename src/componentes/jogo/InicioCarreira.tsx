@@ -15,6 +15,7 @@ import {
   estaSemClube,
   semanasSemClube,
 } from "@/simulacao/carreira/agente-livre";
+import { categoriaPartidaDaSemana } from "@/simulacao/base/formacao";
 import { formatarData } from "@/utilitarios/formatacao";
 import { FOCOS_TREINO } from "@/simulacao/treinamento/treinamento";
 export function InicioCarreira({
@@ -29,8 +30,8 @@ export function InicioCarreira({
   abrirResumo: () => void;
 }) {
   const j = c.jogador,
-    base = j.categoria === "base",
     livre = estaSemClube(c),
+    base = categoriaPartidaDaSemana(c) === "base",
     clube = livre
       ? undefined
       : c.clubes.find((cl) => cl.id === c.clubeAtualId);

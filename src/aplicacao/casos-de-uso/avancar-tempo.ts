@@ -254,6 +254,10 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
   carreira.dataAtual = somarDias(carreira.dataAtual, 7);
   carreira.ultimaPartidaId = null;
 
+  // Pré-contratos / acordos com efetivarEm na nova data — antes de treino/partida.
+  carreira = efetivarPreContratos(carreira);
+  j = carreira.jogador;
+
   // Resolve fim de contrato ANTES de treino/partidas (sem vínculo provisório).
   if (
     !estaSemClube(carreira) &&
@@ -264,8 +268,6 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
       j.contrato.dataTermino = somarDias(carreira.dataAtual, 365);
     } else {
       if (carreira.mercado.emprestimo) delete carreira.mercado.emprestimo;
-      carreira = efetivarPreContratos(carreira);
-      j = carreira.jogador;
       if (
         !estaSemClube(carreira) &&
         j.contrato.dataTermino < carreira.dataAtual

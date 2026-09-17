@@ -374,11 +374,13 @@ describe("Rating Engine Viztto", () => {
     expect(poucos.metadata.source).toMatch(/hybrid|sportmonks|transfermarkt/);
     expect(poucos.overall).toBeLessThanOrEqual(muitos.overall + 3);
     expect(poucos.atributos.finalizacao).toBeLessThan(95);
+    expect(poucos.metadata.confidence).toBe("low");
   });
 
   it("fallback Transfermarkt sem stats", () => {
     const r = calcularRatingViztto(entradaRating({ stats: null, cobertura: "D" }));
     expect(r.metadata.source).toBe("transfermarkt-estimated");
+    expect(r.metadata.confidence).toBe("low");
     expect(r.overall).toBeGreaterThan(0);
     expect(r.potencial).toBeGreaterThanOrEqual(r.overall);
   });
@@ -632,9 +634,11 @@ describe("Enriquecimento + snapshots + atomicidade", () => {
           ambiguous: [],
           requests: 0,
         },
+        status: "ok" as const,
       }),
     });
     expect(resultado.ligas[0]!.publicado).toBe(true);
+    expect(resultado.publicou).toBe(true);
     const snap = await lerDadosLiga(liga.id, dir);
     expect(
       (snap!.clubes[0]!.elenco[0] as unknown as { overall: number }).overall,

@@ -5,6 +5,7 @@ import type { EstadoCarreira } from "@/dominio/entidades/modelos";
 import {
   criarMercado,
   PREFERENCIAS_CARREIRA,
+  interesseComNovidadeNaoLida,
   type PreferenciasCarreira,
 } from "@/dominio/mercado";
 import { useJogoStore } from "@/estado/jogo-store";
@@ -41,8 +42,19 @@ export function MercadoAgente({ carreira: c }: { carreira: EstadoCarreira }) {
   const erro = useJogoStore((s) => s.erro);
   const m = c.mercado ?? criarMercado();
   useEffect(() => {
-    if (!m.respostaSaidaLida || !m.respostaEmprestimoLida) marcarMercadoLido();
-  }, [m.respostaSaidaLida, m.respostaEmprestimoLida, marcarMercadoLido]);
+    const temNovidadeInteresse = m.interesses.some(interesseComNovidadeNaoLida);
+    if (
+      !m.respostaSaidaLida ||
+      !m.respostaEmprestimoLida ||
+      temNovidadeInteresse
+    )
+      marcarMercadoLido();
+  }, [
+    m.respostaSaidaLida,
+    m.respostaEmprestimoLida,
+    m.interesses,
+    marcarMercadoLido,
+  ]);
   const [aviso, setAviso] = useState("");
   const [confirmarAposentadoria, setConfirmarAposentadoria] = useState(false);
   const livre = estaSemClube(c);

@@ -1,4 +1,5 @@
 import type {
+  Atributos,
   EstatisticasJogador,
   JogadorMundo,
   Liga,
@@ -214,6 +215,8 @@ export function criarJogadorMundo(
   bruto: DadosImportadosJogador & {
     overall?: number;
     potencial?: number;
+    atributos?: Atributos;
+    ratingMetadata?: JogadorMundo["ratingMetadata"];
   },
   contexto: {
     clubeId: string;
@@ -275,6 +278,8 @@ export function criarJogadorMundo(
     clubeId: contexto.clubeId,
     overall,
     potencial,
+    ...(bruto.atributos ? { atributos: bruto.atributos } : {}),
+    ...(bruto.ratingMetadata ? { ratingMetadata: bruto.ratingMetadata } : {}),
     forma: 55 + (overall % 10),
     moral: 60,
     condicionamento: 88,

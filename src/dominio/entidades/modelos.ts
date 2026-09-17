@@ -90,6 +90,15 @@ export interface JogadorMundo {
   clubeId: string | null;
   overall: number;
   potencial: number;
+  /** Atributos detalhados do Rating Engine (opcional; saves antigos sem isso). */
+  atributos?: Atributos;
+  ratingMetadata?: {
+    source: string;
+    confidence: string;
+    minutes?: number;
+    appearances?: number;
+    season?: string;
+  };
   forma: number;
   moral: number;
   condicionamento: number;

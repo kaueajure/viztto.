@@ -116,7 +116,9 @@ function overallPriorMercado(entrada: EntradaRatingEngine): number {
   const aleatorio = new GeradorAleatorio(gerarSeedNumerica(`ov-${entrada.seed}`));
   const valor = Math.max(0, entrada.valorMercado ?? 0);
   const logValor =
-    valor > 0 ? Math.log10(valor + 1) : 5.5 + aleatorio.proximo() * 0.6;
+    valor > 0
+      ? Math.log10(valor + 1)
+      : 4.6 + aleatorio.proximo() * 0.5; // sem MV: prior baixo (~40–50k), não mid-tier
   let overall = 38 + logValor * 6.2;
   const idade = entrada.idade;
   if (idade <= 18) overall -= 4;
@@ -367,7 +369,7 @@ export function calcularRatingViztto(entrada: EntradaRatingEngine): ResultadoRat
     minutos >= CONST.minutosMedia
   )
     confidence = "medium";
-  else if (source === "transfermarkt-estimated") confidence = "medium";
+  else if (source === "transfermarkt-estimated") confidence = "low";
 
   if (entrada.cobertura === "C" || entrada.cobertura === "D")
     confidence = confidence === "high" ? "medium" : "low";
@@ -390,52 +392,167 @@ export function calcularRatingViztto(entrada: EntradaRatingEngine): ResultadoRat
   };
 }
 
-/** Extrai stats conhecidas de details Sportmonks (type codes/names variáveis). */
+/** Aliases explícitos por métrica — sem substring genérica perigosa. */
+const ALIASES_STATS: Record<
+  keyof Pick<
+    StatsSportmonksNormalizadas,
+    | "goals"
+    | "assists"
+    | "shots"
+    | "shotsOnTarget"
+    | "keyPasses"
+    | "passesAccurate"
+    | "passesTotal"
+    | "longBalls"
+    | "dribblesAttempted"
+    | "dribblesSuccess"
+    | "tackles"
+    | "tacklesWon"
+    | "interceptions"
+    | "clearances"
+    | "aerialsWon"
+    | "duelsWon"
+    | "saves"
+    | "goalsConceded"
+    | "cleanSheets"
+    | "rating"
+    | "xg"
+    | "xa"
+    | "minutes"
+    | "appearances"
+  >,
+  string[]
+> = {
+  goals: ["goals", "goals_total", "goal"],
+  goalsConceded: ["goals_conceded", "goalsconceded", "conceded"],
+  xg: ["expected_goals", "expectedgoals", "xg"],
+  assists: ["assists", "assist"],
+  xa: ["expected_assists", "expectedassists", "xa"],
+  shots: ["shots_total", "total_shots", "shots"],
+  shotsOnTarget: ["shots_on_target", "shotsontarget", "on_target"],
+  keyPasses: ["key_passes", "keypasses", "key_pass"],
+  passesAccurate: ["accurate_passes", "passes_accurate", "accuratepasses"],
+  passesTotal: ["total_passes", "passes_total", "passes"],
+  longBalls: ["long_balls", "longballs"],
+  dribblesAttempted: ["dribbles_attempts", "dribble_attempts", "dribbles_attempted"],
+  dribblesSuccess: ["dribbles_success", "successful_dribbles", "dribbles_succeeded"],
+  tackles: ["tackles", "tackles_total"],
+  tacklesWon: ["tackles_won", "won_tackles", "tackleswon"],
+  interceptions: ["interceptions", "interception"],
+  clearances: ["clearances", "clearance"],
+  aerialsWon: ["aerials_won", "aerial_won", "aerialswon"],
+  duelsWon: ["duels_won", "duelswon"],
+  saves: ["saves", "goalkeeper_saves", "gk_saves"],
+  cleanSheets: ["clean_sheets", "cleansheets", "clean_sheet"],
+  rating: ["rating", "average_rating"],
+  minutes: ["minutes_played", "minutes"],
+  appearances: ["appearances", "apps", "matches_played"],
+};
+
+function tokenizarTipo(d: {
+  type_id?: number;
+  type?: { code?: string; name?: string; developer_name?: string };
+}): { developer: string; code: string; name: string } {
+  return {
+    developer: (d.type?.developer_name ?? "").toLowerCase().trim(),
+    code: (d.type?.code ?? "").toLowerCase().trim(),
+    name: (d.type?.name ?? "")
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_|_$/g, ""),
+  };
+}
+
+function valorDetail(v: unknown): number | undefined {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (v && typeof v === "object" && "total" in (v as object)) {
+    const n = Number((v as { total: number }).total);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  if (typeof v === "string" && !Number.isNaN(Number(v))) return Number(v);
+  return undefined;
+}
+
+/**
+ * Resolve uma métrica de forma determinística:
+ * 1) developer_name exato 2) code exato 3) alias 4) name normalizado exato.
+ * Nunca usa includes genérico (evita goal ⊂ goals_conceded).
+ */
+export function resolverStatDetail(
+  details: Array<{
+    type_id?: number;
+    value?: unknown;
+    type?: { code?: string; name?: string; developer_name?: string };
+  }>,
+  aliases: string[],
+): number | undefined {
+  const wanted = new Set(aliases.map((a) => a.toLowerCase()));
+  // Pass 1: developer_name
+  for (const d of details) {
+    const t = tokenizarTipo(d);
+    if (t.developer && wanted.has(t.developer)) return valorDetail(d.value);
+  }
+  // Pass 2: code
+  for (const d of details) {
+    const t = tokenizarTipo(d);
+    if (t.code && wanted.has(t.code)) return valorDetail(d.value);
+  }
+  // Pass 3–4: name normalizado / alias
+  for (const d of details) {
+    const t = tokenizarTipo(d);
+    if (t.name && wanted.has(t.name)) return valorDetail(d.value);
+  }
+  return undefined;
+}
+
+/** Extrai stats conhecidas de details Sportmonks (ordem-independente). */
 export function normalizarDetailsSportmonks(
-  details: Array<{ type_id?: number; value?: unknown; type?: { code?: string; name?: string; developer_name?: string } }> | undefined,
+  details:
+    | Array<{
+        type_id?: number;
+        value?: unknown;
+        type?: { code?: string; name?: string; developer_name?: string };
+      }>
+    | undefined,
   appearances = 0,
   minutes = 0,
 ): StatsSportmonksNormalizadas {
-  const stats: StatsSportmonksNormalizadas = { appearances, minutes, goals: 0, assists: 0 };
-  if (!details?.length) return stats;
-  const get = (predicates: string[]): number | undefined => {
-    for (const d of details) {
-      const code = `${d.type?.developer_name ?? ""} ${d.type?.code ?? ""} ${d.type?.name ?? ""}`.toLowerCase();
-      if (predicates.some((p) => code.includes(p))) {
-        const v = d.value;
-        if (typeof v === "number") return v;
-        if (v && typeof v === "object" && "total" in (v as object))
-          return Number((v as { total: number }).total);
-        if (typeof v === "string" && !Number.isNaN(Number(v))) return Number(v);
-      }
-    }
-    return undefined;
+  const stats: StatsSportmonksNormalizadas = {
+    appearances,
+    minutes,
+    goals: 0,
+    assists: 0,
   };
-  stats.goals = get(["goal", "goals"]) ?? 0;
-  stats.assists = get(["assist"]) ?? 0;
-  stats.shots = get(["shots_total", "total shots", "shots"]);
-  stats.shotsOnTarget = get(["shots_on_target", "on target"]);
-  stats.keyPasses = get(["key_pass", "key passes"]);
-  stats.passesAccurate = get(["accurate_passes", "passes accurate"]);
-  stats.passesTotal = get(["total_passes", "passes total", "passes"]);
-  stats.longBalls = get(["long_balls", "long balls"]);
-  stats.dribblesAttempted = get(["dribbles_attempts", "dribble attempts", "dribbles"]);
-  stats.dribblesSuccess = get(["dribbles_success", "successful dribbles"]);
-  stats.tackles = get(["tackles"]);
-  stats.tacklesWon = get(["tackles_won", "won tackles"]);
-  stats.interceptions = get(["interception"]);
-  stats.clearances = get(["clearance"]);
-  stats.aerialsWon = get(["aerials_won", "aerial won"]);
-  stats.duelsWon = get(["duels_won"]);
-  stats.saves = get(["saves", "goalkeeper saves"]);
-  stats.goalsConceded = get(["goals_conceded", "conceded"]);
-  stats.cleanSheets = get(["clean_sheet"]);
-  stats.rating = get(["rating"]);
-  stats.xg = get(["expected_goals", "xg"]);
-  stats.xa = get(["expected_assists", "xa"]);
-  const mins = get(["minutes_played", "minutes"]);
+  if (!details?.length) return stats;
+  const get = (key: keyof typeof ALIASES_STATS) =>
+    resolverStatDetail(details, ALIASES_STATS[key]);
+
+  stats.goals = get("goals") ?? 0;
+  stats.assists = get("assists") ?? 0;
+  stats.shots = get("shots");
+  stats.shotsOnTarget = get("shotsOnTarget");
+  stats.keyPasses = get("keyPasses");
+  stats.passesAccurate = get("passesAccurate");
+  stats.passesTotal = get("passesTotal");
+  stats.longBalls = get("longBalls");
+  stats.dribblesAttempted = get("dribblesAttempted");
+  stats.dribblesSuccess = get("dribblesSuccess");
+  stats.tackles = get("tackles");
+  stats.tacklesWon = get("tacklesWon");
+  stats.interceptions = get("interceptions");
+  stats.clearances = get("clearances");
+  stats.aerialsWon = get("aerialsWon");
+  stats.duelsWon = get("duelsWon");
+  stats.saves = get("saves");
+  stats.goalsConceded = get("goalsConceded");
+  stats.cleanSheets = get("cleanSheets");
+  stats.rating = get("rating");
+  stats.xg = get("xg");
+  stats.xa = get("xa");
+  const mins = get("minutes");
   if (mins != null) stats.minutes = mins;
-  const apps = get(["appearances", "matches"]);
+  const apps = get("appearances");
   if (apps != null) stats.appearances = apps;
   return stats;
 }

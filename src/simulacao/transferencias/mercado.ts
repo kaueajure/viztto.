@@ -28,6 +28,10 @@ import { registrarEvento } from "../eventos/eventos";
 import { reescalarClube } from "../elenco/escalacao-elenco";
 import { sincronizarForcaClube } from "../elenco/forca-escalacao";
 import {
+  clubeDoContrato,
+  clubesDePaisesDiferentes,
+} from "./pais-clube";
+import {
   clubePodePagar,
   interesseEmJogador,
   ligaDoClube,
@@ -345,6 +349,7 @@ export function responderProposta(
   estado: EstadoCarreira,
   id: string,
   aceitar: boolean,
+  opcoes?: { forcarImediato?: boolean },
 ): EstadoCarreira {
   const carreira = structuredClone(estado),
     proposta = carreira.propostas.find((p) => p.id === id);
@@ -367,22 +372,25 @@ export function responderProposta(
     throw new Error(
       "Você já possui um acordo definitivo e deve cumprir o compromisso.",
     );
-  if (
-    aceitar &&
-    proposta.preContrato &&
-    (!proposta.efetivarEm ||
+  if (aceitar && proposta.preContrato) {
+    const dono = clubeDoContrato(carreira);
+    const destinoPre = carreira.clubes.find((cl) => cl.id === proposta.clubeId);
+    if (
+      !proposta.efetivarEm ||
       proposta.valorTransferencia !== 0 ||
       proposta.efetivarEm <= carreira.jogador.contrato.dataTermino ||
       (Date.parse(carreira.jogador.contrato.dataTermino) -
         Date.parse(carreira.dataAtual)) /
         86400000 >
         180 ||
-      carreira.clubes.find((cl) => cl.id === proposta.clubeId)?.ligaId ===
-        carreira.liga.id)
-  )
-    throw new Error(
-      "Este pré-contrato não atende às condições de contratação internacional ao fim do vínculo.",
-    );
+      !dono ||
+      !destinoPre ||
+      !clubesDePaisesDiferentes(dono, destinoPre)
+    )
+      throw new Error(
+        "Este pré-contrato não atende às condições de contratação internacional ao fim do vínculo.",
+      );
+  }
   if (
     aceitar &&
     proposta.preContrato &&
@@ -438,12 +446,22 @@ export function responderProposta(
   }
   const j = carreira.jogador;
   if (proposta.tipo === "renovacao") {
+    if (estaSemClube(carreira))
+      throw new Error(
+        "Você está sem clube e não pode renovar um contrato inexistente.",
+      );
     proposta.status = "aceita";
     proposta.etapa = "aceite";
     const atual = carreira.clubes.find(
       (cl) => cl.id === carreira.clubeAtualId,
-    )!;
-    if (carreira.mercado.emprestimo || proposta.clubeId !== j.contrato.clubeId || proposta.clubeId !== atual.id || proposta.salario > tetoSalario(atual))
+    );
+    if (
+      !atual ||
+      carreira.mercado.emprestimo ||
+      proposta.clubeId !== j.contrato.clubeId ||
+      proposta.clubeId !== atual.id ||
+      proposta.salario > tetoSalario(atual)
+    )
       throw new Error("A renovação não cabe na folha do clube atual.");
     const bonusGol = proposta.bonusGol ?? j.contrato.bonusGol;
     const luvas = proposta.luvas;
@@ -487,7 +505,9 @@ export function responderProposta(
   const livre = podeRegistrarAgenteLivreImediato(carreira);
   const contratoExpirado = j.contrato.dataTermino < carreira.dataAtual;
   // Agente livre ou contrato já encerrado: registro imediato (centraliza exceção de janela).
+  // forcarImediato: data de apresentação já chegou (efetivarPreContratos).
   const agendar =
+    !opcoes?.forcarImediato &&
     janelaFechada &&
     !proposta.preContrato &&
     !livre &&
@@ -745,7 +765,7 @@ export function efetivarPreContratos(estado: EstadoCarreira): EstadoCarreira {
     oferta.preContrato = false;
     delete oferta.efetivarEm;
     try {
-      c = responderProposta(copia, p.id, true);
+      c = responderProposta(copia, p.id, true, { forcarImediato: true });
     } catch {
       c = structuredClone(c);
       c.propostas.find((x) => x.id === p.id)!.status = "expirada";

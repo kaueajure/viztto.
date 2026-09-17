@@ -10,6 +10,8 @@ import { ClienteSportmonks, ErroSportmonks, redigirSegredos } from "./cliente";
 import {
   escolherMelhorMatch,
   confiancaAceita,
+  normalizarNome,
+  pontuarMatch,
   type CandidatoSportmonks,
   type ResultadoMatch,
 } from "./matching";
@@ -19,6 +21,12 @@ import {
   type RatingMetadata,
   type StatsSportmonksNormalizadas,
 } from "./rating-engine";
+
+export type StatusEnriquecimento =
+  | "ok"
+  | "fallback_esperado"
+  | "degradado"
+  | "falha_critica";
 
 export interface JogadorEnriquecido extends JogadorExterno {
   overall: number;
@@ -44,26 +52,158 @@ export interface OpcoesEnriquecimento {
   informar?: (linha: string) => void;
   /** Ano/label da temporada Transfermarkt (para cache/season search). */
   temporadaLabel?: string;
+  /** Snapshot oficial anterior já tinha enrichment Sportmonks/hybrid. */
+  anteriorEnriquecido?: boolean;
+}
+
+export interface ResultadoEnriquecimento {
+  clubes: Clube[];
+  relatorio: RelatorioMatchingLiga;
+  status: StatusEnriquecimento;
+  abortarPublicacao?: boolean;
+  erro?: string;
+}
+
+/** Heurística: snapshot anterior tinha enrichment real (não só TM estimado). */
+export function snapshotEstavaEnriquecido(
+  clubes: Clube[] | null | undefined,
+): boolean {
+  if (!clubes?.length) return false;
+  let total = 0;
+  let ricos = 0;
+  for (const c of clubes) {
+    for (const j of c.elenco) {
+      total++;
+      const meta = (j as { ratingMetadata?: RatingMetadata }).ratingMetadata;
+      if (meta?.source === "sportmonks" || meta?.source === "hybrid") ricos++;
+    }
+  }
+  return total > 0 && ricos / total >= 0.15;
+}
+
+interface EntradaMapping {
+  sportmonksId: number;
+  confiancaOriginal: string;
+  nome?: string;
+  dataNascimento?: string | null;
+  atualizadoEm: string;
+  manual?: boolean;
 }
 
 interface MappingPersistido {
-  versao: 1;
+  versao: 1 | 2;
   atualizadoEm: string;
-  pares: Record<string, number>; // transfermarktId → sportmonksId
+  /** Formato v2. */
+  entradas: Record<string, EntradaMapping>;
+  /** Legacy v1 — migrado na leitura. */
+  pares?: Record<string, number>;
+}
+
+function migrarMapping(bruto: MappingPersistido): MappingPersistido {
+  if (bruto.versao >= 2 && bruto.entradas) return bruto;
+  const entradas: Record<string, EntradaMapping> = { ...(bruto.entradas ?? {}) };
+  for (const [tm, sm] of Object.entries(bruto.pares ?? {})) {
+    if (!entradas[tm]) {
+      entradas[tm] = {
+        sportmonksId: sm,
+        confiancaOriginal: "legacy",
+        atualizadoEm: bruto.atualizadoEm ?? new Date().toISOString(),
+      };
+    }
+  }
+  return {
+    versao: 2,
+    atualizadoEm: bruto.atualizadoEm ?? new Date().toISOString(),
+    entradas,
+  };
 }
 
 async function carregarMapping(path: string): Promise<MappingPersistido> {
   try {
-    return JSON.parse(await readFile(path, "utf8")) as MappingPersistido;
+    const bruto = JSON.parse(await readFile(path, "utf8")) as MappingPersistido;
+    return migrarMapping(bruto);
   } catch {
-    return { versao: 1, atualizadoEm: new Date().toISOString(), pares: {} };
+    return { versao: 2, atualizadoEm: new Date().toISOString(), entradas: {} };
   }
 }
 
 async function salvarMapping(path: string, mapping: MappingPersistido) {
   await mkdir(join(path, ".."), { recursive: true });
   mapping.atualizadoEm = new Date().toISOString();
-  await writeFile(path, JSON.stringify(mapping, null, 2));
+  mapping.versao = 2;
+  await writeFile(
+    path,
+    JSON.stringify(
+      {
+        versao: 2,
+        atualizadoEm: mapping.atualizadoEm,
+        entradas: mapping.entradas,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+function extrairNacionalidade(p: Record<string, unknown>): string | null {
+  const n = p.nationality ?? p.country;
+  if (typeof n === "string") return n;
+  if (n && typeof n === "object") {
+    const o = n as { name?: string; nationality?: string };
+    return o.name ?? o.nationality ?? null;
+  }
+  if (Array.isArray(p.nationalities) && p.nationalities[0]) {
+    const first = p.nationalities[0];
+    if (typeof first === "string") return first;
+    if (first && typeof first === "object")
+      return (first as { name?: string }).name ?? null;
+  }
+  return null;
+}
+
+function candidatoDePlayer(p: Record<string, unknown>, teamName?: string): CandidatoSportmonks {
+  return {
+    id: Number(p.id),
+    nome: String(p.name ?? p.display_name ?? ""),
+    commonName: (p.common_name as string) ?? null,
+    firstname: (p.firstname as string) ?? null,
+    lastname: (p.lastname as string) ?? null,
+    dateOfBirth: (p.date_of_birth as string) ?? null,
+    height: typeof p.height === "number" ? p.height : null,
+    nationality: extrairNacionalidade(p),
+    teamName: teamName ?? null,
+    position: p.position
+      ? String((p.position as { name?: string }).name ?? p.position)
+      : null,
+  };
+}
+
+function mappingAindaCompativel(
+  j: JogadorExterno,
+  entrada: EntradaMapping,
+  candidato?: CandidatoSportmonks,
+): boolean {
+  if (entrada.manual) return true;
+  if (entrada.confiancaOriginal === "legacy") {
+    // Legacy: exige candidato atual compatível se disponível.
+    if (!candidato) return false;
+    const r = pontuarMatch(j, candidato);
+    return confiancaAceita(r.confianca);
+  }
+  if (entrada.nome) {
+    const nJ = normalizarNome(j.nome);
+    const nM = normalizarNome(entrada.nome);
+    if (nJ !== nM && !nJ.includes(nM) && !nM.includes(nJ)) return false;
+  }
+  if (entrada.dataNascimento && j.dataNascimento) {
+    if (entrada.dataNascimento.slice(0, 10) !== j.dataNascimento.slice(0, 10))
+      return false;
+  }
+  if (candidato) {
+    const r = pontuarMatch(j, candidato);
+    return confiancaAceita(r.confianca) || r.score >= 75;
+  }
+  return Boolean(entrada.nome || entrada.dataNascimento);
 }
 
 function relancarSeAuth(erro: unknown): void {
@@ -90,7 +230,6 @@ async function resolverSeasonId(
     if (cur) return cur;
   } catch (erro) {
     relancarSeAuth(erro);
-    /* tenta busca */
   }
   if (!nomeBusca) return null;
   try {
@@ -110,21 +249,30 @@ async function resolverSeasonId(
   }
 }
 
-function candidatoDePlayer(p: Record<string, unknown>, teamName?: string): CandidatoSportmonks {
-  return {
-    id: Number(p.id),
-    nome: String(p.name ?? p.display_name ?? ""),
-    commonName: (p.common_name as string) ?? null,
-    firstname: (p.firstname as string) ?? null,
-    lastname: (p.lastname as string) ?? null,
-    dateOfBirth: (p.date_of_birth as string) ?? null,
-    height: typeof p.height === "number" ? p.height : null,
-    nationality: null,
-    teamName: teamName ?? null,
-    position: p.position
-      ? String((p.position as { name?: string }).name ?? p.position)
-      : null,
-  };
+function abortarPorDegradacao(
+  opcoes: OpcoesEnriquecimento,
+  mapa: ReturnType<typeof mapeamentoSportmonks>,
+  motivo: string,
+): ResultadoEnriquecimento | null {
+  const cobreSm = mapa.cobertura === "A" || mapa.cobertura === "B";
+  if (cobreSm && opcoes.anteriorEnriquecido) {
+    return {
+      clubes: [],
+      relatorio: {
+        ligaId: "",
+        cobertura: mapa.cobertura,
+        total: 0,
+        matched: [],
+        unmatched: [],
+        ambiguous: [],
+        requests: 0,
+      },
+      status: "falha_critica",
+      abortarPublicacao: true,
+      erro: `ATUALIZAÇÃO DEGRADADA evitada: ${motivo}. Snapshot enriquecido anterior preservado.`,
+    };
+  }
+  return null;
 }
 
 /**
@@ -135,12 +283,7 @@ export async function enriquecerLigaComSportmonks(
   liga: Liga,
   clubes: Clube[],
   opcoes: OpcoesEnriquecimento = {},
-): Promise<{
-  clubes: Clube[];
-  relatorio: RelatorioMatchingLiga;
-  abortarPublicacao?: boolean;
-  erro?: string;
-}> {
+): Promise<ResultadoEnriquecimento> {
   const informar = opcoes.informar ?? (() => undefined);
   const mapa = mapeamentoSportmonks(liga);
   const mappingPath =
@@ -183,6 +326,18 @@ export async function enriquecerLigaComSportmonks(
     } satisfies JogadorEnriquecido;
   };
 
+  const aplicarFallbackTodos = (status: StatusEnriquecimento, erro?: string): ResultadoEnriquecimento => ({
+    clubes: clubes.map((c) => ({
+      ...c,
+      elenco: c.elenco.map((j, i) =>
+        enriquecerFallback(j as unknown as JogadorExterno, c, i, c.elenco.length),
+      ) as unknown as Clube["elenco"],
+    })),
+    relatorio,
+    status,
+    erro,
+  });
+
   if (mapa.cobertura === "D" || mapa.idSportmonks == null) {
     informar(`  Sportmonks: cobertura ${mapa.cobertura} — fallback Transfermarkt.`);
     const clubesOut = clubes.map((c) => ({
@@ -201,35 +356,36 @@ export async function enriquecerLigaComSportmonks(
         score: 0,
       })),
     );
-    return { clubes: clubesOut, relatorio };
+    return { clubes: clubesOut, relatorio, status: "fallback_esperado" };
   }
 
   let cliente = opcoes.cliente;
   try {
     cliente ??= new ClienteSportmonks();
   } catch (erro) {
+    const msg = redigirSegredos(
+      erro instanceof Error ? erro.message : String(erro),
+    );
     if (opcoes.exigirToken) {
       return {
         clubes,
         relatorio,
+        status: "falha_critica",
         abortarPublicacao: true,
-        erro: redigirSegredos(
-          erro instanceof Error ? erro.message : String(erro),
-        ),
+        erro: msg,
       };
     }
-    informar(
-      `  Sportmonks: token ausente — ratings estimados (Transfermarkt).`,
+    const bloqueio = abortarPorDegradacao(opcoes, mapa, "token Sportmonks ausente");
+    if (bloqueio) {
+      bloqueio.relatorio = { ...relatorio, ...bloqueio.relatorio, ligaId: liga.id };
+      informar(`✗ ${bloqueio.erro}`);
+      return bloqueio;
+    }
+    informar(`  Sportmonks: token ausente — ratings estimados (Transfermarkt).`);
+    return aplicarFallbackTodos(
+      opcoes.anteriorEnriquecido ? "degradado" : "fallback_esperado",
+      msg,
     );
-    return {
-      clubes: clubes.map((c) => ({
-        ...c,
-        elenco: c.elenco.map((j, i) =>
-          enriquecerFallback(j as unknown as JogadorExterno, c, i, c.elenco.length),
-        ) as unknown as Clube["elenco"],
-      })),
-      relatorio,
-    };
   }
 
   try {
@@ -241,16 +397,21 @@ export async function enriquecerLigaComSportmonks(
       opcoes.temporadaLabel ?? "2026",
     );
     if (!seasonId) {
+      const bloqueio = abortarPorDegradacao(
+        opcoes,
+        mapa,
+        "temporada Sportmonks não resolvida",
+      );
+      if (bloqueio) {
+        bloqueio.relatorio = { ...relatorio, ligaId: liga.id };
+        informar(`✗ ${bloqueio.erro}`);
+        return bloqueio;
+      }
       informar(`  Sportmonks: temporada não resolvida — fallback.`);
-      return {
-        clubes: clubes.map((c) => ({
-          ...c,
-          elenco: c.elenco.map((j, i) =>
-            enriquecerFallback(j as unknown as JogadorExterno, c, i, c.elenco.length),
-          ) as unknown as Clube["elenco"],
-        })),
-        relatorio,
-      };
+      return aplicarFallbackTodos(
+        opcoes.anteriorEnriquecido ? "degradado" : "fallback_esperado",
+        "temporada não resolvida",
+      );
     }
 
     const statsPorSmId = new Map<number, StatsSportmonksNormalizadas>();
@@ -286,7 +447,7 @@ export async function enriquecerLigaComSportmonks(
           }>;
         }>(
           `/squads/seasons/${seasonId}/teams/${team.id}`,
-          { include: "player;details.type" },
+          { include: "player;player.nationality;details.type" },
           { cacheKey: `squad-${seasonId}-${team.id}` },
         );
         const rows = squad.data ?? [];
@@ -309,7 +470,22 @@ export async function enriquecerLigaComSportmonks(
       }
     }
 
+    // Se API de times falhou completamente em liga A/B com base já enriquecida → abort.
+    if (!teams.length && (mapa.cobertura === "A" || mapa.cobertura === "B")) {
+      const bloqueio = abortarPorDegradacao(
+        opcoes,
+        mapa,
+        "Sportmonks sem times/stats na temporada",
+      );
+      if (bloqueio) {
+        bloqueio.relatorio = { ...relatorio, ligaId: liga.id, requests: cliente.requests };
+        informar(`✗ ${bloqueio.erro}`);
+        return bloqueio;
+      }
+    }
+
     const todosCandidatos = [...candidatosPorClube.values()].flat();
+    const porSmId = new Map(todosCandidatos.map((c) => [c.id, c]));
     const clubesOut: Clube[] = [];
 
     for (const clube of clubes) {
@@ -320,18 +496,37 @@ export async function enriquecerLigaComSportmonks(
       for (let i = 0; i < elencoOrd.length; i++) {
         const j = elencoOrd[i]! as unknown as JogadorExterno;
         relatorio.total++;
-        let smId = mapping.pares[j.idTransfermarkt] ?? null;
+        const entradaMap = mapping.entradas[j.idTransfermarkt];
+        let smId: number | null = null;
         let match: ResultadoMatch;
-        if (smId) {
-          match = {
-            transfermarktId: j.idTransfermarkt,
-            sportmonksId: smId,
-            confianca: "exact",
-            motivo: "mapping-persistido",
-            score: 100,
-          };
+
+        if (entradaMap) {
+          const cand = porSmId.get(entradaMap.sportmonksId);
+          if (mappingAindaCompativel(j, entradaMap, cand)) {
+            smId = entradaMap.sportmonksId;
+            match = {
+              transfermarktId: j.idTransfermarkt,
+              sportmonksId: smId,
+              confianca:
+                entradaMap.confiancaOriginal === "exact" ? "exact" : "high",
+              motivo: `mapping-validado:${entradaMap.confiancaOriginal}`,
+              score: 90,
+            };
+          } else {
+            delete mapping.entradas[j.idTransfermarkt];
+            match = escolherMelhorMatch(j, todosCandidatos, clube.nome);
+            if (match.sportmonksId && confiancaAceita(match.confianca)) {
+              smId = match.sportmonksId;
+              mapping.entradas[j.idTransfermarkt] = {
+                sportmonksId: smId,
+                confiancaOriginal: match.confianca,
+                nome: j.nome,
+                dataNascimento: j.dataNascimento,
+                atualizadoEm: new Date().toISOString(),
+              };
+            }
+          }
         } else {
-          // Prioriza candidatos; se vazio, tenta search por nome (custo extra)
           let cands = todosCandidatos;
           if (!cands.length) {
             try {
@@ -347,8 +542,14 @@ export async function enriquecerLigaComSportmonks(
           }
           match = escolherMelhorMatch(j, cands, clube.nome);
           if (match.sportmonksId && confiancaAceita(match.confianca)) {
-            mapping.pares[j.idTransfermarkt] = match.sportmonksId;
             smId = match.sportmonksId;
+            mapping.entradas[j.idTransfermarkt] = {
+              sportmonksId: smId,
+              confiancaOriginal: match.confianca,
+              nome: j.nome,
+              dataNascimento: j.dataNascimento,
+              atualizadoEm: new Date().toISOString(),
+            };
           }
         }
 
@@ -429,7 +630,7 @@ export async function enriquecerLigaComSportmonks(
     informar(
       `  Sportmonks: ${relatorio.matched.length} matches · ${relatorio.unmatched.length} unmatched · ${relatorio.ambiguous.length} ambíguos · ${relatorio.requests} reqs`,
     );
-    return { clubes: clubesOut, relatorio };
+    return { clubes: clubesOut, relatorio, status: "ok" };
   } catch (erro) {
     const msg = redigirSegredos(
       erro instanceof Error ? erro.message : String(erro),
@@ -439,20 +640,21 @@ export async function enriquecerLigaComSportmonks(
       return {
         clubes,
         relatorio,
+        status: "falha_critica",
         abortarPublicacao: true,
         erro: msg,
       };
     }
+    const bloqueio = abortarPorDegradacao(opcoes, mapa, msg);
+    if (bloqueio) {
+      bloqueio.relatorio = { ...relatorio, ligaId: liga.id };
+      informar(`✗ ${bloqueio.erro}`);
+      return bloqueio;
+    }
     informar(`  Sportmonks falhou (${msg}) — fallback Transfermarkt.`);
-    return {
-      clubes: clubes.map((c) => ({
-        ...c,
-        elenco: c.elenco.map((j, i) =>
-          enriquecerFallback(j as unknown as JogadorExterno, c, i, c.elenco.length),
-        ) as unknown as Clube["elenco"],
-      })),
-      relatorio,
-      erro: msg,
-    };
+    return aplicarFallbackTodos(
+      opcoes.anteriorEnriquecido ? "degradado" : "fallback_esperado",
+      msg,
+    );
   }
 }

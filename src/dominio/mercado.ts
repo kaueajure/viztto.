@@ -39,7 +39,32 @@ export interface InteresseClube {
   ofertaClube?: number;
   rodadasClube?: number;
   propostaId?: string;
+  /** Data em que o status virou novidade (interessado/sondagem/negociando). */
+  novidadeEm?: string;
+  /** Última leitura da novidade; lido quando lidoEm >= novidadeEm. */
+  lidoEm?: string;
 }
+
+export function interesseComNovidadeNaoLida(i: InteresseClube): boolean {
+  return !!i.novidadeEm && (!i.lidoEm || i.lidoEm < i.novidadeEm);
+}
+
+/** Marca novidade quando o status avança para interessado/sondagem/negociando. */
+export function marcarNovidadeStatusInteresse(
+  i: InteresseClube,
+  statusAnterior: InteresseClube["status"],
+  dataAtual: string,
+): void {
+  if (i.status === statusAnterior) return;
+  if (
+    i.status === "interessado" ||
+    i.status === "sondagem" ||
+    i.status === "negociando"
+  ) {
+    i.novidadeEm = dataAtual;
+  }
+}
+
 export interface TermosContrato {
   salario: number;
   duracaoAnos: number;
@@ -105,14 +130,26 @@ export function criarMercado(): MercadoCarreira {
   };
 }
 
-/** Marca respostas da diretoria como vistas; preserva texto/histórico. */
+/** Marca respostas da diretoria e novidades de interesse como vistas; preserva histórico. */
 export function marcarRespostasMercadoLidas<T extends { mercado: MercadoCarreira }>(
   estado: T,
 ): T {
   const m = estado.mercado;
-  if (m.respostaSaidaLida && m.respostaEmprestimoLida) return estado;
+  const interesses = m.interesses.map((i) =>
+    interesseComNovidadeNaoLida(i) ? { ...i, lidoEm: i.novidadeEm } : i,
+  );
+  const interessesMudaram = interesses.some(
+    (i, idx) => i.lidoEm !== m.interesses[idx]?.lidoEm,
+  );
+  if (m.respostaSaidaLida && m.respostaEmprestimoLida && !interessesMudaram)
+    return estado;
   return {
     ...estado,
-    mercado: { ...m, respostaSaidaLida: true, respostaEmprestimoLida: true },
+    mercado: {
+      ...m,
+      respostaSaidaLida: true,
+      respostaEmprestimoLida: true,
+      interesses,
+    },
   };
 }

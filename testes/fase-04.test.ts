@@ -235,9 +235,10 @@ describe("atualização segura", () => {
       informar: () => {},
     });
     expect(maximo).toBe(1);
-    expect(importar).toHaveBeenCalledTimes(3);
+    expect(importar).toHaveBeenCalledTimes(1); // aborta no primeiro erro — lote atômico
     expect(resumo.temFalhas).toBe(true);
-    expect(resumo.ligas.map((l) => l.publicado)).toEqual([false, true, true]);
+    expect(resumo.publicou).toBe(false);
+    expect(resumo.ligas.every((l) => !l.publicado)).toBe(true);
     expect(await lerDadosLiga(liga.id)).toEqual(anterior);
   });
   it("não publica staging inválido e remove falhos do resultado parcial", async () => {

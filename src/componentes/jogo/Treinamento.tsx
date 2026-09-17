@@ -5,20 +5,25 @@ import { useJogoStore } from "@/estado/jogo-store";
 import { Barra } from "@/componentes/interface/Elementos";
 import { Check } from "lucide-react";
 import { planosDaPosicao } from "@/dominio/planos-desenvolvimento";
+import { estaSemClube } from "@/simulacao/carreira/agente-livre";
 
 export function Treinamento({ carreira: c }: { carreira: EstadoCarreira }) {
   const escolher = useJogoStore((s) => s.escolherTreino);
+  const livre = estaSemClube(c);
   const temPlano = !!c.jogador.preparacao.planoId;
   const plano = planosDaPosicao(c.jogador.posicao).find(
     (p) => p.id === c.jogador.preparacao.planoId,
   );
   return (
     <>
-      <p className="sobretitulo">CENTRO DE TREINAMENTO</p>
-      <h1>O TRABALHO INVISÍVEL.</h1>
+      <p className="sobretitulo">
+        {livre ? "TREINO INDIVIDUAL" : "CENTRO DE TREINAMENTO"}
+      </p>
+      <h1>{livre ? "SEM CLUBE, SEM COMISSÃO." : "O TRABALHO INVISÍVEL."}</h1>
       <p className="texto-suave">
-        Defina um plano de desenvolvimento e até duas prioridades. O treino
-        acontece uma vez ao avançar o tempo. Recuperação reduz fadiga e risco.
+        {livre
+          ? "Você treina por conta própria. O ritmo é menor do que no centro de treinamento de um clube: evolução mais lenta e sem ganho de confiança de treinador."
+          : "Defina um plano de desenvolvimento e até duas prioridades. O treino acontece uma vez ao avançar o tempo. Recuperação reduz fadiga e risco."}
       </p>
       <PlanoDesenvolvimento carreira={c} />
       {temPlano && (
@@ -68,7 +73,9 @@ export function Treinamento({ carreira: c }: { carreira: EstadoCarreira }) {
           <Barra nome="Fadiga" valor={c.jogador.fadiga} />
           <Barra nome="Ritmo de jogo" valor={c.jogador.ritmo} />
           <p className="citacao">
-            “Evoluir também é saber a hora de descansar.”
+            {livre
+              ? "“Sem clube, o treino individual mantém o ritmo — mas não substitui o trabalho com a comissão.”"
+              : "“Evoluir também é saber a hora de descansar.”"}
           </p>
           {c.jogador.lesao && (
             <p className="aviso">

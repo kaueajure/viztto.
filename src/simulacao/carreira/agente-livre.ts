@@ -95,6 +95,18 @@ export function tornarAgenteLivre(
   c.clubeAtualId = null;
   c.agenteLivreDesde = c.dataAtual;
 
+  // Renovações pendentes do clube antigo deixam de valer.
+  for (const p of c.propostas) {
+    if (
+      p.tipo === "renovacao" &&
+      p.status === "pendente" &&
+      (p.clubeId === antigoId || p.clubeOrigemId === antigoId)
+    ) {
+      p.status = "expirada";
+      p.etapa = "cancelada";
+    }
+  }
+
   // Encerra empréstimo: não há vínculo empregatício sem contrato de origem.
   delete c.mercado.emprestimo;
   c.mercado.pediuEmprestimo = false;
@@ -125,13 +137,18 @@ export function tornarAgenteLivre(
   };
   if (a.objetivoPessoal && !a.objetivoPessoal.concluido) {
     const tipo = a.objetivoPessoal.tipo;
-    if (tipo === "titular" || tipo === "minutos" || tipo === "renovacao") {
+    if (
+      tipo === "titular" ||
+      tipo === "minutos" ||
+      tipo === "renovacao" ||
+      tipo === "emprestimo"
+    ) {
       a.objetivoPessoal = null;
       registrarEvento(
         c,
         "objetivo",
         "Objetivo pessoal suspenso",
-        "Sem clube, objetivos ligados a minutos, titularidade ou renovação foram suspensos. Escolha um novo foco quando assinar.",
+        "Sem clube, objetivos ligados a minutos, titularidade, empréstimo ou renovação foram suspensos. Escolha um novo foco.",
         "Agente",
         false,
       );

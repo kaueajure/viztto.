@@ -17,6 +17,41 @@ export const OBJETIVOS_PESSOAIS: Record<ObjetivoPessoalTipo,string> = {
   renovacao:'Renovar contrato',
 };
 
+export function rotuloObjetivo(
+  c: EstadoCarreira,
+  tipo: ObjetivoPessoalTipo,
+): string {
+  if (tipo === 'transferencia' && estaSemClube(c)) return 'Encontrar novo clube';
+  return OBJETIVOS_PESSOAIS[tipo];
+}
+
+export function avaliarDisponibilidadeObjetivo(
+  c: EstadoCarreira,
+  tipo: ObjetivoPessoalTipo,
+): { disponivel: boolean; motivo?: string } {
+  const cooldown = objetivoBloqueadoPorCooldown(c, tipo);
+  if (cooldown.bloqueado) {
+    return {
+      disponivel: false,
+      motivo: `Você já alcançou "${rotuloObjetivo(c, tipo)}". Poderá reativá-lo após ${cooldown.disponivelEm}.`,
+    };
+  }
+  if (estaSemClube(c)) {
+    if (
+      tipo === 'titular' ||
+      tipo === 'minutos' ||
+      tipo === 'emprestimo' ||
+      tipo === 'renovacao'
+    ) {
+      return {
+        disponivel: false,
+        motivo: 'Indisponível sem clube.',
+      };
+    }
+  }
+  return { disponivel: true };
+}
+
 /** Atributos técnicos relevantes por posição (meta "Evoluir tecnicamente"). */
 export const ATRIBUTOS_TECNICA_POSICAO: Record<Posicao, Atributo[]> = {
   GOL: ['reflexos', 'defesaGoleiro', 'posicionamentoGoleiro'],
@@ -65,10 +100,11 @@ export function escolherObjetivo(estado: EstadoCarreira, tipo: ObjetivoPessoalTi
   const atual = estado.acompanhamento.objetivoPessoal;
   if (atual && !atual.concluido && atual.tipo === tipo) return estado;
 
-  const bloqueio = objetivoBloqueadoPorCooldown(estado, tipo);
-  if (bloqueio.bloqueado) {
+  const disponibilidade = avaliarDisponibilidadeObjetivo(estado, tipo);
+  if (!disponibilidade.disponivel) {
     throw new Error(
-      `Você já alcançou "${OBJETIVOS_PESSOAIS[tipo]}". Poderá reativá-lo após ${bloqueio.disponivelEm}.`,
+      disponibilidade.motivo ??
+        `"${rotuloObjetivo(estado, tipo)}" não está disponível agora.`,
     );
   }
 
@@ -89,7 +125,7 @@ export function escolherObjetivo(estado: EstadoCarreira, tipo: ObjetivoPessoalTi
   registrarEvento(
     c,
     'objetivo-pessoal',
-    `Seu foco: ${OBJETIVOS_PESSOAIS[tipo]}`,
+    `Seu foco: ${rotuloObjetivo(c, tipo)}`,
     'Seu agente acompanhará esse caminho. A escolha orienta os próximos passos, sem alterar seus atributos.',
     'Agente',
     false,
@@ -107,8 +143,20 @@ export function atualizarObjetivoPessoal(c: EstadoCarreira): void {
         : o.tipo === 'tecnica' ? (somaTecnica(c) - o.referencia) / 3 * 100
           : o.tipo === 'emprestimo' ? (c.mercado.emprestimo ? 100 : c.mercado.disponivelParaEmprestimo ? 40 : 0)
             : o.tipo === 'transferencia'
-              ? (c.eventos.some((e) => e.tipo === 'transferencia' && e.data >= o.inicio) ? 100
-                : c.mercado.statusPedidoSaida === 'aceito' ? 35 : 0)
+              ? (
+                c.eventos.some(
+                  (e) =>
+                    (e.tipo === 'transferencia' || e.tipo === 'novo-clube') &&
+                    e.data >= o.inicio,
+                ) ||
+                c.transferenciasRecentes.some(
+                  (t) => t.aoUsuario && t.data >= o.inicio,
+                ) ||
+                (c.clubeAtualId !== null &&
+                  c.historicoContratos.some((h) => h.dataTermino >= o.inicio))
+                  ? 100
+                  : c.mercado.statusPedidoSaida === 'aceito' ? 35 : 0
+              )
               : Date.parse(c.jogador.contrato.dataTermino) > o.referencia ? 100 : 0,
   );
   if (o.progresso >= 100) {
@@ -121,7 +169,7 @@ export function atualizarObjetivoPessoal(c: EstadoCarreira): void {
     registrarEvento(
       c,
       'objetivo-pessoal',
-      `Objetivo alcançado: ${OBJETIVOS_PESSOAIS[o.tipo]}`,
+      `Objetivo alcançado: ${rotuloObjetivo(c, o.tipo)}`,
       'Seu trabalho trouxe resultado. Defina seu próximo foco quando quiser.',
       'Agente',
       false,

@@ -2,6 +2,21 @@ import type { Clube, Jogador, JogadorMundo } from "@/dominio/entidades/modelos";
 import { SLOTS_FORMACAO, type SlotFormacao } from "@/dominio/formacao";
 import { pesoCompatibilidade, jogadorMundoComoCandidato } from "./escalacao-elenco";
 import { limitar } from "@/utilitarios/formatacao";
+import { qualidadeSetorialJogador } from "@/simulacao/partida/motor-partida";
+
+function qualidadeSetorialDeOverall(j: JogadorMundo): {
+  ataque: number;
+  meio: number;
+  defesa: number;
+} {
+  if (!j.atributos)
+    return { ataque: j.overall, meio: j.overall, defesa: j.overall };
+  return qualidadeSetorialJogador({
+    posicao: j.posicaoPrincipal,
+    overall: j.overall,
+    atributos: j.atributos,
+  } as Jogador);
+}
 
 export interface ForcaEscalacao {
   forcaGeral: number;
@@ -74,8 +89,19 @@ export function calcularForcaEscalacao(
     }
     if (!j) return clube.forcaGeral * 0.85;
     const adeq = pesoCompatibilidade(jogadorMundoComoCandidato(j), slot);
+    let ov = j.overall;
+    if (j.atributos) {
+      // Atributos diferenciam perfis de mesmo overall (leve, sem reescrever o motor).
+      const q = qualidadeSetorialDeOverall(j);
+      if (["CA", "PD", "PE", "SA"].includes(slot))
+        ov = ov * 0.72 + q.ataque * 0.28;
+      else if (["VOL", "MC", "MEI"].includes(slot))
+        ov = ov * 0.72 + q.meio * 0.28;
+      else if (slot === "GOL") ov = ov * 0.65 + q.defesa * 0.35;
+      else ov = ov * 0.75 + q.defesa * 0.25;
+    }
     return efetividade(
-      j.overall,
+      ov,
       j.forma,
       j.moral,
       j.condicionamento,
