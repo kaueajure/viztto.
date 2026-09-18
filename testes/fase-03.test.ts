@@ -234,7 +234,11 @@ describe("Fase 3: observação e agente", () => {
     const id = c.clubes[1]!.id;
     c = conversarAgente(c, "contatar", id);
     expect(c.mercado.interesses[0]!.status).toBe("observando");
-    expect(c.mercado.interesses[0]!.resposta).toContain("Aceitamos conversar");
+    expect(
+      /Aceitamos conversar|Interessados como promessa/.test(
+        c.mercado.interesses[0]!.resposta ?? "",
+      ),
+    ).toBe(true);
     expect(c.propostas).toHaveLength(0);
     expect(() => conversarAgente(c, "contatar", id)).toThrow();
     const antes = c.mercado.interesses[0]!.nivelInteresse;

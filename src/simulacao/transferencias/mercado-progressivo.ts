@@ -32,8 +32,8 @@ import {
   clubesDePaisesDiferentes,
 } from "./pais-clube";
 
-const LIMIAR_ELEGIBILIDADE = 38;
-const MAX_NOVOS_INTERESSES_SEMANA = 2;
+const LIMIAR_ELEGIBILIDADE = 26;
+const MAX_NOVOS_INTERESSES_SEMANA = 3;
 
 const diasContrato = (c: EstadoCarreira) =>
   estaSemClube(c)
@@ -291,9 +291,9 @@ export function avaliarAlvo(c: EstadoCarreira, clube: Clube) {
     j.potencialInterno - Math.max(2, 10 - Math.min(8, stats.minutos / 180)),
   );
   const promessa =
-    j.idade <= 21 &&
-    potencialPercebido >= clube.forcaGeral + 5 &&
-    j.overall >= clube.forcaGeral - 20;
+    j.idade <= 23 &&
+    potencialPercebido >= clube.forcaGeral - 1 &&
+    j.overall >= clube.forcaGeral - 26;
   const concorrentes = clube.elenco.filter(
     (p) =>
       (p.posicaoPrincipal === j.posicao ||
@@ -301,7 +301,8 @@ export function avaliarAlvo(c: EstadoCarreira, clube: Clube) {
       (!p.lesionado || (p.lesao?.diasRecuperacao ?? 0) < 60),
   );
   const melhores = concorrentes.filter((p) => p.overall >= j.overall).length;
-  const pronto = j.overall >= clube.forcaGeral - 7;
+  const pronto = j.overall >= clube.forcaGeral - 12;
+  const quasePronto = j.overall >= clube.forcaGeral - 16;
   let papel: StatusElenco =
     promessa && (!pronto || melhores >= 2)
       ? "promessa"
@@ -329,36 +330,57 @@ export function avaliarAlvo(c: EstadoCarreira, clube: Clube) {
   const cabe =
     salario <= tetoSalario(clube) && custo + salario * 52 <= clube.orcamento;
   const saturado =
-    melhores >= 3 || (concorrentes.length >= 4 && nec.nivel === "baixa");
-  const compativel =
-    pronto || (promessa && potencialPercebido >= clube.reputacao - 4);
-  const necessidade = { baixa: 2, media: 12, alta: 24, critica: 34 }[nec.nivel];
+    melhores >= 4 || (concorrentes.length >= 5 && nec.nivel === "baixa");
+  // Gigantes (rep ≥ 90) ainda pedem nível alto; demais clubes são mais abertos a jovens.
+  const gigante = clube.reputacao >= 90;
+  const compativel = gigante
+    ? pronto ||
+      (promessa &&
+        potencialPercebido >= clube.reputacao - 8 &&
+        j.overall >= clube.forcaGeral - 20)
+    : pronto ||
+      quasePronto ||
+      (promessa && potencialPercebido >= clube.reputacao - 12) ||
+      (j.idade <= 22 &&
+        potencialPercebido >= clube.forcaGeral - 3 &&
+        j.overall >= clube.forcaGeral - 20);
+  const necessidade = { baixa: 6, media: 16, alta: 28, critica: 38 }[nec.nivel];
   const producao = ["CA", "PD", "PE"].includes(j.posicao)
     ? stats.gols + stats.assistencias * 0.5
     : ["MEI", "MC"].includes(j.posicao)
       ? stats.assistencias + stats.gols * 0.4
       : 0;
-  const excepcional = nota >= 8 && stats.minutos >= 180;
+  const excepcional = nota >= 7.6 && stats.minutos >= 120;
   const semanasLivre = livre ? semanasSemClube(c) : 0;
   const evidencia =
-    stats.minutos >= 450 ||
-    j.reputacao >= 55 ||
-    (promessa && potencialPercebido >= clube.forcaGeral + 10) ||
-    (nec.nivel === "critica" && pronto) ||
+    stats.minutos >= 270 ||
+    j.reputacao >= 40 ||
+    (promessa && potencialPercebido >= clube.forcaGeral + 4) ||
+    (nec.nivel === "critica" && (pronto || quasePronto)) ||
+    (nec.nivel === "alta" && quasePronto) ||
     (diasContrato(c) <= 180 && pronto) ||
     excepcional ||
-    (livre && pronto);
+    (livre && (pronto || quasePronto || promessa));
+  // Encaixe: prioriza mesmo nível / um pouco acima; evita só clubes bem piores.
+  const gapForca = j.overall - clube.forcaGeral;
+  const encaixeOverall =
+    gapForca >= -12 && gapForca <= 5
+      ? 16 - Math.abs(gapForca + 3) * 1.15
+      : gapForca > 5
+        ? Math.max(-4, 7 - (gapForca - 5) * 0.85)
+        : Math.max(-14, (gapForca + 12) * 0.55);
   const score = limitar(
     necessidade +
-      (j.overall - clube.forcaGeral) * 1.5 +
-      (promessa ? 20 : 0) +
-      j.reputacao * 0.2 +
-      Math.min(12, stats.minutos / 90) +
-      (nota - 6.5) * 8 +
-      (j.forma - 50) * 0.15 +
+      encaixeOverall +
+      (promessa ? 24 : 0) +
+      (quasePronto && !pronto ? 8 : 0) +
+      j.reputacao * 0.25 +
+      Math.min(14, stats.minutos / 80) +
+      (nota - 6.5) * 9 +
+      (j.forma - 50) * 0.18 +
       Math.min(10, (producao / Math.max(1, stats.minutos / 90)) * 10) +
-      (c.liga.reputacao - ligaDoClube(c, clube.id).reputacao) * 0.1 +
-      (livre ? 12 : 0) -
+      (c.liga.reputacao - ligaDoClube(c, clube.id).reputacao) * 0.08 +
+      (livre ? 14 : 0) -
       (semanasLivre >= 8 ? Math.min(8, semanasLivre - 6) : 0),
   );
   const viavel =
@@ -366,7 +388,10 @@ export function avaliarAlvo(c: EstadoCarreira, clube: Clube) {
     compativel &&
     !saturado &&
     cabe &&
-    (nec.nivel !== "baixa" || promessa || melhores === 0);
+    (nec.nivel !== "baixa" ||
+      promessa ||
+      melhores <= 1 ||
+      (pronto && melhores <= 2));
   const motivo: InteresseClube["motivo"] = nec.desfalquesLongos
     ? "lesao"
     : promessa
@@ -453,7 +478,7 @@ function observar(
     origem,
     resposta: a.resposta,
     papel: a.papel,
-    reabrirEm: !a.viavel ? somarDias(c.dataAtual, 56) : undefined,
+    reabrirEm: !a.viavel ? somarDias(c.dataAtual, 35) : undefined,
     ...(conhecido ? { novidadeEm: c.dataAtual } : {}),
   };
   c.mercado.interesses.push(i);
@@ -737,7 +762,7 @@ export function definirPreferencias(
 function encerrar(c: EstadoCarreira, i: InteresseClube, texto: string) {
   i.status = "encerrado";
   i.nivelInteresse = Math.max(0, i.nivelInteresse - 35);
-  i.reabrirEm = somarDias(c.dataAtual, 84);
+  i.reabrirEm = somarDias(c.dataAtual, 42);
   i.resposta = texto;
   registrarNegociacao(c, i.clubeId, texto);
 }
@@ -942,8 +967,8 @@ export function avancarInteresses(
       ? 1.35
       : 1;
   const chanceBase = Math.min(
-    0.7,
-    0.08 * peso * boostPublico * boostListado * boostLivre * boostObjetivo,
+    0.82,
+    0.14 * peso * boostPublico * boostListado * boostLivre * boostObjetivo,
   );
   const limiar = Math.max(
     18,
@@ -1132,7 +1157,20 @@ export function avancarInteresses(
     i.resposta = a.resposta;
   }
 
-  candidatosNovos.sort((x, y) => y.a.score - x.a.score);
+  candidatosNovos.sort((x, y) => {
+    const chave = (it: (typeof candidatosNovos)[number]) => {
+      const gap = c.jogador.overall - it.clube.forcaGeral;
+      const fit =
+        gap >= -10 && gap <= 5
+          ? 14 - Math.abs(gap + 3)
+          : gap > 5
+            ? Math.max(0, 5 - (gap - 5) * 0.5)
+            : 1;
+      const nec = { critica: 14, alta: 9, media: 4, baixa: 0 }[it.a.nec.nivel];
+      return it.a.score + fit + nec + aleatorio.proximo() * 6;
+    };
+    return chave(y) - chave(x);
+  });
   let novos = 0;
   for (const { clube, a, origem, interesseAnterior } of candidatosNovos) {
     if (novos >= MAX_NOVOS_INTERESSES_SEMANA) break;
@@ -1141,9 +1179,9 @@ export function avancarInteresses(
     const conhecido =
       a.viavel &&
       a.evidencia &&
-      a.score >= 80 &&
-      c.jogador.reputacao >= 75;
-    const fatorScore = Math.min(1.4, a.score / 70);
+      a.score >= 72 &&
+      c.jogador.reputacao >= 65;
+    const fatorScore = Math.min(1.5, a.score / 55);
     const chance = conhecido ? 1 : chanceBase * fatorScore;
     if (!aleatorio.chance(chance)) continue;
     if (interesseAnterior) {

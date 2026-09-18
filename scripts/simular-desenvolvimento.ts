@@ -96,6 +96,30 @@ export const CENARIOS_TEMPORADA: CenarioBenchmark[] = [
     semanas: 45,
   },
   {
+    id: "pro-jovem-67",
+    label: "Pro jovem ~67",
+    sessoesPorSemana: 2.5,
+    scoreMedio: 80,
+    minutosPorSemana: 65,
+    potencial: 86,
+    idadeInicial: 19,
+    ovrAlvo: 67,
+    categoria: "profissional",
+    semanas: 45,
+  },
+  {
+    id: "pro-jovem-67-2t",
+    label: "Pro jovem 67 · 2 temp",
+    sessoesPorSemana: 2.5,
+    scoreMedio: 80,
+    minutosPorSemana: 65,
+    potencial: 86,
+    idadeInicial: 19,
+    ovrAlvo: 67,
+    categoria: "profissional",
+    semanas: 90,
+  },
+  {
     id: "pro-80",
     label: "Pro OVR 80+",
     sessoesPorSemana: 2.5,
@@ -351,7 +375,7 @@ function rodarSemanas(
       calcularEvolucao(
         carreira.jogador,
         attrs,
-        (cenario.minutosPorSemana / 90) * Math.max(1, nota - 4) * 0.48,
+        (cenario.minutosPorSemana / 90) * Math.max(1, nota - 4) * 0.62,
         clube,
       );
     }
@@ -455,16 +479,20 @@ function main() {
       cen.id === "base-pouco"
         ? "+1..+3"
         : cen.id === "base-normal"
-          ? "+4..+6"
+          ? "+4..+9"
           : cen.id.startsWith("base-")
-            ? "+6..+8"
-            : cen.id === "pro-70"
-              ? "+2..+4"
-              : cen.id === "pro-80"
-                ? "+1..+2"
-                : cen.id === "elite-85"
-                  ? "≤+1"
-                  : "≤+1";
+            ? "+6..+12"
+            : cen.id === "pro-jovem-67"
+              ? "+4..+7"
+              : cen.id === "pro-jovem-67-2t"
+                ? "+8..+14"
+                : cen.id === "pro-70"
+                  ? "+3..+6"
+                  : cen.id === "pro-80"
+                    ? "+1..+3"
+                    : cen.id === "elite-85"
+                      ? "≤+2"
+                      : "≤+1";
     console.log(
       [
         cen.label.padEnd(22),

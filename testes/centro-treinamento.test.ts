@@ -275,24 +275,38 @@ describe("benchmark faixas", () => {
       CENARIOS_TEMPORADA.find((c) => c.id === "elite-85")!,
     );
 
-    // Treino consistente na base: +4..+6 (aceita margem de seed).
+    // Treino consistente na base: jovem sobe com frequência (faixa ampla por seed).
     expect(normal.ganhoTemporada).toBeGreaterThanOrEqual(4);
-    expect(normal.ganhoTemporada).toBeLessThanOrEqual(7);
-    // Dedicado/talento ≥ normal e tipicamente +6..+8 (+ margem).
+    expect(normal.ganhoTemporada).toBeLessThanOrEqual(11);
     expect(forte.ganhoTemporada).toBeGreaterThanOrEqual(6);
-    expect(forte.ganhoTemporada).toBeLessThanOrEqual(10);
+    expect(forte.ganhoTemporada).toBeLessThanOrEqual(14);
     expect(talento.ganhoTemporada).toBeGreaterThanOrEqual(forte.ganhoTemporada - 1);
     expect(talento.ganhoTemporada).toBeGreaterThanOrEqual(6);
     // Pouco treino cresce menos.
     expect(pouco.ganhoTemporada).toBeGreaterThanOrEqual(1);
     expect(pouco.ganhoTemporada).toBeLessThan(normal.ganhoTemporada);
-    expect(pouco.ganhoTemporada).toBeLessThanOrEqual(3);
-    // 70+ sobe, mas menos que base jovem.
+    expect(pouco.ganhoTemporada).toBeLessThanOrEqual(4);
+    // 70+ sobe, mas menos que base jovem forte.
+    expect(pro70.ganhoTemporada).toBeGreaterThanOrEqual(2);
     expect(pro70.ganhoTemporada).toBeLessThan(forte.ganhoTemporada);
-    expect(pro70.ganhoTemporada).toBeLessThanOrEqual(4);
+    expect(pro70.ganhoTemporada).toBeLessThanOrEqual(7);
     // 85+ não explode.
-    expect(elite.ganhoTemporada).toBeLessThanOrEqual(2);
+    expect(elite.ganhoTemporada).toBeLessThanOrEqual(3);
   }, 90_000);
+
+  it("jovem profissional ~67 sobe em 1 e 2 temporadas (não fica estagnado)", () => {
+    const uma = simularCenarioTemporada(
+      CENARIOS_TEMPORADA.find((c) => c.id === "pro-jovem-67")!,
+    );
+    const duas = simularCenarioTemporada(
+      CENARIOS_TEMPORADA.find((c) => c.id === "pro-jovem-67-2t")!,
+    );
+    expect(uma.inicio).toBeGreaterThanOrEqual(65);
+    expect(uma.inicio).toBeLessThanOrEqual(70);
+    expect(uma.ganhoTemporada).toBeGreaterThanOrEqual(4);
+    expect(duas.ganhoTemporada).toBeGreaterThanOrEqual(8);
+    expect(duas.fimTemporada).toBeGreaterThan(duas.inicio + 7);
+  }, 120_000);
 
   it("cenários longos relativos e progressão visível", () => {
     const ruim = simularCarreiraTreino(CENARIOS_PADRAO.find((c) => c.id === "ruim")!);

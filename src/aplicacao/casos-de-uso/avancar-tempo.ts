@@ -86,7 +86,7 @@ function aplicarDesempenho(
     p.desenvolvimento = calcularEvolucao(
       j,
       Object.keys(PESOS_POSICOES[j.posicao]) as Atributo[],
-      (p.minutos / 90) * Math.max(1, p.nota! - 4) * 0.48,
+      (p.minutos / 90) * Math.max(1, p.nota! - 4) * 0.62,
       clube,
     );
     j.amarelosAcumulados += p.amarelos;

@@ -97,31 +97,42 @@ export function interesseEmJogador(
   const nec = necessidades.find((n) => n.posicao === jogador.posicaoPrincipal);
   const pesoNec =
     nec?.nivel === "critica"
-      ? 35
+      ? 38
       : nec?.nivel === "alta"
-        ? 22
+        ? 26
         : nec?.nivel === "media"
-          ? 10
-          : 2;
+          ? 14
+          : 6;
   const gapOverall = jogador.overall - clube.forcaGeral;
   const potencialBonus =
-    jogador.idade <= 22
-      ? Math.max(0, jogador.potencial - jogador.overall) * 0.8
-      : 0;
+    jogador.idade <= 23
+      ? Math.max(0, jogador.potencial - jogador.overall) * 1.15
+      : jogador.idade <= 26
+        ? Math.max(0, jogador.potencial - jogador.overall) * 0.45
+        : 0;
   const reputacaoOk =
-    jogador.overall + potencialBonus >= clube.reputacao - 18 ||
-    (jogador.idade <= 20 && jogador.potencial >= clube.reputacao + 5);
-  if (!reputacaoOk && clube.reputacao > 85) return 0;
+    jogador.overall + potencialBonus >= clube.reputacao - 24 ||
+    (jogador.idade <= 22 && jogador.potencial >= clube.reputacao - 2);
+  // Gigantes ainda exigem nível/potencial alto.
+  if (!reputacaoOk && clube.reputacao >= 90) return 0;
+
+  // Encaixe favorece mesmo nível / clube um pouco acima; clubes bem piores perdem prioridade.
+  const encaixe =
+    gapOverall >= -12 && gapOverall <= 5
+      ? 16 - Math.abs(gapOverall + 3) * 1.2
+      : gapOverall > 5
+        ? Math.max(-6, 6 - (gapOverall - 5) * 0.9)
+        : Math.max(-12, (gapOverall + 12) * 0.5);
 
   let score =
     pesoNec +
-    gapOverall * 2 +
+    encaixe +
     potencialBonus +
-    (jogador.forma - 50) * 0.1 +
-    (ligaDestinoReputacao - ligaOrigemReputacao) * 0.15;
+    (jogador.forma - 50) * 0.12 +
+    (ligaDestinoReputacao - ligaOrigemReputacao) * 0.12;
 
-  if (jogador.valorMercado > orcamentoAproximado(clube) * 0.45) score -= 40;
-  if (jogador.salario > clube.poderFinanceiro * 800) score -= 15;
+  if (jogador.valorMercado > orcamentoAproximado(clube) * 0.55) score -= 30;
+  if (jogador.salario > clube.poderFinanceiro * 900) score -= 12;
   return score;
 }
 
@@ -197,9 +208,10 @@ export function reputacaoCompativel(
   idade: number,
   clube: Clube,
 ): boolean {
-  if (jogadorOverall >= clube.reputacao - 12) return true;
-  if (idade <= 21 && jogadorPotencial >= clube.reputacao + 3) return true;
-  return jogadorOverall >= clube.forcaGeral - 10;
+  if (jogadorOverall >= clube.reputacao - 18) return true;
+  if (idade <= 23 && jogadorPotencial >= clube.reputacao - 5) return true;
+  if (idade <= 21 && jogadorPotencial >= clube.forcaGeral + 2) return true;
+  return jogadorOverall >= clube.forcaGeral - 14;
 }
 
 export function ligaDoClube(carreira: EstadoCarreira, clubeId: string) {

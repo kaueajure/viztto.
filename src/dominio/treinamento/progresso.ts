@@ -17,10 +17,10 @@ export const ATRIBUTOS_FISICOS: ReadonlySet<Atributo> = new Set([
  * O custo crescente (custoProximoPonto) faz o trabalho de desacelerar no alto.
  */
 export const XP_POR_NOTA: Record<NotaTreino, number> = {
-  A: 15,
-  B: 11,
-  C: 7,
-  D: 4,
+  A: 16,
+  B: 12,
+  C: 8,
+  D: 5,
 };
 
 export const FRACAO_SECUNDARIO = 0.7;
@@ -51,34 +51,31 @@ export function eficienciaIdade(idade: number, atributo: Atributo): number {
  */
 export function fatorPotencial(overall: number, potencialInterno: number): number {
   const gap = potencialInterno - overall;
-  if (gap >= 28) return 1.1;
-  if (gap >= 18) return 1.04;
-  if (gap >= 10) return 0.88 + ((gap - 10) / 8) * 0.12;
-  if (gap >= 0) return 0.4 + (gap / 10) * 0.48;
+  if (gap >= 22) return 1.12;
+  if (gap >= 12) return 1.05;
+  if (gap >= 6) return 0.92 + ((gap - 6) / 6) * 0.13;
+  if (gap >= 0) return 0.55 + (gap / 6) * 0.37;
   // Além do potencial: crescimento residual pequeno.
-  return Math.max(0.07, 0.18 - Math.min(12, -gap) * 0.008);
+  return Math.max(0.08, 0.2 - Math.min(12, -gap) * 0.008);
 }
 
 /**
  * XP necessário para +1 no atributo (barra desenvolvimento continua 0–100).
  *
- * Filosofia carreira:
- * 40–49 muito fácil → 50–59 fácil → 60–64 fácil/mod → 65–69 moderado
- * 70–74 mais difícil → 75–79 difícil → 80–84 bem difícil
- * 85–89 muito difícil → 90+ excepcional
+ * Baixo/médio: fácil · 70–79: desacelera · 80+: difícil · 85+: muito difícil · 90+: excepcional
  */
 export function custoProximoPonto(valor: number): number {
   const v = Math.max(1, Math.min(99, Math.floor(valor)));
-  if (v < 40) return 52;
-  if (v < 50) return 78; // muito fácil
-  if (v < 60) return 118; // fácil
-  if (v < 65) return 158; // fácil/moderado
-  if (v < 70) return 205; // moderado
-  if (v < 75) return 265; // mais difícil
-  if (v < 80) return 335; // difícil
-  if (v < 85) return 430; // bem difícil
-  if (v < 90) return 560; // muito difícil
-  return 750; // excepcional 90+
+  if (v < 40) return 38;
+  if (v < 50) return 55; // muito fácil
+  if (v < 60) return 82; // fácil
+  if (v < 65) return 105; // fácil/moderado
+  if (v < 70) return 125; // acessível (faixa ~65–69)
+  if (v < 75) return 160; // moderado
+  if (v < 80) return 215; // mais difícil
+  if (v < 85) return 320; // bem difícil
+  if (v < 90) return 450; // muito difícil
+  return 640; // excepcional 90+
 }
 
 /**
@@ -100,7 +97,7 @@ export function rendimentoAtributo(valor: number): number {
 
 /** Boost leve para categoria de base (mesmo OVR, contexto formativo). */
 export function fatorCategoria(categoria: "base" | "profissional"): number {
-  return categoria === "base" ? 1.12 : 1;
+  return categoria === "base" ? 1.15 : 1;
 }
 
 /** Ajuste fino: A 86 ≠ A 99, sem diferença enorme. */
