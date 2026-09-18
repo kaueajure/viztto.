@@ -11,6 +11,8 @@ export const esquemaConfiancaRating = z.enum(["high", "medium", "low"]);
 export const esquemaFonteExterna = z
   .object({
     provider: z.string().min(1).max(80),
+    family: z.string().min(1).max(40).optional(),
+    ratingType: z.string().min(1).max(40).optional(),
     externalPlayerId: z.string().min(1).max(120).optional(),
     ratingOriginal: z.number().finite().optional(),
     ratingNormalizado: z.number().finite().min(1).max(99).optional(),
@@ -18,6 +20,9 @@ export const esquemaFonteExterna = z
     confidence: z.enum(["exact", "high", "medium", "low"]).optional(),
     matchedBy: z.array(z.string().max(80)).max(20).optional(),
     sourceUpdatedAt: z.string().max(50).optional(),
+    sourceUrl: z.string().max(500).optional(),
+    game: z.string().max(80).optional(),
+    version: z.string().max(80).optional(),
     calibrationVersion: z.string().max(80).optional(),
   })
   .strict();

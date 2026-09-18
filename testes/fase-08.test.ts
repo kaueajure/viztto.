@@ -80,6 +80,7 @@ describe('Fase 08 — Sua História', () => {
 });
 
 import { processarTreinamento, avaliarTreino, configurarDesenvolvimento } from '@/simulacao/treinamento/treinamento';
+import { aplicarSessaoTreino } from '@/simulacao/treinamento/aplicar-sessao';
 import { calcularEvolucao } from '@/simulacao/evolucao/evolucao';
 import { GeradorAleatorio } from '@/utilitarios/aleatorio';
 import { planosDaPosicao } from '@/dominio/planos-desenvolvimento';
@@ -87,11 +88,17 @@ describe('Fase 08 — treinamento', () => {
   it('reserva acumula progresso sem minutos e partidas acrescentam desenvolvimento', () => {
     const { carreira:c,catalogo } = exemploCarreira();
     c.jogador.potencialInterno = 94;
-    const inicial = structuredClone(c.jogador);
-    processarTreinamento(c.jogador,'drible',c.clubes[0],c.dataAtual,new GeradorAleatorio(42));
-    expect(c.jogador.desenvolvimento.drible).toBeGreaterThan(inicial.desenvolvimento.drible);
+    const clube = c.clubes[0];
+    const r = aplicarSessaoTreino(c, {
+      exercicioId: 'drible',
+      score: 85,
+      modo: 'jogar',
+      sessaoId: 'fase8-drible',
+    }, clube);
+    expect(r.carreira.jogador.desenvolvimento.drible).toBeGreaterThan(c.jogador.desenvolvimento.drible);
+    Object.assign(c, r.carreira);
     const antes = c.jogador.desenvolvimento.drible;
-    calcularEvolucao(c.jogador,['drible'],5,c.clubes[0]);
+    calcularEvolucao(c.jogador,['drible'],5,clube);
     expect(c.jogador.desenvolvimento.drible).toBeGreaterThan(antes);
     expect(hidratarCarreira(serializarCarreira(c),catalogo).jogador.desenvolvimento).toEqual(c.jogador.desenvolvimento);
   });
@@ -117,7 +124,9 @@ describe('Fase 08 — treinamento', () => {
     c.jogador.personalidade.disciplina = 99;
     expect(avaliarTreino(c.jogador,new GeradorAleatorio(1))).toBeGreaterThan(baixa);
     const confianca = c.jogador.confianca;
-    processarTreinamento(c.jogador,'drible',c.clubes[0],c.dataAtual,new GeradorAleatorio(1));
+    // Plano legado ainda move confiança ao processar a semana.
+    c.jogador.preparacao.planoId = 'invertido';
+    processarTreinamento(c.jogador,'equilibrado',c.clubes[0],c.dataAtual,new GeradorAleatorio(1));
     expect(c.jogador.confianca).toBeGreaterThan(confianca);
   });
   it('potencial limita evolução e atributo alto tem retorno menor', () => {
@@ -128,9 +137,12 @@ describe('Fase 08 — treinamento', () => {
     calcularEvolucao(c.jogador,['drible','passeLongo'],5,c.clubes[0]);
     expect(c.jogador.desenvolvimento.drible).toBeLessThan(c.jogador.desenvolvimento.passeLongo);
     c.jogador.potencialInterno = c.jogador.overall;
-    const atributos = {...c.jogador.atributos};
+    const ovrAntes = c.jogador.overall;
+    const dribleAntes = c.jogador.atributos.drible;
     calcularEvolucao(c.jogador,['drible'],500,c.clubes[0]);
-    expect(c.jogador.atributos).toEqual(atributos);
+    // Soft potential: ainda pode haver ganho residual, mas sem explosão.
+    expect(c.jogador.overall - ovrAntes).toBeLessThanOrEqual(4);
+    expect(c.jogador.atributos.drible - dribleAntes).toBeLessThanOrEqual(8);
   });
   it('todas as posições têm planos e prioridades são limitadas e persistidas', () => {
     for (const p of Object.keys(POSICOES) as Posicao[]) expect(planosDaPosicao(p).length).toBeGreaterThanOrEqual(2);

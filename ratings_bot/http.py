@@ -1,9 +1,24 @@
 """Transport for future authorized APIs; never bypasses protection or redirects."""
+from __future__ import annotations
 import asyncio
 import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-import httpx
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import httpx as httpx_types
+
+
+def _httpx():
+    try:
+        import httpx
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError(
+            "httpx is required for network transport. "
+            "Install with: .venv-ratings/bin/pip install -e '.[test]'"
+        ) from exc
+    return httpx
 
 
 class ProviderError(Exception):
@@ -13,7 +28,8 @@ class ProviderError(Exception):
 class RateLimitedHTTP:
     def __init__(self, *, concurrency: int = 1, delay: float = 1.5,
                  timeout: float = 20, retries: int = 3,
-                 transport: httpx.AsyncBaseTransport | None = None):
+                 transport: Any = None):
+        httpx = _httpx()
         if concurrency < 1 or delay < 0 or timeout <= 0 or not 0 <= retries <= 5:
             raise ValueError("Invalid transport limits")
         self.semaphore = asyncio.Semaphore(concurrency)
@@ -21,6 +37,7 @@ class RateLimitedHTTP:
         self.delay, self.retries = delay, retries
         self.next_start = 0.0
         self.requests = self.errors = 0
+        self._httpx = httpx
         self.client = httpx.AsyncClient(timeout=timeout, transport=transport,
             follow_redirects=False, headers={"User-Agent": "VizttoRatingsBot/1.0 (offline importer)"})
 
@@ -28,6 +45,7 @@ class RateLimitedHTTP:
         await self.client.aclose()
 
     async def get_json(self, url: str, *, headers: dict | None = None) -> dict:
+        httpx = self._httpx
         for attempt in range(self.retries + 1):
             retry_delay = 2 ** attempt
             async with self.semaphore:

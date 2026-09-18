@@ -60,17 +60,25 @@ class ExternalPlayer:
     potential: float | None = None
     attributes: dict[str, float] = field(default_factory=dict)
     sourceUpdatedAt: str | None = None
+    # Provenance / calibration metadata (optional; absent on legacy fixtures).
+    family: str | None = None
+    ratingType: str = "base"
+    sourceUrl: str | None = None
+    game: str | None = None
+    version: str | None = None
+    age: int | None = None
 
     def __post_init__(self) -> None:
         identity(self.externalPlayerId)
         identity(self.name)
         number(self.overall)
-        for key in ("height", "potential"):
+        for key in ("height", "potential", "age"):
             if getattr(self, key) is not None:
                 number(getattr(self, key))
         if self.dateOfBirth:
             date.fromisoformat(self.dateOfBirth)
-        for key in ("club", "position", "country", "sourceUpdatedAt"):
+        for key in ("club", "position", "country", "sourceUpdatedAt", "family",
+                    "ratingType", "sourceUrl", "game", "version"):
             if getattr(self, key) is not None:
                 identity(getattr(self, key))
         if not isinstance(self.attributes, dict):

@@ -8,16 +8,39 @@ from .models import CanonicalPlayer, ExternalPlayer
 ACCEPTED = {"exact", "high"}
 # Grupos amplos: comparar "Centre-Forward" com "ST" textualmente nunca funciona.
 POSITION_GROUPS = {
-    "GOL": ("goalkeeper", "goleiro", "gk"),
-    "DEF": ("back", "defender", "zagueiro", "lateral", "cb", "rb", "lb", "sweeper", "df"),
-    "MEI": ("midfield", "meia", "volante", "mc", "cm", "dm", "am", "cdm", "cam", "mf"),
-    "ATA": ("forward", "winger", "striker", "atacante", "ponta", "st", "cf", "lw", "rw", "fw"),
+    "GOL": ("goalkeeper", "goleiro", "goleiro", "gk", "gol"),
+    "DEF": ("back", "defender", "zagueiro", "lateral", "cb", "rb", "lb", "sweeper", "df", "def"),
+    "MEI": ("midfield", "meia", "volante", "mc", "cm", "dm", "am", "cdm", "cam", "mf", "mei"),
+    "ATA": ("forward", "winger", "striker", "atacante", "ponta", "st", "cf", "lw", "rw", "fw", "ata"),
 }
+JR_TOKENS = frozenset({"jr", "jnr", "junior"})
 
 
 def normalize(text: str | None) -> str:
     decomposed = unicodedata.normalize("NFKD", text or "")
     return re.sub(r"[^a-z0-9]+", " ", "".join(c for c in decomposed if not unicodedata.combining(c)).lower()).strip()
+
+
+def name_tokens(text: str | None) -> list[str]:
+    tokens = normalize(text).split()
+    return ["junior" if t in JR_TOKENS else t for t in tokens]
+
+
+def name_similarity(a: str | None, b: str | None) -> float:
+    """Accent-insensitive; Jr≈Junior; abbreviated given name only with shared surname."""
+    ta, tb = name_tokens(a), name_tokens(b)
+    if not ta or not tb:
+        return 0.0
+    if ta == tb:
+        return 1.0
+    base = SequenceMatcher(None, " ".join(ta), " ".join(tb)).ratio()
+    if len(ta) >= 2 and len(tb) >= 2 and ta[-1] == tb[-1]:
+        fa, fb = ta[0], tb[0]
+        if fa == fb:
+            return max(base, 0.95)
+        if (len(fa) >= 3 and fb.startswith(fa)) or (len(fb) >= 3 and fa.startswith(fb)):
+            return max(base, 0.9)
+    return base
 
 
 def position_group(text: str | None, aliases: dict[str, str] | None = None) -> str:
@@ -42,14 +65,13 @@ class Match:
     score: float = 0
     matched_by: list[str] = field(default_factory=list)
     collision: bool = False
-    # Por jogador: permite ao Node agregar candidatos e falhas por liga.
     candidate_count: int = 0
     error: bool = False
 
 
 def score(player: CanonicalPlayer, candidate: ExternalPlayer,
           position_aliases: dict[str, str] | None = None) -> Match:
-    name = SequenceMatcher(None, normalize(player.name), normalize(candidate.name)).ratio()
+    name = name_similarity(player.name, candidate.name)
     evidence = []
     if player.dateOfBirth and candidate.dateOfBirth:
         if player.dateOfBirth != candidate.dateOfBirth:
@@ -70,6 +92,8 @@ def score(player: CanonicalPlayer, candidate: ExternalPlayer,
     elif name >= .85 and "dateOfBirth" in evidence and len(evidence) >= 2:
         confidence = "high"
     elif name == 1 and {"club", "country", "position", "height"}.issubset(evidence):
+        confidence = "high"
+    elif name >= .9 and "dateOfBirth" in evidence:
         confidence = "high"
     elif name >= .75 and len(evidence) >= 1:
         confidence = "medium"

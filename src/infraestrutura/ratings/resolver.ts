@@ -13,7 +13,8 @@ import type { RatingExterno } from "./contrato";
 const media = (v: number[]) => v.reduce((s, n) => s + n, 0) / v.length;
 const atributos = Object.keys(NOMES_ATRIBUTOS) as Atributo[];
 
-/** Determinístico: fontes ordenadas, somente EXACT/HIGH, fallback universal. */
+/** Determinístico: fontes ordenadas, somente EXACT/HIGH, fallback universal.
+ * Fontes da mesma `family` (ex.: ea_fc) contam como um único voto. */
 export function resolverRating(
   entrada: EntradaRatingEngine,
   fontes: RatingExterno[],
@@ -23,7 +24,27 @@ export function resolverRating(
     .filter((s) => ["exact", "high"].includes(s.confidence))
     .sort((a, b) => a.provider.localeCompare(b.provider));
   if (!seguras.length) return engine;
-  const valores = seguras.map((s) => s.ratingNormalizado);
+  const porFamilia = new Map<string, RatingExterno[]>();
+  for (const s of seguras) {
+    const fam = s.family?.trim() || `provider:${s.provider}`;
+    const lista = porFamilia.get(fam) ?? [];
+    lista.push(s);
+    porFamilia.set(fam, lista);
+  }
+  const evidencias: RatingExterno[] = [];
+  for (const [, grupo] of [...porFamilia.entries()].sort(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
+    const ordenado = [...grupo].sort((a, b) =>
+      a.provider.localeCompare(b.provider),
+    );
+    // Preferência estável: primeiro provider lexicográfico do grupo, salvo
+    // ea-official quando presente na família ea_fc.
+    const preferido =
+      ordenado.find((s) => s.provider === "ea-official") ?? ordenado[0]!;
+    evidencias.push(preferido);
+  }
+  const valores = evidencias.map((s) => s.ratingNormalizado);
   const divergente = Math.max(...valores) - Math.min(...valores) > 10;
   const externo = media(valores);
   const foraPrior = Math.abs(externo - engine.overall) > 18;
@@ -37,7 +58,7 @@ export function resolverRating(
   const attrs = { ...engine.atributos };
   const estimados: Atributo[] = [];
   for (const atributo of atributos) {
-    const observados = seguras.flatMap((s) =>
+    const observados = evidencias.flatMap((s) =>
       s.attributes[atributo] === undefined ? [] : [s.attributes[atributo]],
     );
     if (observados.length) attrs[atributo] = Math.round(media(observados));
@@ -59,7 +80,7 @@ export function resolverRating(
       attrs[a] = limitar(attrs[a] + Math.sign(alvo - atual), 1, 99);
   }
   const overall = calcularOverall(attrs, posicao);
-  const potenciais = seguras.flatMap((s) =>
+  const potenciais = evidencias.flatMap((s) =>
     s.potentialNormalizado === undefined ? [] : [s.potentialNormalizado],
   );
   const estimativa = Math.max(
@@ -83,16 +104,16 @@ export function resolverRating(
     overall,
     potencial,
     metadata: {
-      source: seguras.length > 1 ? "multi-source" : "external",
+      source: evidencias.length > 1 ? "multi-source" : "external",
       confidence:
         divergente || foraPrior || Math.abs(overall - alvo) > 5
           ? "medium"
           : "high",
-      sources: seguras.map(
+      sources: evidencias.map(
         ({ attributes: _attrs, potentialNormalizado: _pot, ...meta }) => meta,
       ),
       estimatedAttributes: estimados,
-      calibrationVersion: "resolver-v1/engine-v1",
+      calibrationVersion: "resolver-v2/engine-v1",
     },
   };
 }

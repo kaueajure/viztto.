@@ -92,10 +92,14 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
     >(null),
     [resumo, definirResumo] = useState(false),
     [ocupado, definirOcupado] = useState(false);
-  useFocoModal(configuracoes, () => {
-    definirConfiguracoes(false);
-    definirConfirmacao(null);
-  });
+  useFocoModal(
+    configuracoes,
+    () => {
+      definirConfiguracoes(false);
+      definirConfirmacao(null);
+    },
+    confirmacao ?? "configuracoes",
+  );
   if (!hidratado)
     return (
       <main className="carregamento">

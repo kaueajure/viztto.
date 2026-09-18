@@ -4,15 +4,27 @@ import json
 from ..matcher import normalize
 from ..models import CanonicalPlayer, ExternalPlayer
 from .base import RatingsProvider
+from .status import AVAILABLE, FAMILY_SYNTHETIC, RATING_BASE
 
 
 class MockRatingsProvider(RatingsProvider):
     authorized = True
     synthetic = True
+    availability = AVAILABLE
+    availability_reason = "Synthetic fixture provider for tests only."
+    family = FAMILY_SYNTHETIC
 
     def __init__(self, players: list[dict] | None = None, name: str = "mock"):
         self.name = name
-        records = [ExternalPlayer(**p) for p in players or []]
+        # Distinct family per mock instance so multi-source tests stay independent.
+        self.family = f"{FAMILY_SYNTHETIC}:{name}"
+        records = []
+        for p in players or []:
+            row = dict(p)
+            if not row.get("family"):
+                row["family"] = self.family
+            row.setdefault("ratingType", RATING_BASE)
+            records.append(ExternalPlayer(**row))
         self.players = {p.externalPlayerId: p for p in records}
         if len(self.players) != len(records):
             raise ValueError("Duplicate external identity in fixture")

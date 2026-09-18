@@ -58,9 +58,10 @@ Provider: mock  Authorization: OK  Calibration: mock-v1  Synthetic: yes
 | Provider | Estado | Motivo |
 | --- | --- | --- |
 | `mock` / `mock-b` | habilitados, sintéticos | Apenas fixtures e testes; provider sintético nunca alimenta publicação oficial. |
-| `sofifa` | desabilitado | API REST documentada, mas restrita a uso não comercial; ver seção abaixo. |
-| `efootball` | desabilitado | Exige consentimento prévio por escrito para extração automatizada. |
-| `ea` | desabilitado | Termos restringem robôs e extração automatizada. |
+| `ea-official` | desabilitado (DISABLED_BY_POLICY) | HTML/`__NEXT_DATA__` parseável; User Agreement restringe robôs. Ver [fontes-ratings.md](fontes-ratings.md). |
+| `sofifa` | desabilitado (DISABLED_BY_POLICY) | API REST documentada, restrita a uso **não comercial**; ver seção abaixo. |
+| `pesmaster` | desabilitado (REVIEW_REQUIRED) | robots Allow:/; licença comercial de reuso automatizado não confirmada. |
+| `efootball` / `ea` | aliases | Apontam para pesmaster / ea-official. |
 | `licensed-dataset` | desabilitado | Aguarda licença verificada, procedência e escala de rating documentadas. |
 
 ## Providers reais
@@ -179,10 +180,13 @@ npm run atualizar-dados-futebol -- --provider fonte-a --provider fonte-b
 npm run atualizar-dados-futebol -- --allow-engine-only
 npm run atualizar-ratings          # somente o robô sobre os snapshots atuais
 npm run ratings:dry-run            # consulta, matching e relatório sem publicar
+npm run ratings:fontes             # dry-run de game ratings (fixtures; não publica)
 npm run ratings:report             # imprime o último relatório
 npm run calibrar-ratings -- --results <arquivo>
 npm run test:ratings               # testes do robô
 ```
+
+Detalhes dos adapters EA / SoFIFA / PES Master: [fontes-ratings.md](fontes-ratings.md).
 
 `--provider <nome>` repetido seleciona os providers externos; sem ele o lote não
 tem provider algum. O terminal diz isso explicitamente e a publicação é
@@ -266,6 +270,7 @@ rating nem reescrever save. Código de runtime não importa nada de `docs/`.
 ## Barreira de validação
 
 `.github/workflows/deploy.yml` roda, em ordem e antes de qualquer deploy:
-`snapshots:check-git`, `typecheck`, `test`, `test:ratings` e `build`. Qualquer
-falha impede o deploy. Os testes Python usam `.venv-ratings`, provisionado na
-primeira execução; nada é instalado globalmente.
+`snapshots:check-git`, `typecheck`, `test`, `test:ratings`, `build` e
+`test:e2e` (Playwright contra `next start`). Qualquer falha impede o deploy.
+Os testes Python usam `.venv-ratings`, provisionado na primeira execução; nada
+é instalado globalmente.

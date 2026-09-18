@@ -11,10 +11,32 @@ export const esquemaHistoria = z.discriminatedUnion('origem', [
   z.object({ origem: z.literal('historia'), versao: z.literal(1), seed: texto,
     escolhas: z.object({ origem: texto.refine(v => HISTORIAS.origem.some(o => o.id === v)), destaque: texto.refine(v => HISTORIAS.destaque.some(o => o.id === v)), dificuldade: texto.refine(v => HISTORIAS.dificuldade.some(o => o.id === v)), chegada: texto.refine(v => HISTORIAS.chegada.some(o => o.id === v)) }).strict() }).strict(),
 ]);
+const esquemaRecordeExercicio = z.object({
+  score: nivel,
+  nota: z.enum(['A', 'B', 'C', 'D']),
+  realizados: numero.int().nonnegative(),
+}).strict();
+const esquemaSessaoCentro = z.object({
+  id: texto,
+  exercicioId: texto,
+  score: nivel,
+  nota: z.enum(['A', 'B', 'C', 'D']),
+  modo: z.enum(['jogar', 'simular']),
+  aplicada: z.boolean(),
+}).strict();
+const esquemaCentroTreinamento = z.object({
+  progressoAtributos: z.record(texto, numero.min(0).max(100)).default({}),
+  melhoresExercicios: z.record(texto, esquemaRecordeExercicio).default({}),
+  semana: z.object({
+    chave: z.string(),
+    sessoes: z.array(esquemaSessaoCentro).max(3),
+  }).strict(),
+}).strict();
 export const esquemaPreparacao = z.object({
   planoId: texto.nullable(), prioridades: z.array(esquemaAtributo).max(2).refine(v => new Set(v).size === v.length),
   intensidade: z.enum(['leve','normal','intenso']),
   historico: z.array(z.object({ data, avaliacao: z.enum(['Ruim','Regular','Bom','Muito bom','Excelente','Recuperação']), nota: nivel, confianca: numero.min(-100).max(100), progresso: numero.nonnegative() }).strict()).max(8),
+  centro: esquemaCentroTreinamento.optional(),
 }).strict();
 const esquemaCooldownsTreinador = z.object({
   informativa: data.nullable(),

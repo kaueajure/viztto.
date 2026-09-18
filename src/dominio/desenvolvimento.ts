@@ -12,9 +12,41 @@ export interface RegistroTreino {
   data: string; avaliacao: AvaliacaoTreino; nota: number;
   confianca: number; progresso: number;
 }
+export type NotaTreinoPersistida = "A" | "B" | "C" | "D";
+
+export interface RecordeExercicio {
+  score: number;
+  nota: NotaTreinoPersistida;
+  realizados: number;
+}
+
+export interface SessaoTreinoSemana {
+  id: string;
+  exercicioId: string;
+  score: number;
+  nota: NotaTreinoPersistida;
+  modo: "jogar" | "simular";
+  aplicada: boolean;
+}
+
+export interface SemanaCentroTreinamento {
+  chave: string;
+  sessoes: SessaoTreinoSemana[];
+}
+
+/** Centro de treinamento jogável — campos opcionais para saves legados. */
+export interface CentroTreinamentoEstado {
+  /** Progresso fracionário 0–100 por atributo (espelha desenvolvimento quando hidratado). */
+  progressoAtributos: Partial<Record<Atributo, number>>;
+  melhoresExercicios: Partial<Record<string, RecordeExercicio>>;
+  semana: SemanaCentroTreinamento;
+}
+
 export interface PreparacaoJogador {
   planoId: string | null; prioridades: Atributo[]; intensidade: IntensidadeTreino;
   historico: RegistroTreino[];
+  /** Ausente em saves antigos — hidratar com criarCentroTreinamento(). */
+  centro?: CentroTreinamentoEstado;
 }
 export type AcaoTreinador = 'motivo' | 'oportunidade' | 'melhorar' | 'papel' | 'posicao' | 'aceitar' | 'reclamar' | 'cobrar';
 export type CategoriaConversaTreinador = 'informativa' | 'pedido' | 'reclamacao' | 'cobranca' | 'posicional';
@@ -62,8 +94,22 @@ export interface AcompanhamentoCarreira {
 export function criarCooldownsTreinador(valor: string | null = null): CooldownsTreinador {
   return { informativa: valor, pedido: valor, reclamacao: valor, cobranca: valor, posicional: valor };
 }
+export function criarCentroTreinamento(chaveSemana = ""): CentroTreinamentoEstado {
+  return {
+    progressoAtributos: {},
+    melhoresExercicios: {},
+    semana: { chave: chaveSemana, sessoes: [] },
+  };
+}
+
 export function criarPreparacao(): PreparacaoJogador {
-  return { planoId: null, prioridades: [], intensidade: 'normal', historico: [] };
+  return {
+    planoId: null,
+    prioridades: [],
+    intensidade: "normal",
+    historico: [],
+    centro: criarCentroTreinamento(),
+  };
 }
 export function criarAcompanhamento(): AcompanhamentoCarreira {
   return { conversas: [], cooldownsTreinador: criarCooldownsTreinador(), promessa: null, adaptacao: null, papelAceito: null,

@@ -6,6 +6,12 @@ import { conversarTreinador } from "@/simulacao/elenco/treinador";
 import type { AcaoTreinador } from "@/dominio/desenvolvimento";
 import type { Posicao } from "@/dominio/entidades/modelos";
 import { configurarDesenvolvimento, escolherFocoTreino } from "@/simulacao/treinamento/treinamento";
+import {
+  aplicarSessaoTreino,
+  type EntradaSessaoTreino,
+  type ResultadoSessaoTreino,
+} from "@/simulacao/treinamento/aplicar-sessao";
+import { estaSemClube } from "@/simulacao/carreira/agente-livre";
 import type { IntensidadeTreino } from "@/dominio/desenvolvimento";
 import type { Atributo } from "@/dominio/entidades/modelos";
 import { create } from "zustand";
@@ -72,6 +78,7 @@ interface JogoStore {
   conversarTreinador: (acao: AcaoTreinador, posicao?: Posicao) => void;
   configurarDesenvolvimento: (plano: string, prioridades: Atributo[], intensidade: IntensidadeTreino) => void;
   escolherTreino: (foco: FocoTreino) => void;
+  concluirSessaoTreino: (entrada: EntradaSessaoTreino) => ResultadoSessaoTreino | null;
   responder: (id: string, aceitar: boolean) => void;
   responderDecisao: (id: string, opcaoId: string) => void;
   conversarAgente: (
@@ -504,6 +511,23 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
       conversarTreinador: (a,p) => aplicar(c => conversarTreinador(c,a,p)),
       configurarDesenvolvimento: (p,a,i) => aplicar(c => configurarDesenvolvimento(c,p,a,i)),
       escolherTreino: (foco) => aplicar((c) => escolherFocoTreino(c, foco)),
+      concluirSessaoTreino: (entrada) => {
+        let resultado: ResultadoSessaoTreino | null = null;
+        aplicar((c) => {
+          const livre = estaSemClube(c);
+          const clube = livre
+            ? null
+            : (c.clubes.find((x) => x.id === c.clubeAtualId) ?? null);
+          const r = aplicarSessaoTreino(c, entrada, clube);
+          resultado = r.resultado;
+          return r.carreira;
+        });
+        if (!resultado) {
+          const msg = get().erro;
+          if (msg) throw new Error(msg);
+        }
+        return resultado;
+      },
       responder: (id, aceitar) =>
         aplicar((c) => responderProposta(c, id, aceitar)),
       responderDecisao: (id, opcaoId) =>

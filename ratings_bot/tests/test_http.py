@@ -1,10 +1,16 @@
 import asyncio
 import time
 import unittest
-import httpx
+
+try:
+    import httpx
+except ModuleNotFoundError:  # pragma: no cover
+    httpx = None  # type: ignore
+
 from ratings_bot.http import RateLimitedHTTP, ProviderError
 
 
+@unittest.skipIf(httpx is None, "httpx not installed in this environment")
 class HTTPTests(unittest.IsolatedAsyncioTestCase):
     async def test_spacing_and_concurrency(self):
         starts, active, maximum = [], 0, 0

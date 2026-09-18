@@ -181,6 +181,40 @@ it("consenso multi-source independe da ordem; divergência reduz confiança", ()
       .metadata.confidence,
   ).toBe("medium");
 });
+
+it("EA + SoFIFA mesma família contam como um voto", () => {
+  const ea = {
+    ...fonte,
+    provider: "ea-official",
+    family: "ea_fc",
+    ratingNormalizado: 84,
+    ratingOriginal: 84,
+  };
+  const sofifa = {
+    ...fonte,
+    provider: "sofifa",
+    family: "ea_fc",
+    ratingNormalizado: 84,
+    ratingOriginal: 84,
+  };
+  const pes = {
+    ...fonte,
+    provider: "pesmaster",
+    family: "konami",
+    ratingNormalizado: 82,
+    ratingOriginal: 82,
+  };
+  const r = resolverRating(entrada, [ea, sofifa, pes]);
+  expect(r.metadata.sources?.map((s) => s.provider).sort()).toEqual([
+    "ea-official",
+    "pesmaster",
+  ]);
+  expect(r.metadata.source).toBe("multi-source");
+  // Preferência ea-official dentro de ea_fc
+  expect(r.metadata.sources?.find((s) => s.family === "ea_fc")?.provider).toBe(
+    "ea-official",
+  );
+});
 it("engine mantém contexto de liga, posição, idade e valor sem inflação extrema", () => {
   const ratings = Array.from({ length: 200 }, (_, i) =>
     calcularRatingViztto({
@@ -416,7 +450,11 @@ it("Python → Node com fixtures produz contrato validado sem alterar universo",
         {
           externalPlayerId: "x1",
           name: p.name,
-          dateOfBirth: p.dateOfBirth,
+          // Sem DOB: evita colisão 1:1 (snapshot demo compartilha 2000-01-01).
+          club: p.club,
+          country: p.country,
+          position: p.position,
+          height: p.height,
           overall: 78,
         },
       ],
@@ -431,7 +469,8 @@ it("Python → Node com fixtures produz contrato validado sem alterar universo",
     dryRun: true,
   });
   expect(r.players).toHaveLength(lote.players.length);
-  expect(r.players[0].sources[0].ratingNormalizado).toBe(78);
+  const comFonte = r.players.find((pl) => pl.id === p.id && pl.sources.length);
+  expect(comFonte?.sources[0]?.ratingNormalizado).toBe(78);
   expect(
     JSON.parse(await readFile(join(dir, "report.json"), "utf8")).dryRun,
   ).toBe(true);

@@ -11,6 +11,7 @@ from .matcher import ACCEPTED, Match, choose, enforce_one_to_one
 from .models import CanonicalPlayer, ExternalPlayer, parse_input
 from .normalizer import RatingNormalizer
 from .providers.base import RatingsProvider
+from .providers.status import CALIBRATION_TYPES
 from .report import build_report
 
 
@@ -106,16 +107,27 @@ async def run(data: dict, providers: list[RatingsProvider], calibrations: dict, 
         for player in players:
             match = matches[player.id]
             if match.confidence in ACCEPTED and match.player:
-                try:
-                    source = normalizer.normalize(name, match.player, match.confidence, match.matched_by)
-                    rows[player.id]["sources"].append(source)
-                    mappings[player.transfermarktId] = {
-                        "externalId": match.player.externalPlayerId, "confidence": match.confidence,
-                        "lastValidatedAt": datetime.now(timezone.utc).isoformat(), "status": "active"}
-                except ValueError:
-                    counts["errors"] += 1
-                    match.confidence = "low"
-                    match.error = True
+                if (match.player.ratingType or "base") not in CALIBRATION_TYPES:
+                    # Special/featured/unknown: diagnostics only, never enrich.
+                    match = Match(
+                        confidence="low",
+                        player=match.player,
+                        matched_by=[*match.matched_by, "rating-type-excluded"],
+                        candidate_count=match.candidate_count,
+                    )
+                    matches[player.id] = match
+                else:
+                    try:
+                        source = normalizer.normalize(name, match.player, match.confidence, match.matched_by)
+                        rows[player.id]["sources"].append(source)
+                        mappings[player.transfermarktId] = {
+                            "externalId": match.player.externalPlayerId, "confidence": match.confidence,
+                            "lastValidatedAt": datetime.now(timezone.utc).isoformat(), "status": "active",
+                            "mappingVersion": 1}
+                    except ValueError:
+                        counts["errors"] += 1
+                        match.confidence = "low"
+                        match.error = True
             elif player.transfermarktId in mappings:
                 mappings[player.transfermarktId]["status"] = "stale"
         write_json(mapping_path, mappings)

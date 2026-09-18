@@ -186,8 +186,7 @@ export function PainelJogador({ carreira: c }: { carreira: EstadoCarreira }) {
                 <Barra nome={NOMES_ATRIBUTOS[a]} valor={j.atributos[a]} />
                 {j.desenvolvimento[a] > 0.05 && (
                   <p className="texto-suave progresso-atributo">
-                    Progresso interno: {Math.round(j.desenvolvimento[a] * 100)}%
-                    rumo ao próximo ponto
+                    {Math.round(j.desenvolvimento[a])}% para o próximo ponto
                   </p>
                 )}
               </div>

@@ -128,4 +128,24 @@ describe("fase-12 UX v3 — regressões estruturais", () => {
     expect(central).toMatch(/vz-shell-floats/);
     expect(central).not.toMatch(/faixa-demonstracao/);
   });
+
+  it("breakpoints Home: 3col → 2col (≤1100) → 1col+drawer (≤900) → CTA mobile (≤768)", () => {
+    const css = ler("src/app/globals.css");
+    const bloco = css.slice(css.indexOf("Home breakpoints"));
+    expect(bloco).toMatch(/@media \(max-width: 1100px\)/);
+    expect(bloco).toMatch(/@media \(max-width: 900px\)/);
+    expect(bloco).toMatch(/@media \(max-width: 768px\)/);
+    // A regra de 1 coluna deve aparecer DEPOIS da de 2 colunas no cascade.
+    const i2 = bloco.indexOf("grid-template-columns: 1fr 1fr");
+    const i1 = bloco.indexOf("grid-template-columns: 1fr;");
+    expect(i2).toBeGreaterThan(-1);
+    expect(i1).toBeGreaterThan(i2);
+    expect(bloco).toMatch(/abrir-menu/);
+    expect(bloco).toMatch(/vz-cta-mobile-bar/);
+  });
+
+  it("CentralCarreira reinstala focus trap ao mudar confirmação", () => {
+    const central = ler("src/componentes/jogo/CentralCarreira.tsx");
+    expect(central).toMatch(/confirmacao \?\? "configuracoes"/);
+  });
 });

@@ -1,0 +1,27 @@
+{
+  "data": {
+    "id": 158023,
+    "name": "L. Messi",
+    "fullName": "Lionel Messi",
+    "age": 37,
+    "dob": "1987-06-24",
+    "overall": 88,
+    "potential": 88,
+    "club": {
+      "name": "Inter Miami"
+    },
+    "nation": {
+      "name": "Argentina"
+    },
+    "positions": [
+      "RW",
+      "ST"
+    ],
+    "pace": 80,
+    "shooting": 87,
+    "passing": 90,
+    "dribbling": 94,
+    "defending": 33,
+    "physic": 64
+  }
+}

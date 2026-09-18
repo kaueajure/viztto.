@@ -144,3 +144,57 @@ test("Navegação principal — URLs e headings", async ({ page }) => {
     });
   }
 });
+
+async function assertFocusTrapConfiguracoes(
+  page: import("@playwright/test").Page,
+  acao: "Excluir carreira" | "Reiniciar carreira",
+) {
+  const trigger = page.getByRole("button", {
+    name: /Configurações da carreira/i,
+  });
+  await trigger.click();
+  const dialog = page.getByRole("dialog", { name: /OPÇÕES DA CARREIRA/i });
+  await expect(dialog).toBeVisible();
+
+  await page.keyboard.press("Tab");
+  expect(await dialog.evaluate((el) => el.contains(document.activeElement))).toBe(
+    true,
+  );
+  await page.keyboard.press("Shift+Tab");
+  expect(await dialog.evaluate((el) => el.contains(document.activeElement))).toBe(
+    true,
+  );
+
+  await page.getByRole("button", { name: acao }).click();
+  await expect(
+    page.getByRole("heading", {
+      name: acao.startsWith("Excluir")
+        ? /Excluir esta carreira/i
+        : /Recomeçar esta carreira/i,
+    }),
+  ).toBeVisible();
+
+  for (let i = 0; i < 6; i++) {
+    await page.keyboard.press("Tab");
+    expect(
+      await dialog.evaluate((el) => el.contains(document.activeElement)),
+      `Tab #${i} escapou do diálogo`,
+    ).toBe(true);
+  }
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+}
+
+test("Configurações — focus trap após Excluir", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await abrirHomeComFixture(page, "fixture-save-sem-rail.json");
+  await assertFocusTrapConfiguracoes(page, "Excluir carreira");
+});
+
+test("Configurações — focus trap após Reiniciar", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await abrirHomeComFixture(page, "fixture-save-sem-rail.json");
+  await assertFocusTrapConfiguracoes(page, "Reiniciar carreira");
+});

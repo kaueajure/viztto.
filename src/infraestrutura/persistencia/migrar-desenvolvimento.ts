@@ -1,4 +1,4 @@
-import { criarAcompanhamento, criarCooldownsTreinador, criarPreparacao } from '@/dominio/desenvolvimento';
+import { criarAcompanhamento, criarCentroTreinamento, criarCooldownsTreinador, criarPreparacao } from '@/dominio/desenvolvimento';
 import type { CooldownsTreinador } from '@/dominio/desenvolvimento';
 
 function normalizarAcompanhamento(valor: unknown): unknown {
@@ -84,6 +84,34 @@ export function migrarDesenvolvimento(valor: unknown, persistido = false): unkno
     resultado = { ...resultado, ultimoClubeId: null };
   if (!Object.hasOwn(resultado, "historicoContratos"))
     resultado = { ...resultado, historicoContratos: [] };
+
+  // Centro de treinamento: saves sem `centro` hidratam vazios.
+  if (resultado.jogador && typeof resultado.jogador === "object") {
+    const j = resultado.jogador as Record<string, unknown>;
+    if (j.preparacao && typeof j.preparacao === "object") {
+      const prep = { ...(j.preparacao as Record<string, unknown>) };
+      if (!prep.centro || typeof prep.centro !== "object") {
+        prep.centro = criarCentroTreinamento();
+        resultado = { ...resultado, jogador: { ...j, preparacao: prep } };
+      } else {
+        const centro = { ...(prep.centro as Record<string, unknown>) };
+        if (!centro.progressoAtributos || typeof centro.progressoAtributos !== "object")
+          centro.progressoAtributos = {};
+        if (!centro.melhoresExercicios || typeof centro.melhoresExercicios !== "object")
+          centro.melhoresExercicios = {};
+        if (!centro.semana || typeof centro.semana !== "object") {
+          centro.semana = { chave: "", sessoes: [] };
+        } else {
+          const sem = { ...(centro.semana as Record<string, unknown>) };
+          if (typeof sem.chave !== "string") sem.chave = "";
+          if (!Array.isArray(sem.sessoes)) sem.sessoes = [];
+          centro.semana = sem;
+        }
+        prep.centro = centro;
+        resultado = { ...resultado, jogador: { ...j, preparacao: prep } };
+      }
+    }
+  }
 
   return resultado;
 }

@@ -44,9 +44,19 @@ class RatingNormalizer:
                   "ratingNormalizado": self.curve(player.overall, self.config["overall"]),
                   "confidence": confidence, "matchedBy": matched_by,
                   "calibrationVersion": self.config["version"], "attributes": attrs}
+        if player.family:
+            result["family"] = player.family
+        if player.ratingType:
+            result["ratingType"] = player.ratingType
         if player.potential is not None:
             result["externalPotential"] = player.potential
             result["potentialNormalizado"] = self.curve(player.potential, self.config.get("potential", self.config["overall"]))
         if player.sourceUpdatedAt:
             result["sourceUpdatedAt"] = player.sourceUpdatedAt
+        if player.sourceUrl:
+            result["sourceUrl"] = player.sourceUrl
+        if player.game:
+            result["game"] = player.game
+        if player.version:
+            result["version"] = player.version
         return result
