@@ -4,8 +4,11 @@ import {
   calcularOverall,
   criarAtributosUniformes,
 } from "@/dominio/regras/jogador";
+import {
+  overallAlvoDeMercado,
+  potencialDe,
+} from "@/dominio/regras/rating-mercado";
 import { mapearPosicaoPrincipal } from "@/dominio/jogador-mundo";
-import { GeradorAleatorio, gerarSeedNumerica } from "@/utilitarios/aleatorio";
 import { limitar } from "@/utilitarios/formatacao";
 import type {
   ConfiancaRating,
@@ -18,6 +21,11 @@ export {
   esquemaRatingMetadata,
   normalizarRatingMetadata,
 } from "@/dominio/rating-metadata";
+export {
+  ovrDeValorMercado,
+  overallAlvoDeMercado,
+  potencialDe,
+} from "@/dominio/regras/rating-mercado";
 
 const LISTA_ATRIBUTOS = Object.keys(NOMES_ATRIBUTOS) as Atributo[];
 
@@ -33,6 +41,10 @@ export interface EntradaRatingEngine {
   forcaMediaLiga: number;
   indiceNoElenco: number;
   tamanhoElenco: number;
+  /** Estatísticas reais opcionais (minutos/gols) — só ajustam se presentes. */
+  minutosTemporada?: number | null;
+  golsTemporada?: number | null;
+  assistenciasTemporada?: number | null;
 }
 
 export interface ResultadoRating {
@@ -43,36 +55,82 @@ export interface ResultadoRating {
 }
 
 function priorPosicao(posicao: Posicao, overallAlvo: number): Atributos {
-  const base = criarAtributosUniformes(Math.round(overallAlvo * 0.92));
+  const base = criarAtributosUniformes(Math.round(overallAlvo * 0.9));
   const boosts: Partial<Record<Posicao, Partial<Record<Atributo, number>>>> = {
     GOL: {
-      reflexos: 8,
-      defesaGoleiro: 8,
-      posicionamentoGoleiro: 6,
-      saida: 4,
-      reposicao: 3,
+      reflexos: 10,
+      defesaGoleiro: 10,
+      posicionamentoGoleiro: 8,
+      saida: 5,
+      reposicao: 4,
+      concentracao: 4,
     },
-    CA: { finalizacao: 8, compostura: 5, posicionamento: 6, cabeceio: 4 },
+    CA: {
+      finalizacao: 10,
+      compostura: 6,
+      posicionamento: 7,
+      cabeceio: 5,
+      forca: 3,
+    },
     PD: {
-      drible: 7,
-      velocidade: 6,
-      aceleracao: 5,
-      cruzamento: 4,
+      drible: 8,
+      velocidade: 7,
+      aceleracao: 6,
+      dominio: 5,
+      cruzamento: 5,
       finalizacao: 3,
     },
     PE: {
-      drible: 7,
-      velocidade: 6,
-      aceleracao: 5,
-      cruzamento: 4,
+      drible: 8,
+      velocidade: 7,
+      aceleracao: 6,
+      dominio: 5,
+      cruzamento: 5,
       finalizacao: 3,
     },
-    MEI: { visao: 7, passeCurto: 6, passeLongo: 4, dominio: 5, finalizacao: 3 },
-    MC: { passeCurto: 6, dominio: 5, visao: 4, resistencia: 4, marcacao: 2 },
-    VOL: { marcacao: 6, desarme: 6, antecipacao: 5, passeCurto: 3, forca: 3 },
-    ZAG: { marcacao: 7, desarme: 5, antecipacao: 5, cabeceio: 5, forca: 4 },
-    LD: { cruzamento: 5, velocidade: 5, resistencia: 4, marcacao: 3 },
-    LE: { cruzamento: 5, velocidade: 5, resistencia: 4, marcacao: 3 },
+    MEI: {
+      visao: 8,
+      passeCurto: 7,
+      dominio: 6,
+      passeLongo: 5,
+      finalizacao: 3,
+    },
+    MC: {
+      passeCurto: 7,
+      visao: 5,
+      dominio: 6,
+      resistencia: 5,
+      antecipacao: 3,
+    },
+    VOL: {
+      marcacao: 7,
+      desarme: 7,
+      antecipacao: 6,
+      passeCurto: 4,
+      forca: 4,
+      resistencia: 3,
+    },
+    ZAG: {
+      marcacao: 8,
+      desarme: 6,
+      antecipacao: 6,
+      cabeceio: 6,
+      forca: 5,
+    },
+    LD: {
+      velocidade: 6,
+      resistencia: 5,
+      cruzamento: 6,
+      marcacao: 4,
+      aceleracao: 4,
+    },
+    LE: {
+      velocidade: 6,
+      resistencia: 5,
+      cruzamento: 6,
+      marcacao: 4,
+      aceleracao: 4,
+    },
   };
   for (const [atr, delta] of Object.entries(boosts[posicao] ?? {}) as [
     Atributo,
@@ -83,143 +141,109 @@ function priorPosicao(posicao: Posicao, overallAlvo: number): Atributos {
   return base;
 }
 
-function overallPriorMercado(entrada: EntradaRatingEngine): number {
-  const aleatorio = new GeradorAleatorio(
-    gerarSeedNumerica(`ov-${entrada.seed}`),
-  );
-  const valor = Math.max(0, entrada.valorMercado ?? 0);
-  const logValor =
-    valor > 0 ? Math.log10(valor + 1) : 4.6 + aleatorio.proximo() * 0.5; // sem MV: prior baixo (~40–50k), não mid-tier
-  let overall = 38 + logValor * 6.2;
-  const idade = entrada.idade;
-  if (idade <= 18) overall -= 4;
-  else if (idade <= 21) overall -= 1.5;
-  else if (idade >= 22 && idade <= 28) overall += 2.5;
-  else if (idade >= 29 && idade <= 32) overall += 1;
-  else if (idade >= 33) overall -= (idade - 32) * 1.2;
-  overall += (entrada.reputacaoLiga - 80) * 0.12;
-  overall += (entrada.reputacaoClube - 70) * 0.08;
-  const fracao =
-    entrada.tamanhoElenco > 1
-      ? entrada.indiceNoElenco / (entrada.tamanhoElenco - 1)
-      : 0.5;
-  overall += (0.45 - fracao) * 8;
-  // Normalização leve por força média da liga (não exagerar)
-  overall += (entrada.forcaMediaLiga - 70) * 0.05;
-  overall += aleatorio.inteiro(-2, 2);
-  return limitar(overall, 48, 93);
-}
-
-function blend(prior: number, observado: number, peso: number): number {
-  return prior * (1 - peso) + observado * peso;
-}
-
-function atributosEstimadosNaoObservaveis(
+function aplicarHeuristicasFisicas(
   a: Atributos,
   posicao: Posicao,
   idade: number,
   altura: number | null,
-  seed: string,
-): { attrs: Atributos; estimados: Atributo[] } {
-  const rng = new GeradorAleatorio(gerarSeedNumerica(`est-${seed}`));
-  const estimados: Atributo[] = [];
-  const set = (atr: Atributo, valor: number) => {
-    a[atr] = limitar(valor, 1, 99);
-    estimados.push(atr);
-  };
-  // Velocidade/aceleração: heurística por posição/idade — sem falsa precisão.
+): Atributos {
+  const out = { ...a };
   const baseVel = ["PD", "PE", "LD", "LE", "CA"].includes(posicao)
-    ? 68
+    ? 70
     : posicao === "GOL"
       ? 48
-      : 58;
-  const idadeVel = idade <= 24 ? 4 : idade >= 32 ? -8 : 0;
-  set("velocidade", baseVel + idadeVel + rng.inteiro(-3, 3));
-  set("aceleracao", baseVel + 2 + idadeVel + rng.inteiro(-3, 3));
-  set(
-    "forca",
-    (altura && altura >= 185 ? 66 : 58) +
-      (["ZAG", "CA", "VOL"].includes(posicao) ? 6 : 0) +
-      rng.inteiro(-4, 4),
+      : 60;
+  const idadeVel = idade <= 24 ? 3 : idade >= 32 ? -7 : 0;
+  out.velocidade = limitar(baseVel + idadeVel, 1, 99);
+  out.aceleracao = limitar(baseVel + 2 + idadeVel, 1, 99);
+  out.forca = limitar(
+    (altura && altura >= 185 ? 68 : 58) +
+      (["ZAG", "CA", "VOL"].includes(posicao) ? 6 : 0),
+    1,
+    99,
   );
-  set("concentracao", 55 + rng.inteiro(-5, 8));
-  set(
-    "agressividade",
-    idade >= 28 ? 58 + rng.inteiro(0, 8) : 50 + rng.inteiro(-5, 8),
-  );
-  return { attrs: a, estimados };
+  out.concentracao = limitar(56 + (idade >= 28 ? 4 : 0), 1, 99);
+  out.agressividade = limitar(idade >= 28 ? 60 : 52, 1, 99);
+  return out;
 }
 
-function potencialDe(
-  overall: number,
-  idade: number,
-  valorMercado: number | null,
-  reputacaoLiga: number,
-  seed: string,
-): number {
-  const rng = new GeradorAleatorio(gerarSeedNumerica(`pot-${seed}`));
-  if (idade >= 32) return overall;
-  if (idade >= 29) return Math.min(99, overall + rng.inteiro(0, 2));
-  let margem =
-    idade <= 18
-      ? rng.inteiro(12, 20)
-      : idade <= 21
-        ? rng.inteiro(8, 16)
-        : idade <= 24
-          ? rng.inteiro(4, 11)
-          : rng.inteiro(1, 5);
-  if (idade <= 22 && (valorMercado ?? 0) > 15_000_000) margem += 2;
-  if (reputacaoLiga >= 90 && idade <= 21) margem += 2;
-  return Math.round(limitar(overall + margem, overall, 97));
+/** Escala atributos até `calcularOverall` bater o OVR alvo (±1). */
+export function calibrarAtributosParaOverall(
+  attrs: Atributos,
+  posicao: Posicao,
+  overallAlvo: number,
+): Atributos {
+  const a = { ...attrs };
+  for (let i = 0; i < 8; i++) {
+    const atual = calcularOverall(a, posicao);
+    if (Math.abs(atual - overallAlvo) <= 1) break;
+    const fator = overallAlvo / Math.max(1, atual);
+    for (const atr of LISTA_ATRIBUTOS) {
+      a[atr] = limitar(Math.round(a[atr] * fator), 1, 99);
+    }
+  }
+  let atual = calcularOverall(a, posicao);
+  if (atual !== overallAlvo) {
+    const delta = overallAlvo - atual;
+    const chave = LISTA_ATRIBUTOS[0]!;
+    a[chave] = limitar(a[chave] + delta * 2, 1, 99);
+    atual = calcularOverall(a, posicao);
+    if (Math.abs(atual - overallAlvo) > 0) {
+      const f = overallAlvo / Math.max(1, atual);
+      for (const atr of LISTA_ATRIBUTOS)
+        a[atr] = limitar(Math.round(a[atr] * f), 1, 99);
+    }
+  }
+  return a;
 }
 
 /**
- * Rating Engine Viztto — determinístico e centralizado.
- * Prior canônico → atributos → calcularOverall(). Fallback sem dependência externa.
+ * Rating Engine Viztto v2 — âncora em valor de mercado real.
+ * Dados do jogador → OVR → atributos → (depois) força do clube.
  */
 export function calcularRatingViztto(
   entrada: EntradaRatingEngine,
 ): ResultadoRating {
   const posicao = mapearPosicaoPrincipal(entrada.posicaoBruta);
-  const overallPrior = overallPriorMercado(entrada);
-  let atributos = priorPosicao(posicao, overallPrior);
-  const { attrs } = atributosEstimadosNaoObservaveis(
+  const overallAlvo = overallAlvoDeMercado({
+    posicao,
+    idade: entrada.idade,
+    valorMercado: entrada.valorMercado,
+    reputacaoLiga: entrada.reputacaoLiga,
+    indiceNoElenco: entrada.indiceNoElenco,
+    tamanhoElenco: entrada.tamanhoElenco,
+    minutosTemporada: entrada.minutosTemporada,
+    golsTemporada: entrada.golsTemporada,
+    assistenciasTemporada: entrada.assistenciasTemporada,
+  });
+  let atributos = priorPosicao(posicao, overallAlvo);
+  atributos = aplicarHeuristicasFisicas(
     atributos,
     posicao,
     entrada.idade,
     entrada.altura,
-    entrada.seed,
   );
-  atributos = attrs;
-
-  let overall = calcularOverall(atributos, posicao);
-  // Âncora suave no prior de mercado para evitar outliers absurdos
-  overall = Math.round(limitar(blend(overallPrior, overall, 0.35), 48, 94));
-  // Recalibra atributos levemente para coerência com overall final
-  const fator = overall / Math.max(1, calcularOverall(atributos, posicao));
-  if (Math.abs(fator - 1) > 0.02) {
-    for (const atr of LISTA_ATRIBUTOS)
-      atributos[atr] = limitar(Math.round(atributos[atr] * fator), 1, 99);
-    overall = calcularOverall(atributos, posicao);
+  atributos = calibrarAtributosParaOverall(atributos, posicao, overallAlvo);
+  let overallFinal = limitar(calcularOverall(atributos, posicao), 45, 94);
+  if (Math.abs(overallFinal - overallAlvo) > 1) {
+    atributos = calibrarAtributosParaOverall(atributos, posicao, overallAlvo);
+    overallFinal = limitar(calcularOverall(atributos, posicao), 45, 94);
   }
-
   const potencial = potencialDe(
-    overall,
+    overallFinal,
     entrada.idade,
     entrada.valorMercado,
-    entrada.reputacaoLiga,
-    entrada.seed,
   );
 
   return {
     atributos,
-    overall,
+    overall: overallFinal,
     potencial,
     metadata: {
       source: "transfermarkt-estimated",
       confidence: "low",
       estimatedAttributes: LISTA_ATRIBUTOS,
-      calibrationVersion: "engine-v1",
+      calibrationVersion: "engine-v2-market",
     },
   };
 }

@@ -134,7 +134,7 @@ export function MinigameDrible({
           <button
             key={rotulo}
             type="button"
-            className="botao"
+            className="botao secundario"
             onClick={() => registrar(i)}
             aria-label={rotulo}
           >
@@ -223,10 +223,10 @@ export function MinigameDominio({
         <div className="treino-cursor" style={{ left: `${cursor}%` }} />
       </div>
       <div className="treino-dirs">
-        <button type="button" className="botao" onClick={() => mover(-6)} aria-label="Esquerda">
+        <button type="button" className="botao secundario" onClick={() => mover(-6)} aria-label="Esquerda">
           ←
         </button>
-        <button type="button" className="botao" onClick={() => mover(6)} aria-label="Direita">
+        <button type="button" className="botao secundario" onClick={() => mover(6)} aria-label="Direita">
           →
         </button>
       </div>
@@ -288,7 +288,7 @@ export function MinigameArrancada({
       <p className="treino-sinal" data-testid="treino-sinal">
         {fase === "aguarde" || fase === "cedo" ? "AGUARDE..." : "VAI!"}
       </p>
-      <button type="button" className="botao primario treino-acao" onClick={reagir} data-testid="treino-acao">
+      <button type="button" className="botao principal treino-acao" onClick={reagir} data-testid="treino-acao">
         SPRINT
       </button>
     </div>
@@ -342,7 +342,7 @@ export function MinigameResistencia({
         <div className="treino-zona-ideal" style={{ left: "40%", width: "30%" }} />
         <div className="treino-cursor" style={{ left: `${valor}%` }} />
       </div>
-      <button type="button" className="botao primario treino-acao" onClick={impulsionar} data-testid="treino-acao">
+      <button type="button" className="botao principal treino-acao" onClick={impulsionar} data-testid="treino-acao">
         MANTER
       </button>
       <p className="texto-suave">{Math.round(bomMs / 1000)}s na zona</p>

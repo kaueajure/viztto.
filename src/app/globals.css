@@ -208,6 +208,14 @@ summary:focus-visible {
 .principal:hover {
   background: color-mix(in oklab, var(--accent) 88%, black);
 }
+/* Alias legado: alguns trechos usavam "primario" sem estilo de preenchimento. */
+.primario {
+  background: var(--accent);
+  color: #fff;
+}
+.primario:hover {
+  background: color-mix(in oklab, var(--accent) 88%, black);
+}
 .secundario {
   background: var(--surface);
   border-color: var(--border);
@@ -1511,7 +1519,13 @@ input::placeholder {
   padding: 6px 10px;
 }
 .lista-jogos {
-  margin-top: 22px;
+  margin-top: 16px;
+  list-style: none;
+  padding: 0;
+  width: 100%;
+}
+.lista-jogos .linha-jogo:first-child {
+  border-top: 0;
 }
 .linha-jogo {
   display: grid;
@@ -3923,13 +3937,20 @@ details[open] summary {
 
 .vz-nota-anillo {
   position: relative;
-  width: 88px;
-  height: 88px;
+  width: 72px;
+  height: 72px;
   flex-shrink: 0;
+  display: grid;
+  place-items: center;
 }
 
 .vz-nota-anillo svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   transform: rotate(-90deg);
+  overflow: visible;
 }
 
 .vz-anel-fundo {
@@ -3947,20 +3968,23 @@ details[open] summary {
 }
 
 .vz-nota-anillo > div {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   line-height: 1;
+  text-align: center;
+  pointer-events: none;
 }
 
 .vz-nota-anillo strong {
   font-family: "Barlow Condensed", sans-serif;
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 800;
   color: var(--navy);
+  line-height: 1;
 }
 
 .vz-nota-anillo span {
@@ -3968,7 +3992,8 @@ details[open] summary {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-muted);
-  margin-top: 3px;
+  margin-top: 2px;
+  line-height: 1;
 }
 
 .vz-forma {
@@ -4160,6 +4185,98 @@ details[open] summary {
 
 .vz-hero-compacto {
   gap: 18px;
+}
+
+/* Desempenho: cabe no viewport sem scroll de página */
+.vz-pagina-desempenho {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: calc(100dvh - 92px);
+  overflow: hidden;
+}
+.vz-pagina-desempenho .vz-page-head {
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+.vz-pagina-desempenho .vz-page-head h1 {
+  font-size: 28px;
+  margin-top: 2px;
+}
+.vz-pagina-desempenho .vz-page-head .texto-suave {
+  font-size: 13px;
+  margin: 2px 0 0;
+}
+.vz-pagina-desempenho .vz-card {
+  padding: 14px 16px;
+}
+.vz-pagina-desempenho .vz-hero-compacto {
+  gap: 10px;
+  flex-shrink: 0;
+}
+.vz-pagina-desempenho .estatisticas-linha {
+  padding: 6px 0 4px;
+  gap: 8px;
+}
+.vz-pagina-desempenho .estatisticas-linha strong {
+  font-size: 28px;
+}
+.vz-pagina-desempenho .estatisticas-linha span {
+  margin-top: 2px;
+}
+.vz-pagina-desempenho .vz-contrato-dl {
+  gap: 8px;
+  font-size: 12px;
+}
+.vz-pagina-desempenho .grade-dupla {
+  gap: 12px;
+  flex-shrink: 0;
+}
+.vz-pagina-desempenho .grade-dupla h3 {
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+.vz-pagina-desempenho .vz-nota-chip {
+  min-width: 34px;
+  height: 28px;
+  font-size: 14px;
+  padding: 0 6px;
+}
+.vz-pagina-desempenho .vz-desemp-ultima {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.vz-pagina-desempenho .painel-ultimo-jogo {
+  padding: 12px 14px;
+  height: 100%;
+  overflow: hidden;
+}
+.vz-pagina-desempenho .placar-painel {
+  margin: 8px 0;
+}
+.vz-pagina-desempenho .placar-painel > strong {
+  font-size: 28px;
+}
+.vz-pagina-desempenho .numeros-pos-jogo {
+  gap: 6px 4px;
+  margin: 8px 0;
+}
+.vz-pagina-desempenho .numeros-pos-jogo dd {
+  font-size: 16px;
+}
+.vz-pagina-desempenho .nota-painel strong {
+  font-size: 24px;
+}
+.vz-pagina-desempenho .impactos-painel {
+  font-size: 11px;
+  gap: 10px;
+}
+
+.seletor-rodada .botao {
+  min-height: 37px;
+  padding: 8px 14px;
+  font-size: 12px;
 }
 
 /* Indicators / tables light polish */
@@ -4719,7 +4836,11 @@ main:has(.formulario) {
   .vz-obj-lista li:nth-child(n + 3) { display: none; }
   .vz-forma { display: none; }
   .vz-proximo-meta p:last-child { display: none; }
-  .vz-nota-anillo svg { width: 48px; height: 48px; }
+  .vz-nota-anillo {
+    width: 56px;
+    height: 56px;
+  }
+  .vz-nota-anillo strong { font-size: 18px; }
   .vz-desemp-nums strong { font-size: 18px; }
   .vz-cta-semana { height: 30px; font-size: 11px; padding: 0 10px; }
   .vz-rail { min-height: 28px; font-size: 11px; padding: 0 10px; }
@@ -5318,6 +5439,10 @@ main:has(.formulario) {
 }
 .treino-recorde { font-size: 13px; margin: 0; }
 .treino-card-acoes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
+.treino-card-acoes .botao:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .treino-modal-fundo {
   position: fixed;
   inset: 0;

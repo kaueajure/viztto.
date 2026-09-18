@@ -68,7 +68,7 @@ export function MinigameCabecalho({
           <button
             key={rotulo}
             type="button"
-            className="botao"
+            className="botao secundario"
             onClick={() => escolher(i)}
             aria-label={rotulo}
           >
@@ -225,7 +225,7 @@ export function MinigamePasseProfundidade({
         <div className="treino-marcador" style={{ left: `${pos * 100}%` }} />
         <div className="treino-janela" style={{ left: `${ideal * 100}%` }} />
       </div>
-      <button type="button" className="botao primario treino-acao" onClick={passar} data-testid="treino-acao">
+      <button type="button" className="botao principal treino-acao" onClick={passar} data-testid="treino-acao">
         PASSAR
       </button>
     </div>
@@ -298,7 +298,7 @@ export function MinigameCruzamento({
         <div className="treino-alvo-forca" style={{ left: `${alvo * 100}%` }} />
         <div className="treino-cursor" style={{ left: `${forca * 100}%` }} />
       </div>
-      <button type="button" className="botao primario treino-acao" onClick={soltar} data-testid="treino-acao">
+      <button type="button" className="botao principal treino-acao" onClick={soltar} data-testid="treino-acao">
         CRUZAR
       </button>
     </div>

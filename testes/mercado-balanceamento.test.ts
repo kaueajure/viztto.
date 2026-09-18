@@ -176,4 +176,85 @@ describe("mercado — progressão e variedade", () => {
     expect(reputacaoCompativel(67, 88, 19, clube)).toBe(true);
     expect(reputacaoCompativel(58, 70, 28, clube)).toBe(false);
   });
+
+  it("82 OVR em clube força 65 é melhoria clara, mesmo com muitos piores na posição", () => {
+    const c = carreiraMercado();
+    c.jogador.overall = 82;
+    c.jogador.potencialInterno = 86;
+    c.jogador.idade = 24;
+    c.jogador.reputacao = 55;
+    const alvo = c.clubes.find((cl) => cl.id !== c.clubeAtualId)!;
+    alvo.forcaGeral = 65;
+    alvo.reputacao = 66;
+    alvo.orcamento = Math.max(alvo.orcamento, 80_000_000);
+    const base = alvo.elenco[0]!;
+    alvo.elenco = [
+      ...alvo.elenco.filter((j) => j.posicaoPrincipal !== c.jogador.posicao),
+      ...Array.from({ length: 6 }, (_, i) => ({
+        ...base,
+        id: `fraco-pos-${i}`,
+        posicaoPrincipal: c.jogador.posicao,
+        posicoesSecundarias: [] as typeof base.posicoesSecundarias,
+        overall: 58 + (i % 4),
+        lesionado: false,
+        lesao: null,
+      })),
+    ];
+    const a = avaliarAlvo(c, alvo);
+    expect(a.saturado).toBe(false);
+    expect(a.compativel).toBe(true);
+    expect(a.viavel).toBe(true);
+    expect(a.resposta.toLowerCase()).not.toMatch(/opções melhores|semelhante ou superior/);
+    expect(a.resposta.toLowerCase()).toMatch(/melhoria clara|muito interessados|alto interesse/);
+    const depois = conversarAgente(c, "contatar", alvo.id);
+    expect(
+      depois.mercado.interesses.find((x) => x.clubeId === alvo.id)!.status,
+    ).not.toBe("encerrado");
+  });
+
+  it("opções melhores só quando há rivais de nível semelhante ou superior", () => {
+    const c = carreiraMercado();
+    c.jogador.overall = 72;
+    c.jogador.potencialInterno = 76;
+    c.jogador.idade = 26;
+    const alvo = c.clubes.find((cl) => cl.id !== c.clubeAtualId)!;
+    alvo.forcaGeral = 74;
+    alvo.reputacao = 75;
+    alvo.orcamento = Math.max(alvo.orcamento, 50_000_000);
+    const base = alvo.elenco[0]!;
+    alvo.elenco = [
+      ...alvo.elenco.filter((j) => j.posicaoPrincipal !== c.jogador.posicao),
+      ...Array.from({ length: 4 }, (_, i) => ({
+        ...base,
+        id: `rival-${i}`,
+        posicaoPrincipal: c.jogador.posicao,
+        posicoesSecundarias: [] as typeof base.posicoesSecundarias,
+        overall: 74 + i,
+        lesionado: false,
+        lesao: null,
+      })),
+    ];
+    const a = avaliarAlvo(c, alvo);
+    expect(a.saturado).toBe(true);
+    expect(a.viavel).toBe(false);
+    expect(a.resposta).toMatch(/nível semelhante ou superior|opções melhores/);
+  });
+
+  it("problema financeiro comunica falta de pagamento, não saturação", () => {
+    const c = carreiraMercado();
+    c.jogador.overall = 82;
+    c.jogador.valorMercado = 20_000_000;
+    c.jogador.contrato.salario = 50_000;
+    const alvo = c.clubes.find((cl) => cl.id !== c.clubeAtualId)!;
+    alvo.forcaGeral = 65;
+    alvo.reputacao = 66;
+    alvo.orcamento = 5_000;
+    alvo.elenco = alvo.elenco.filter(
+      (j) => j.posicaoPrincipal !== c.jogador.posicao,
+    );
+    const a = avaliarAlvo(c, alvo);
+    expect(a.viavel).toBe(false);
+    expect(a.resposta.toLowerCase()).toMatch(/não consegue pagar|orçamento|folha/);
+    expect(a.resposta.toLowerCase()).not.toMatch(/opções melhores|semelhante ou superior/);
+  });
 });

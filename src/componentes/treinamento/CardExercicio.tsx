@@ -40,7 +40,7 @@ export function CardExercicio({
       <div className="treino-card-acoes">
         <button
           type="button"
-          className="botao primario"
+          className="botao principal"
           disabled={!podeJogar}
           onClick={onJogar}
           data-testid={`jogar-${exercicio.id}`}
@@ -50,7 +50,7 @@ export function CardExercicio({
         {recorde && onSimular && (
           <button
             type="button"
-            className="botao"
+            className="botao secundario"
             disabled={!podeJogar}
             onClick={onSimular}
             data-testid={`simular-${exercicio.id}`}

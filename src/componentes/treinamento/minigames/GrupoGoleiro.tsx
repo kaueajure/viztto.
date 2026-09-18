@@ -220,7 +220,7 @@ export function MinigameGoleiroPenalti({
       </p>
       <div className="treino-dirs">
         {(["Esquerda", "Centro", "Direita"] as const).map((r, i) => (
-          <button key={r} type="button" className="botao" onClick={() => escolher(i)} aria-label={r}>
+          <button key={r} type="button" className="botao secundario" onClick={() => escolher(i)} aria-label={r}>
             {r}
           </button>
         ))}
@@ -272,13 +272,13 @@ export function MinigameGoleiroPosicionamento({
         <div className="treino-cursor" style={{ left: `${gk}%` }} />
       </div>
       <div className="treino-dirs">
-        <button type="button" className="botao" onClick={() => setGk((v) => Math.max(0, v - 8))} aria-label="Esquerda">
+        <button type="button" className="botao secundario" onClick={() => setGk((v) => Math.max(0, v - 8))} aria-label="Esquerda">
           ←
         </button>
-        <button type="button" className="botao primario" onClick={confirmar} data-testid="treino-acao">
+        <button type="button" className="botao principal" onClick={confirmar} data-testid="treino-acao">
           POSICIONAR
         </button>
-        <button type="button" className="botao" onClick={() => setGk((v) => Math.min(100, v + 8))} aria-label="Direita">
+        <button type="button" className="botao secundario" onClick={() => setGk((v) => Math.min(100, v + 8))} aria-label="Direita">
           →
         </button>
       </div>

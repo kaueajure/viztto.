@@ -5,6 +5,8 @@ import { promisify } from "node:util";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Clube, JogadorExterno, Liga } from "@/dominio/entidades/modelos";
+import { sincronizarForcaSnapshot } from "@/simulacao/elenco/forca-escalacao";
+import { reputacaoInstitucional } from "@/infraestrutura/transfermarkt/normalizacao";
 import {
   calcularRatingViztto,
   type EntradaRatingEngine,
@@ -21,11 +23,19 @@ export interface LigaCanonica {
   liga: Liga;
   clubes: Clube[];
 }
+
+function elencoOrdenadoPorMercado(clube: Clube): JogadorExterno[] {
+  return [...clube.elenco]
+    .map((bruto) => bruto as unknown as JogadorExterno)
+    .sort((a, b) => (b.valorMercado ?? 0) - (a.valorMercado ?? 0));
+}
+
 export function entradaEngine(
   liga: Liga,
   clube: Clube,
   j: JogadorExterno,
   indice: number,
+  tamanhoElenco = clube.elenco.length,
 ): EntradaRatingEngine {
   return {
     seed: `${j.id}-${clube.id}`,
@@ -38,15 +48,15 @@ export function entradaEngine(
     reputacaoClube: clube.reputacao,
     forcaMediaLiga: liga.forcaMedia,
     indiceNoElenco: indice,
-    tamanhoElenco: clube.elenco.length,
+    tamanhoElenco,
   };
 }
 export function criarLoteCanonico(ligas: LigaCanonica[]): LoteCanonico {
   const players = ligas.flatMap(({ liga, clubes }) =>
-    clubes.flatMap((c) =>
-      c.elenco.map((bruto, i) => {
-        const j = bruto as unknown as JogadorExterno;
-        return esquemaJogadorCanonico.parse({
+    clubes.flatMap((c) => {
+      const ordenados = elencoOrdenadoPorMercado(c);
+      return ordenados.map((j, i) =>
+        esquemaJogadorCanonico.parse({
           id: j.id,
           transfermarktId: j.idTransfermarkt,
           name: j.nome,
@@ -60,11 +70,12 @@ export function criarLoteCanonico(ligas: LigaCanonica[]): LoteCanonico {
           age: j.idade ?? null,
           division: String(liga.divisao),
           clubStrength: c.forcaGeral,
-          engineOverall: calcularRatingViztto(entradaEngine(liga, c, j, i))
-            .overall,
-        });
-      }),
-    ),
+          engineOverall: calcularRatingViztto(
+            entradaEngine(liga, c, j, i, ordenados.length),
+          ).overall,
+        }),
+      );
+    }),
   );
   if (
     new Set(players.map((p) => p.id)).size !== players.length ||
@@ -128,12 +139,14 @@ export function aplicarResultados(
   const porId = new Map(resultado.players.map((p) => [p.id, p]));
   return ligas.map(({ liga, clubes }) => ({
     liga,
-    clubes: clubes.map((c) => ({
-      ...c,
-      elenco: c.elenco.map((bruto, i) => {
+    clubes: clubes.map((c) => {
+      const ordenados = elencoOrdenadoPorMercado(c);
+      const indicePorId = new Map(ordenados.map((j, i) => [j.id, i]));
+      const elenco = c.elenco.map((bruto) => {
         const j = bruto as unknown as JogadorExterno;
+        const i = indicePorId.get(j.id) ?? 0;
         const r = resolverRating(
-          entradaEngine(liga, c, j, i),
+          entradaEngine(liga, c, j, i, ordenados.length),
           porId.get(j.id)?.sources ?? [],
         );
         return {
@@ -143,7 +156,15 @@ export function aplicarResultados(
           atributos: r.atributos,
           ratingMetadata: r.metadata,
         };
-      }),
-    })),
+      });
+      const clube: Clube = {
+        ...c,
+        elenco: elenco as Clube["elenco"],
+        reputacao: reputacaoInstitucional(liga, c.valorElenco ?? null),
+      };
+      // OVR → escalação → força do clube (sem RNG, sem circularidade).
+      sincronizarForcaSnapshot(clube);
+      return clube;
+    }),
   }));
 }

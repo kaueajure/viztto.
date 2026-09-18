@@ -484,7 +484,6 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
         )!;
         const clubes = c.clubes.map((clube) => ({
           ...clube,
-          reputacao: clube.forcaGeral,
           forma: 50,
           moral: 60,
           fadiga: 10,

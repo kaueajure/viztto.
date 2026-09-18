@@ -300,7 +300,14 @@ export function avaliarAlvo(c: EstadoCarreira, clube: Clube) {
         p.posicoesSecundarias.includes(j.posicao)) &&
       (!p.lesionado || (p.lesao?.diasRecuperacao ?? 0) < 60),
   );
+  // Só conta quem é de fato melhor / semelhante — elenco fraco não “satura”.
   const melhores = concorrentes.filter((p) => p.overall >= j.overall).length;
+  const rivaisNivel = concorrentes.filter(
+    (p) => p.overall >= j.overall - 2,
+  ).length;
+  const gapForca = j.overall - clube.forcaGeral;
+  const upgradeClaro = gapForca >= 5;
+  const upgradeForte = gapForca >= 10;
   const pronto = j.overall >= clube.forcaGeral - 12;
   const quasePronto = j.overall >= clube.forcaGeral - 16;
   let papel: StatusElenco =
@@ -329,8 +336,10 @@ export function avaliarAlvo(c: EstadoCarreira, clube: Clube) {
   const custo = livre || preContrato ? 0 : precoPedido(c);
   const cabe =
     salario <= tetoSalario(clube) && custo + salario * 52 <= clube.orcamento;
+  // Saturado só com rivais reais de nível semelhante/superior — nunca por quantidade de piores.
   const saturado =
-    melhores >= 4 || (concorrentes.length >= 5 && nec.nivel === "baixa");
+    !upgradeForte &&
+    (melhores >= 3 || (rivaisNivel >= 4 && nec.nivel === "baixa" && !upgradeClaro));
   // Gigantes (rep ≥ 90) ainda pedem nível alto; demais clubes são mais abertos a jovens.
   const gigante = clube.reputacao >= 90;
   const compativel = gigante
@@ -340,6 +349,7 @@ export function avaliarAlvo(c: EstadoCarreira, clube: Clube) {
         j.overall >= clube.forcaGeral - 20)
     : pronto ||
       quasePronto ||
+      upgradeClaro ||
       (promessa && potencialPercebido >= clube.reputacao - 12) ||
       (j.idade <= 22 &&
         potencialPercebido >= clube.forcaGeral - 3 &&
@@ -355,25 +365,29 @@ export function avaliarAlvo(c: EstadoCarreira, clube: Clube) {
   const evidencia =
     stats.minutos >= 270 ||
     j.reputacao >= 40 ||
+    upgradeClaro ||
     (promessa && potencialPercebido >= clube.forcaGeral + 4) ||
     (nec.nivel === "critica" && (pronto || quasePronto)) ||
     (nec.nivel === "alta" && quasePronto) ||
     (diasContrato(c) <= 180 && pronto) ||
     excepcional ||
     (livre && (pronto || quasePronto || promessa));
-  // Encaixe: prioriza mesmo nível / um pouco acima; evita só clubes bem piores.
-  const gapForca = j.overall - clube.forcaGeral;
-  const encaixeOverall =
-    gapForca >= -12 && gapForca <= 5
-      ? 16 - Math.abs(gapForca + 3) * 1.15
-      : gapForca > 5
-        ? Math.max(-4, 7 - (gapForca - 5) * 0.85)
-        : Math.max(-14, (gapForca + 12) * 0.55);
+  // Encaixe: acima do clube = melhoria (interesse alto); abaixo depende de potencial.
+  const encaixeOverall = upgradeForte
+    ? 30
+    : upgradeClaro
+      ? 18 + (gapForca - 5) * 1.5
+      : gapForca >= -4
+        ? 12 - Math.abs(gapForca) * 0.9
+        : gapForca >= -12
+          ? Math.max(-8, gapForca * 0.65)
+          : Math.max(-18, gapForca * 0.45);
   const score = limitar(
     necessidade +
       encaixeOverall +
       (promessa ? 24 : 0) +
       (quasePronto && !pronto ? 8 : 0) +
+      (upgradeForte ? 12 : upgradeClaro ? 6 : 0) +
       j.reputacao * 0.25 +
       Math.min(14, stats.minutos / 80) +
       (nota - 6.5) * 9 +
@@ -388,7 +402,8 @@ export function avaliarAlvo(c: EstadoCarreira, clube: Clube) {
     compativel &&
     !saturado &&
     cabe &&
-    (nec.nivel !== "baixa" ||
+    (upgradeClaro ||
+      nec.nivel !== "baixa" ||
       promessa ||
       melhores <= 1 ||
       (pronto && melhores <= 2));
@@ -403,17 +418,21 @@ export function avaliarAlvo(c: EstadoCarreira, clube: Clube) {
           : "reforco";
   const resposta = !compativel
     ? "Sem interesse: o nível atual e o potencial observado não atendem ao elenco."
-    : saturado
-      ? "Sem interesse: já temos várias opções melhores na posição."
-      : !cabe
-        ? "Interessados apenas em empréstimo; a contratação definitiva não cabe no orçamento e na folha."
+    : !cabe
+      ? "Sem interesse: o clube não consegue pagar os termos desta contratação no orçamento e na folha."
+      : saturado
+        ? "Sem interesse: já temos várias opções de nível semelhante ou superior na posição."
         : !viavel
           ? "Sem interesse: não identificamos necessidade nesta posição."
           : !evidencia
             ? "Estamos acompanhando, mas precisamos de mais evidências esportivas."
-            : promessa
-              ? "Interessados como promessa, sem garantia de titularidade."
-              : "Aceitamos conversar. Vamos acompanhar sua situação antes de apresentar uma oferta.";
+            : upgradeForte
+              ? "Muito interessados: você seria uma melhoria clara para o elenco."
+              : upgradeClaro
+                ? "Alto interesse: enxergamos reforço imediato na posição."
+                : promessa
+                  ? "Interessados como promessa, sem garantia de titularidade."
+                  : "Aceitamos conversar. Vamos acompanhar sua situação antes de apresentar uma oferta.";
   return {
     viavel,
     evidencia,

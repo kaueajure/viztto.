@@ -30,7 +30,7 @@ export function PainelDesempenho({
   );
 
   return (
-    <div className="vz-pagina">
+    <div className="vz-pagina vz-pagina-desempenho" data-testid="pagina-desempenho">
       <header className="vz-page-head">
         <p className="vz-card-sub">PERFORMANCE</p>
         <h1>Desempenho</h1>
@@ -59,7 +59,7 @@ export function PainelDesempenho({
         </dl>
       </section>
 
-      <div className="grade-dupla espaco">
+      <div className="grade-dupla">
         <section className="vz-card">
           <h3>Forma recente</h3>
           <div className="vz-forma-bolinhas vz-forma-grande">
@@ -85,7 +85,7 @@ export function PainelDesempenho({
         </section>
       </div>
 
-      <div className="espaco">
+      <div className="vz-desemp-ultima">
         <PainelUltimaPartida
           carreira={c}
           abrirDetalhes={() => {

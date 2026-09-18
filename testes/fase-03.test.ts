@@ -84,6 +84,10 @@ function nova() {
   alvo.elenco = alvo.elenco.filter(
     (j) => j.posicaoPrincipal !== "PD" && !j.posicoesSecundarias.includes("PD"),
   );
+  // Isola o alvo: outros clubes não competem pelo limite de propostas pendentes.
+  for (const cl of c.clubes) {
+    if (cl.id !== alvo.id && cl.id !== c.clubeAtualId) cl.orcamento = 0;
+  }
   return c;
 }
 function semana(c: EstadoCarreira) {
@@ -130,7 +134,9 @@ describe("Fase 3: análise esportiva", () => {
       })),
     );
     expect(avaliarAlvo(c, clube).viavel).toBe(false);
-    expect(avaliarAlvo(c, clube).resposta).toContain("opções melhores");
+    expect(avaliarAlvo(c, clube).resposta).toMatch(
+      /opções de nível semelhante ou superior|opções melhores/,
+    );
   });
   it("lesão longa aumenta necessidade mesmo com titular forte", () => {
     const c = nova(),

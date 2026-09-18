@@ -87,7 +87,7 @@ export function CardDesempenho({
           </div>
         </div>
         <div className="vz-nota-anillo" aria-label="Nota média">
-          <svg viewBox="0 0 72 72" width="64" height="64">
+          <svg viewBox="0 0 72 72" aria-hidden>
             <circle cx="36" cy="36" r="28" className="vz-anel-fundo" />
             <circle
               cx="36"

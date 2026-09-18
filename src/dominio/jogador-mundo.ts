@@ -7,7 +7,10 @@ import type {
   StatusElenco,
 } from "@/dominio/entidades/modelos";
 import { grupoPosicao, type GrupoPosicao } from "@/dominio/formacao";
-import { GeradorAleatorio, gerarSeedNumerica } from "@/utilitarios/aleatorio";
+import {
+  overallAlvoDeMercado,
+  potencialDe,
+} from "@/dominio/regras/rating-mercado";
 import { limitar } from "@/utilitarios/formatacao";
 
 export interface DadosImportadosJogador {
@@ -134,7 +137,7 @@ export function mapearPosicoesSecundarias(
   return [...new Set(sec.filter((s) => s !== principal))];
 }
 
-/** Overall inicial coerente — não é valorMercado / constante. */
+/** Overall inicial — mesma curva do Rating Engine (determinístico, âncora MV). */
 export function gerarOverallInicial(entrada: {
   valorMercado: number | null;
   idade: number;
@@ -145,35 +148,14 @@ export function gerarOverallInicial(entrada: {
   tamanhoElenco: number;
   seed: string;
 }): number {
-  const aleatorio = new GeradorAleatorio(gerarSeedNumerica(entrada.seed));
-  const valor = Math.max(0, entrada.valorMercado ?? 0);
-  const logValor =
-    valor > 0 ? Math.log10(valor + 1) : 5.5 + aleatorio.proximo() * 0.8;
-  // log10: 5≈100k, 6≈1M, 7≈10M, 8≈100M → escala ~48–92
-  let overall = 38 + logValor * 6.2;
-
-  const idade = entrada.idade;
-  if (idade <= 18) overall -= 4;
-  else if (idade <= 21) overall -= 1.5;
-  else if (idade >= 22 && idade <= 28) overall += 2.5;
-  else if (idade >= 29 && idade <= 32) overall += 1;
-  else if (idade >= 33) overall -= (idade - 32) * 1.2;
-
-  overall += (entrada.reputacaoLiga - 80) * 0.12;
-  overall += (entrada.reputacaoClube - 70) * 0.08;
-
-  if (["CA", "PD", "PE", "MEI"].includes(entrada.posicao)) overall += 0.8;
-  if (entrada.posicao === "GOL") overall -= 0.5;
-
-  const fracao =
-    entrada.tamanhoElenco > 1
-      ? entrada.indiceNoElenco / (entrada.tamanhoElenco - 1)
-      : 0.5;
-  // titulares aparentes (início da lista ordenada por valor) sobem um pouco
-  overall += (0.45 - fracao) * 8;
-
-  overall += aleatorio.inteiro(-3, 3);
-  return Math.round(limitar(overall, 48, 94));
+  return overallAlvoDeMercado({
+    posicao: entrada.posicao,
+    idade: entrada.idade,
+    valorMercado: entrada.valorMercado,
+    reputacaoLiga: entrada.reputacaoLiga,
+    indiceNoElenco: entrada.indiceNoElenco,
+    tamanhoElenco: entrada.tamanhoElenco,
+  });
 }
 
 export function gerarPotencialInicial(entrada: {
@@ -183,22 +165,7 @@ export function gerarPotencialInicial(entrada: {
   reputacaoLiga: number;
   seed: string;
 }): number {
-  const aleatorio = new GeradorAleatorio(gerarSeedNumerica(`pot-${entrada.seed}`));
-  const idade = entrada.idade;
-  if (idade >= 32) return entrada.overall;
-  if (idade >= 29) return Math.min(99, entrada.overall + aleatorio.inteiro(0, 2));
-
-  let margem = 0;
-  if (idade <= 18) margem = aleatorio.inteiro(12, 22);
-  else if (idade <= 21) margem = aleatorio.inteiro(8, 18);
-  else if (idade <= 24) margem = aleatorio.inteiro(4, 12);
-  else margem = aleatorio.inteiro(1, 6);
-
-  const valor = entrada.valorMercado ?? 0;
-  if (idade <= 22 && valor > 15_000_000) margem += 3;
-  if (entrada.reputacaoLiga >= 90 && idade <= 21) margem += 2;
-
-  return Math.round(limitar(entrada.overall + margem, entrada.overall, 97));
+  return potencialDe(entrada.overall, entrada.idade, entrada.valorMercado);
 }
 
 function statusInicial(overall: number, forcaClube: number): StatusElenco {

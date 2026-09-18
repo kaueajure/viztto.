@@ -151,7 +151,7 @@ export function MinigameBarraTiming({
       </div>
       <button
         type="button"
-        className="botao primario treino-acao"
+        className="botao principal treino-acao"
         onClick={parar}
         disabled={idx >= tentativas}
         data-testid="treino-acao"

@@ -106,10 +106,10 @@ export function CalendarioCompeticao({
         <section className="painel">
           <div className="linha-titulo">
             <h2>Jogos da liga</h2>
-            <div className="seletor-rodada" style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <div className="seletor-rodada">
               <button
                 type="button"
-                className="botao-texto"
+                className="botao secundario"
                 disabled={rodada <= 1}
                 onClick={() => definirRodada((r) => Math.max(1, r - 1))}
                 aria-label="Rodada anterior"
@@ -131,7 +131,7 @@ export function CalendarioCompeticao({
               </label>
               <button
                 type="button"
-                className="botao-texto"
+                className="botao secundario"
                 disabled={rodada >= c.temporada.totalRodadas}
                 onClick={() =>
                   definirRodada((r) =>
@@ -327,14 +327,26 @@ function ListaJogos({
           p.golsMandante != null
             ? `${p.golsMandante} × ${p.golsVisitante}`
             : "×";
+        const meu =
+          c.clubeAtualId != null &&
+          [p.mandanteId, p.visitanteId].includes(c.clubeAtualId);
         return (
-          <li key={p.id} data-partida-id={p.id}>
-            <time>{formatarData(p.data)}</time>
-            <Escudo clube={m} tamanho={24} />
-            <span>{m.codigo}</span>
-            <b>{placar}</b>
-            <span>{v.codigo}</span>
-            <Escudo clube={v} tamanho={24} />
+          <li
+            key={p.id}
+            className={`linha-jogo${meu ? " meu-jogo" : ""}`}
+            data-partida-id={p.id}
+          >
+            <time dateTime={p.data}>{formatarData(p.data)}</time>
+            <div className="time-mandante">
+              <span>{m.codigo}</span>
+              <Escudo clube={m} tamanho={28} />
+            </div>
+            <strong>{placar}</strong>
+            <div className="time-visitante">
+              <Escudo clube={v} tamanho={28} />
+              <span>{v.codigo}</span>
+            </div>
+            <span className="rotulo">{meu ? "SEU JOGO" : ""}</span>
           </li>
         );
       })}

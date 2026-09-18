@@ -116,13 +116,17 @@ export function interesseEmJogador(
   // Gigantes ainda exigem nível/potencial alto.
   if (!reputacaoOk && clube.reputacao >= 90) return 0;
 
-  // Encaixe favorece mesmo nível / clube um pouco acima; clubes bem piores perdem prioridade.
+  // Encaixe: jogador acima do clube é melhoria; nível parecido depende de necessidade.
   const encaixe =
-    gapOverall >= -12 && gapOverall <= 5
-      ? 16 - Math.abs(gapOverall + 3) * 1.2
-      : gapOverall > 5
-        ? Math.max(-6, 6 - (gapOverall - 5) * 0.9)
-        : Math.max(-12, (gapOverall + 12) * 0.5);
+    gapOverall >= 10
+      ? 28
+      : gapOverall >= 5
+        ? 16 + (gapOverall - 5) * 1.4
+        : gapOverall >= -4
+          ? 12 - Math.abs(gapOverall) * 0.9
+          : gapOverall >= -12
+            ? Math.max(-8, gapOverall * 0.65)
+            : Math.max(-16, gapOverall * 0.45);
 
   let score =
     pesoNec +

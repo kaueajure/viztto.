@@ -143,13 +143,13 @@ export function ModalTreino({
             <div className="treino-card-acoes">
               <button
                 type="button"
-                className="botao primario"
+                className="botao principal"
                 onClick={confirmarSimular}
                 data-testid="confirmar-simular"
               >
                 SIMULAR
               </button>
-              <button type="button" className="botao" onClick={onFechar}>
+              <button type="button" className="botao secundario" onClick={onFechar}>
                 Cancelar
               </button>
             </div>
@@ -199,7 +199,7 @@ export function ModalTreino({
             <div className="treino-card-acoes">
               <button
                 type="button"
-                className="botao"
+                className="botao secundario"
                 onClick={tentarDeNovo}
                 data-testid="tentar-de-novo"
               >
@@ -207,7 +207,7 @@ export function ModalTreino({
               </button>
               <button
                 type="button"
-                className="botao primario"
+                className="botao principal"
                 onClick={() => confirmarSessao(scoreConfirmacao)}
                 data-testid="confirmar-treino"
               >
@@ -251,7 +251,7 @@ export function ModalTreino({
             </ul>
             <button
               type="button"
-              className="botao primario"
+              className="botao principal"
               onClick={onFechar}
               data-testid="concluir-treino"
             >
@@ -262,7 +262,7 @@ export function ModalTreino({
         {fase === "resultado" && !resultado && (
           <div className="treino-resultado" data-testid="treino-resultado-erro">
             <p className="aviso">Não foi possível aplicar este treino.</p>
-            <button type="button" className="botao" onClick={onFechar}>
+            <button type="button" className="botao secundario" onClick={onFechar}>
               Fechar
             </button>
           </div>
