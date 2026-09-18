@@ -14,8 +14,9 @@ function carreiraMercado() {
   c.jogador.forma = 72;
   c.registros = [
     {
-      temporada: "2025/26",
+      ano: 2026,
       clubeId: c.clubeAtualId!,
+      competicao: c.liga.nome,
       categoria: "profissional",
       estatisticas: {
         jogos: 18,
