@@ -472,8 +472,9 @@ describe('Fase 09 — item 11 (hierarquia e vagas reais da formação)', () => {
     expect(SLOTS_FORMACAO['4-3-3'].includes('MEI')).toBe(false);
     const hMei = avaliarHierarquia(c);
     expect(hMei.formacaoUsaPosicao).toBe(false);
-    expect(hMei.motivo).toMatch(/não utiliza diretamente/i);
+    expect(hMei.motivo).toMatch(/não usa MEI|não utiliza diretamente/i);
     expect(hMei.rotulo).not.toMatch(/^1ª opção · MEI$/);
+    expect(hMei.rotulo).not.toMatch(/opção em MEI/i);
 
     c.jogador.posicao = 'PD';
     clube.formacaoPreferida = '3-5-2';
@@ -481,7 +482,7 @@ describe('Fase 09 — item 11 (hierarquia e vagas reais da formação)', () => {
     expect(SLOTS_FORMACAO['3-5-2'].some((s) => s === 'PD' || s === 'PE')).toBe(false);
     const hPonta = avaliarHierarquia(c);
     expect(hPonta.formacaoUsaPosicao).toBe(false);
-    expect(hPonta.motivo).toMatch(/não utiliza diretamente/i);
+    expect(hPonta.motivo).toMatch(/não usa PD|não utiliza diretamente/i);
 
     c.jogador.posicao = 'LD';
     clube.formacaoPreferida = '4-2-2-2';
@@ -490,7 +491,7 @@ describe('Fase 09 — item 11 (hierarquia e vagas reais da formação)', () => {
     expect(SLOTS_FORMACAO['4-2-2-2'].includes('LD')).toBe(true);
     const hLd = avaliarHierarquia(c);
     expect(hLd.formacaoUsaPosicao).toBe(true);
-    expect(hLd.rotulo).toMatch(/opção · LD/i);
+    expect(hLd.rotulo).toMatch(/opção em LD/i);
 
     // Formação sem laterais clássicos: 3-5-2 usa LE/LD como alas, ainda há slot.
     // Teste sem laterais: usar posição LE em formação que... 4-2-2-2 tem LE.

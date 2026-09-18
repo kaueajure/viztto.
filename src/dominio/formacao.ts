@@ -90,6 +90,21 @@ export function grupoPosicao(posicao: string): GrupoPosicao {
 
 export function slotsCompativeis(posicao: string): SlotFormacao[] {
   const p = normalizarTexto(posicao);
+  // Códigos curtos do domínio (Posicao) — evita cair no fallback DEF.
+  const codigo: Record<string, SlotFormacao[]> = {
+    gol: ["GOL"],
+    ld: ["LD", "ZAG"],
+    le: ["LE", "ZAG"],
+    zag: ["ZAG"],
+    vol: ["VOL", "MC"],
+    mc: ["MC", "VOL", "MEI"],
+    mei: ["MEI", "MC", "SA"],
+    pd: ["PD", "MEI", "CA"],
+    pe: ["PE", "MEI", "CA"],
+    ca: ["CA", "SA"],
+  };
+  if (codigo[p]) return codigo[p]!;
+
   const grupo = grupoPosicao(posicao);
   if (grupo === "GOL") return ["GOL"];
   if (p.includes("right-back") || p.includes("right back") || p === "rb")
