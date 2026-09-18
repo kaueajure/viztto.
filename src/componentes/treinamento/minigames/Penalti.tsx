@@ -84,7 +84,8 @@ export function MinigameBarraTiming({
     };
     const podeExpor =
       process.env.NODE_ENV !== "production" ||
-      process.env.NEXT_PUBLIC_E2E === "1";
+      process.env.NEXT_PUBLIC_E2E === "1" ||
+      (typeof navigator !== "undefined" && !!navigator.webdriver);
     if (podeExpor) {
       (
         window as unknown as { __vizttoTreinoBarra?: typeof api }

@@ -197,11 +197,90 @@ describe("hierarquia profissional — concorrência real", () => {
 
     const h = avaliarHierarquia(c);
     expect(h.formacaoUsaPosicao).toBe(false);
+    expect(h.formacaoUsaPosicaoPrincipal).toBe(false);
     expect(h.motivo).toMatch(/não usa PD/i);
-    expect(h.motivo).toMatch(/alternativa/i);
+    expect(h.motivo).toMatch(/alternativa para CA/i);
+    expect(h.motivo).not.toMatch(/VOL\/MC/);
     expect(h.rotulo).toMatch(/alternativa/i);
     expect(h.rotulo).not.toMatch(/opção em PD/i);
-    expect(h.slotReferencia).not.toBe("PD");
+    expect(h.slotReferencia).toBe("CA");
+  });
+
+  it("posição secundária não finge ser posição natural da formação", () => {
+    const { carreira: c } = exemploCarreira();
+    const clube = c.clubes.find((x) => x.id === c.clubeAtualId)!;
+    c.jogador.posicao = "PD";
+    c.jogador.posicaoSecundaria = "CA";
+    c.jogador.categoria = "profissional";
+    c.jogador.overall = 70;
+    clube.formacaoPreferida = "3-5-2";
+    clube.treinador.formacaoPreferida = "3-5-2";
+    clube.elenco = [
+      stubMundo({ id: "ca1", nome: "CA 1", posicaoPrincipal: "CA", overall: 78 }),
+      stubMundo({ id: "ca2", nome: "CA 2", posicaoPrincipal: "CA", overall: 74 }),
+    ];
+
+    const h = avaliarHierarquia(c);
+    expect(h.formacaoUsaPosicaoPrincipal).toBe(false);
+    expect(h.formacaoUsaPosicaoSecundaria).toBe(true);
+    expect(h.formacaoUsaPosicao).toBe(false);
+    expect(h.rotulo).toMatch(/posição secundária/i);
+    expect(h.motivo).toMatch(/não utiliza sua posição principal PD/i);
+    expect(h.motivo).toMatch(/posição secundária/i);
+    expect(h.slotReferencia).toBe("CA");
+  });
+
+  it("lesão do titular não apaga a hierarquia; usuário lesionado não vira 1ª opção fantasma", () => {
+    const { carreira: c } = exemploCarreira();
+    const clube = c.clubes.find((x) => x.id === c.clubeAtualId)!;
+    c.jogador.posicao = "PD";
+    c.jogador.posicaoSecundaria = "";
+    c.jogador.categoria = "profissional";
+    c.jogador.overall = 70;
+    c.jogador.lesao = null;
+    clube.formacaoPreferida = "4-3-3";
+    clube.treinador.formacaoPreferida = "4-3-3";
+    clube.elenco = [
+      stubMundo({
+        id: "pd-titular",
+        nome: "Titular PD",
+        posicaoPrincipal: "PD",
+        overall: 80,
+        lesionado: true,
+      }),
+      ...(["GOL", "LD", "ZAG", "ZAG", "LE", "VOL", "MC", "MC", "PE", "CA"] as Posicao[]).map(
+        (pos, i) =>
+          stubMundo({
+            id: `plantel-${i}`,
+            nome: `Plantel ${i}`,
+            posicaoPrincipal: pos,
+            overall: 72,
+          }),
+      ),
+    ];
+
+    const saudavel = avaliarHierarquia(c);
+    expect(saudavel.ordem).toBe(2);
+    expect(saudavel.rotulo).toMatch(/2ª opção em PD/i);
+    expect(saudavel.concorrentes.some((x) => x.id === "pd-titular" && !x.disponivel)).toBe(
+      true,
+    );
+    expect(saudavel.papelEscalacao).toBe("titular");
+    expect(saudavel.motivo).toMatch(/titular no próximo jogo porque/i);
+
+    c.jogador.lesao = {
+      tipo: "Entorse",
+      gravidade: "leve",
+      diasRecuperacao: 14,
+      dataInicio: c.dataAtual,
+      dataPrevistaRetorno: c.dataAtual,
+    };
+    const lesionado = avaliarHierarquia(c);
+    expect(lesionado.ordem).toBe(2);
+    expect(lesionado.rotulo).toMatch(/2ª opção em PD/i);
+    expect(lesionado.ordem).not.toBe(1);
+    expect(lesionado.motivo).toMatch(/recuperação médica/i);
+    expect(lesionado.papelEscalacao).toBe("lesionado");
   });
 
   it("hierarquia da posição e situação da escalação ficam separadas no texto", () => {

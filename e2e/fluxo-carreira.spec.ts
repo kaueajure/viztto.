@@ -18,6 +18,7 @@ test("Calendário Base/Profissional respeita seleção manual", async ({
     const a = clubes[0]!.id;
     const b = clubes[1]!.id;
     t.rodadaAtual = 1;
+    t.totalRodadas = 1;
     const base = {
       rodada: 1,
       mandanteId: a,
@@ -150,7 +151,7 @@ async function assertFocusTrapConfiguracoes(
   acao: "Excluir carreira" | "Reiniciar carreira",
 ) {
   const trigger = page.getByRole("button", {
-    name: /Configurações da carreira/i,
+    name: /Opções da carreira/i,
   });
   await trigger.click();
   const dialog = page.getByRole("dialog", { name: /OPÇÕES DA CARREIRA/i });

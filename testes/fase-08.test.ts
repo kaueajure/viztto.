@@ -192,11 +192,13 @@ describe('Fase 08 — treinador', () => {
     const pedido=conversarTreinador(c,'oportunidade');
     expect(determinarEscalacao(pedido.jogador,pedido.clubes[0],new GeradorAleatorio(1))).not.toBe('titular');
   });
-  it('lesão de concorrente melhora a ordem e posição impossível é recusada', () => {
+  it('lesão de concorrente não muda a ordem estrutural; posição impossível é recusada', () => {
     const { carreira:c }=exemploCarreira();
     const antes=avaliarHierarquia(c).ordem;
     c.clubes[0].elenco.forEach(j => { if(j.posicaoPrincipal === 'PD') j.lesionado=true; });
-    expect(avaliarHierarquia(c).ordem).toBeLessThanOrEqual(antes);
+    const depois = avaliarHierarquia(c);
+    expect(depois.ordem).toBe(antes);
+    expect(depois.concorrentes.some((x) => !x.usuario && !x.disponivel)).toBe(true);
     c.jogador.posicao='GOL';
     expect(posicoesPlausiveis(c.jogador)).toEqual([]);
     expect(() => conversarTreinador(c,'posicao','CA')).toThrow(/plausível/);

@@ -44,6 +44,8 @@ function hierarquiaSemClube() {
     faixa: 'desenvolvimento' as FaixaHierarquia,
     rotulo: 'Sem clube',
     formacaoUsaPosicao: false,
+    formacaoUsaPosicaoPrincipal: false,
+    formacaoUsaPosicaoSecundaria: false,
     slotReferencia: null as SlotFormacao | null,
     papelEscalacao: 'nao relacionado' as const,
     titular: false,
@@ -55,21 +57,47 @@ function hierarquiaSemClube() {
   };
 }
 
-function slotDiretoDoUsuario(
+/** Slot da posição principal (inclui SA como extensão natural de atacantes/meias). */
+function slotPosicaoPrincipal(
   usuario: CandidatoEscalacao,
   slot: SlotFormacao,
 ): boolean {
   if (usuario.posicaoPrincipal === slot) return true;
-  if (usuario.posicoesSecundarias.includes(slot as Posicao)) return true;
   if (slot === 'SA' && ['CA', 'MEI', 'PD', 'PE'].includes(usuario.posicaoPrincipal))
     return true;
   return false;
 }
 
+function slotPosicaoSecundaria(
+  usuario: CandidatoEscalacao,
+  slot: SlotFormacao,
+): boolean {
+  return usuario.posicoesSecundarias.includes(slot as Posicao);
+}
+
+/**
+ * Nota estrutural da hierarquia: ignora lesão/suspensão.
+ * Disponibilidade semanal fica a cargo da escalação (`escalarElencoCompleto`).
+ */
+export function notaHierarquiaEstrutural(
+  candidato: CandidatoEscalacao,
+  slot: SlotFormacao,
+  rotacaoTreinador = 50,
+): number {
+  if (candidato.lesionado || candidato.suspensao > 0) {
+    return avaliarParaSlot(
+      { ...candidato, lesionado: false, suspensao: 0 },
+      slot,
+      rotacaoTreinador,
+    );
+  }
+  return avaliarParaSlot(candidato, slot, rotacaoTreinador);
+}
+
 /**
  * Ranking ordinal da posição: só concorrentes com compatibilidade forte.
- * O usuário entra sempre (para hierarquia em função alternativa).
- * Compat 0.50/0.35/0.12 continua valendo na escalação emergencial, não aqui.
+ * Lesionados/suspensos permanecem no ranking (hierarquia ≠ disponibilidade).
+ * O usuário entra sempre no slot avaliado.
  */
 export function rankingHierarquiaSlot(
   candidatos: CandidatoEscalacao[],
@@ -79,7 +107,7 @@ export function rankingHierarquiaSlot(
   return candidatos
     .map((x) => ({
       x,
-      nota: avaliarParaSlot(x, slot, rotacaoTreinador),
+      nota: notaHierarquiaEstrutural(x, slot, rotacaoTreinador),
       compat: pesoCompatibilidade(x, slot),
     }))
     .filter((row) => {
@@ -92,8 +120,18 @@ export function rankingHierarquiaSlot(
 
 function rotuloSituacaoEscalacao(
   papel: 'titular' | 'banco' | 'nao relacionado' | 'lesionado' | 'suspenso',
+  concorrentesIndisponiveis: { nome: string }[],
 ): string {
-  if (papel === 'titular') return 'Titular no próximo jogo';
+  if (papel === 'titular') {
+    if (concorrentesIndisponiveis.length > 0) {
+      const nomes = concorrentesIndisponiveis
+        .slice(0, 2)
+        .map((c) => c.nome)
+        .join(' e ');
+      return `Titular no próximo jogo porque ${nomes} ${concorrentesIndisponiveis.length === 1 ? 'está indisponível' : 'estão indisponíveis'}`;
+    }
+    return 'Titular no próximo jogo';
+  }
   if (papel === 'banco') return 'Banco no próximo jogo';
   if (papel === 'lesionado') return 'Indisponível por lesão';
   if (papel === 'suspenso') return 'Suspenso para o próximo jogo';
@@ -119,6 +157,8 @@ export function avaliarHierarquia(c: EstadoCarreira) {
       faixa,
       rotulo,
       formacaoUsaPosicao: true,
+      formacaoUsaPosicaoPrincipal: true,
+      formacaoUsaPosicaoSecundaria: false,
       slotReferencia: null as SlotFormacao | null,
       papelEscalacao: (faixa === 'titularidade' ? 'titular' : faixa === 'rotacao' ? 'banco' : 'nao relacionado') as 'titular' | 'banco' | 'nao relacionado' | 'lesionado' | 'suspenso',
       concorrentes: [] as { id:string; nome:string; overall:number; disponivel:boolean; usuario:boolean }[],
@@ -137,14 +177,46 @@ export function avaliarHierarquia(c: EstadoCarreira) {
   usuario.confiancaTreinador += bonusPromessa(c) * 10;
   const candidatos = [...clube.elenco.map(jogadorMundoComoCandidato), usuario];
   const slots = slotsUnicos(formacao);
-  const slotsDiretos = slots.filter((s) => slotDiretoDoUsuario(usuario, s));
-  const slotsAlternativos =
-    slotsDiretos.length > 0
-      ? []
-      : slots.filter((s) => pesoCompatibilidade(usuario, s) >= 0.35);
-  const slotsAvaliados =
-    slotsDiretos.length > 0 ? slotsDiretos : slotsAlternativos;
-  const formacaoUsaPosicao = slotsDiretos.length > 0;
+
+  const slotsPrincipais = slots.filter((s) => slotPosicaoPrincipal(usuario, s));
+  const slotsSecundarios = slots.filter(
+    (s) => slotPosicaoSecundaria(usuario, s) && !slotPosicaoPrincipal(usuario, s),
+  );
+  const slotsFortes = slots.filter(
+    (s) =>
+      !slotPosicaoPrincipal(usuario, s) &&
+      !slotPosicaoSecundaria(usuario, s) &&
+      pesoCompatibilidade(usuario, s) >= COMPAT_HIERARQUIA,
+  );
+  const slotsEmergencia = slots.filter(
+    (s) =>
+      !slotPosicaoPrincipal(usuario, s) &&
+      !slotPosicaoSecundaria(usuario, s) &&
+      pesoCompatibilidade(usuario, s) >= 0.35 &&
+      pesoCompatibilidade(usuario, s) < COMPAT_HIERARQUIA,
+  );
+
+  const formacaoUsaPosicaoPrincipal = slotsPrincipais.length > 0;
+  const formacaoUsaPosicaoSecundaria = slotsSecundarios.length > 0;
+  /** Compat: true só quando a formação usa a posição principal. */
+  const formacaoUsaPosicao = formacaoUsaPosicaoPrincipal;
+
+  type OrigemSlot = 'principal' | 'secundaria' | 'alternativa' | 'emergencia';
+  let origemSlot: OrigemSlot = 'principal';
+  let slotsAvaliados: SlotFormacao[];
+  if (slotsPrincipais.length > 0) {
+    slotsAvaliados = slotsPrincipais;
+    origemSlot = 'principal';
+  } else if (slotsSecundarios.length > 0) {
+    slotsAvaliados = slotsSecundarios;
+    origemSlot = 'secundaria';
+  } else if (slotsFortes.length > 0) {
+    slotsAvaliados = slotsFortes;
+    origemSlot = 'alternativa';
+  } else {
+    slotsAvaliados = slotsEmergencia;
+    origemSlot = 'emergencia';
+  }
 
   let melhorOrdem = Number.POSITIVE_INFINITY;
   let melhorNota = -Infinity;
@@ -163,7 +235,6 @@ export function avaliarHierarquia(c: EstadoCarreira) {
     const ordemSlot = idx + 1;
     const notaUsuario = ranking[idx]!.nota;
     const compatUsuario = ranking[idx]!.compat;
-    // Prefere slot natural; entre iguais, melhor ordem; depois melhor nota.
     const melhorQueAtual =
       compatUsuario > melhorCompatUsuario ||
       (compatUsuario === melhorCompatUsuario &&
@@ -178,47 +249,82 @@ export function avaliarHierarquia(c: EstadoCarreira) {
     }
   }
 
+  // Fallback: posição principal fora da formação — ainda calcula profundidade estrutural.
+  if (!Number.isFinite(melhorOrdem)) {
+    const slotEstrutural = (usuario.posicaoPrincipal as SlotFormacao) || null;
+    if (slotEstrutural) {
+      rankingMelhor = rankingHierarquiaSlot(
+        candidatos,
+        slotEstrutural,
+        clube.treinador.rotacao,
+      );
+      const idx = rankingMelhor.findIndex((x) => x.x.ehUsuario);
+      if (idx >= 0) {
+        melhorOrdem = idx + 1;
+        melhorNota = rankingMelhor[idx]!.nota;
+        slotReferencia = slotEstrutural;
+      }
+    }
+  }
+
   const escalacao = escalarElencoCompleto(
     candidatos,
     formacao,
     clube.treinador,
   ).escalacaoUsuario;
-  const situacaoJogo = rotuloSituacaoEscalacao(escalacao);
-  const ordem = Number.isFinite(melhorOrdem) ? melhorOrdem : 1;
-  const lider = rankingMelhor.find((x) => !x.x.ehUsuario && !x.x.lesionado && x.x.suspensao <= 0);
+  const ordem = Number.isFinite(melhorOrdem) ? melhorOrdem : 99;
+  const lider = rankingMelhor.find(
+    (x) => !x.x.ehUsuario && !x.x.lesionado && x.x.suspensao <= 0,
+  );
   const indisponiveis = rankingMelhor.filter(
     (x) => !x.x.ehUsuario && (x.x.lesionado || x.x.suspensao > 0),
   );
-  const diferenca = lider ? lider.nota - melhorNota : 0;
-  const alternativasRotulo = slotsAlternativos.slice(0, 3).join('/');
+  const diferenca =
+    lider && Number.isFinite(melhorNota) ? lider.nota - melhorNota : 0;
+  const situacaoJogo = rotuloSituacaoEscalacao(
+    escalacao,
+    indisponiveis.map((row) => ({ nome: row.x.nome })),
+  );
+
+  const hierarquiaRotulo = slotReferencia
+    ? origemSlot === 'secundaria'
+      ? `${ordem}ª opção em ${slotReferencia} (posição secundária)`
+      : origemSlot === 'alternativa' || origemSlot === 'emergencia'
+        ? `Alternativa para ${slotReferencia} · ${ordem}ª opção`
+        : `${ordem}ª opção em ${slotReferencia}`
+    : `Fora do desenho · ${formacao}`;
 
   let motivo: string;
-  if (j.lesao) motivo = 'Você está em recuperação médica.';
-  else if (j.suspensao > 0) motivo = 'Você está suspenso.';
-  else if (j.condicionamento < 65 || j.fadiga > 65) motivo = 'Seu preparo físico limita a participação.';
-  else if (!formacaoUsaPosicao) {
-    motivo = slotReferencia
-      ? `A formação atual não usa ${j.posicao}. Você é considerado alternativa para ${alternativasRotulo || slotReferencia}. Na disputa por ${slotReferencia} você aparece como ${ordem}ª opção entre concorrentes reais dessa função. ${situacaoJogo}.`
-      : `A formação atual não usa ${j.posicao}, e também não há função próxima com boa adequação no desenho ${formacao}. ${situacaoJogo}.`;
+  if (j.lesao) {
+    motivo = `${hierarquiaRotulo}. Você está em recuperação médica — a hierarquia da posição se mantém, mas você fica fora do próximo jogo.`;
+  } else if (j.suspensao > 0) {
+    motivo = `${hierarquiaRotulo}. Você está suspenso para o próximo jogo; a ordem na posição não muda por isso.`;
+  } else if (j.condicionamento < 65 || j.fadiga > 65) {
+    motivo = `${hierarquiaRotulo}. Seu preparo físico limita a participação nesta semana. ${situacaoJogo}.`;
+  } else if (origemSlot === 'secundaria' && slotReferencia) {
+    motivo = `A formação atual não utiliza sua posição principal ${j.posicao}. Você está sendo considerado como ${slotReferencia}, sua posição secundária — hoje ${ordem}ª opção nessa função. ${situacaoJogo}.`;
+  } else if (
+    (origemSlot === 'alternativa' || origemSlot === 'emergencia') &&
+    slotReferencia
+  ) {
+    motivo = `A formação atual não usa ${j.posicao}. Você está sendo considerado como alternativa para ${slotReferencia} — ${ordem}ª opção entre concorrentes reais dessa função. ${situacaoJogo}.`;
+  } else if (!slotReferencia) {
+    motivo = `A formação ${formacao} não usa ${j.posicao} e não há função próxima com boa adequação. ${situacaoJogo}.`;
   } else if (escalacao === 'titular') {
-    motivo = `${situacaoJogo}. ${indisponiveis.length ? 'Há concorrentes indisponíveis. ' : ''}Seu nível, momento e adequação à vaga de ${slotReferencia ?? j.posicao} na formação ${formacao} colocam você entre as primeiras escolhas.`;
+    motivo = `${situacaoJogo}. Na hierarquia estrutural você é ${ordem}ª opção em ${slotReferencia}.`;
   } else if (lider && diferenca > 0) {
-    motivo = `${situacaoJogo}. ${lider.x.nome} está à frente na disputa por ${slotReferencia ?? j.posicao}: ${lider.x.overall > j.overall ? 'oferece maior nível atual' : lider.x.forma > j.forma ? 'está em melhor forma' : 'tem melhor avaliação para a função'}. ${j.confianca < 55 ? 'Sua confiança com a comissão ainda precisa crescer.' : 'O treinador também considera a formação e o equilíbrio da equipe.'}`;
+    motivo = `${situacaoJogo}. ${lider.x.nome} está à frente na disputa por ${slotReferencia}: ${lider.x.overall > j.overall ? 'oferece maior nível atual' : lider.x.forma > j.forma ? 'está em melhor forma' : 'tem melhor avaliação para a função'}. ${j.confianca < 55 ? 'Sua confiança com a comissão ainda precisa crescer.' : 'O treinador também considera a formação e o equilíbrio da equipe.'}`;
   } else {
-    motivo = `${situacaoJogo}. Há disputa aberta pela vaga de ${slotReferencia ?? j.posicao} na formação ${formacao}. Versatilidade e bons treinos podem abrir espaço.`;
+    motivo = `${situacaoJogo}. Há disputa aberta pela vaga de ${slotReferencia} na formação ${formacao}. Versatilidade e bons treinos podem abrir espaço.`;
   }
-
-  const rotulo = !formacaoUsaPosicao
-    ? slotReferencia
-      ? `Alternativa para ${slotReferencia} · ${ordem}ª opção`
-      : `Fora do desenho · ${formacao}`
-    : `${ordem}ª opção em ${slotReferencia ?? j.posicao}`;
 
   return {
     ordem,
     faixa: (escalacao === 'titular' ? 'titularidade' : escalacao === 'banco' ? 'rotacao' : 'desenvolvimento') as FaixaHierarquia,
-    rotulo,
+    rotulo: hierarquiaRotulo,
     formacaoUsaPosicao,
+    formacaoUsaPosicaoPrincipal,
+    formacaoUsaPosicaoSecundaria,
     slotReferencia,
     papelEscalacao: escalacao,
     titular: escalacao === 'titular',
