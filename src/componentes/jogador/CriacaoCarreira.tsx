@@ -11,8 +11,9 @@ import type {
   Clube,
   IdentidadeJogador,
   Liga,
+  Posicao,
 } from "@/dominio/entidades/modelos";
-import { POSICOES, esquemaIdentidade } from "@/dominio/regras/jogador";
+import { POSICOES, POSICOES_ALTERNATIVAS, esquemaIdentidade } from "@/dominio/regras/jogador";
 import {
   esquemaLigasDisponiveis,
   type LigaDisponivel,
@@ -84,7 +85,19 @@ export function CriacaoCarreira() {
     chave: Chave,
     valor: IdentidadeJogador[Chave],
   ) => {
-    definirIdentidade((atual) => ({ ...atual, [chave]: valor }));
+    definirIdentidade((atual) => {
+      const proximo = { ...atual, [chave]: valor };
+      if (chave === "posicao") {
+        const secundarias = POSICOES_ALTERNATIVAS[valor as Posicao];
+        if (
+          proximo.posicaoSecundaria &&
+          !secundarias.includes(proximo.posicaoSecundaria as Posicao)
+        ) {
+          proximo.posicaoSecundaria = "";
+        }
+      }
+      return proximo;
+    });
     definirErrosCampo((e) => {
       if (!e[chave]) return e;
       const n = { ...e };
@@ -532,16 +545,18 @@ export function CriacaoCarreira() {
                   }
                   onBlur={() => tocar("posicaoSecundaria")}
                   aria-invalid={!!errosCampo.posicaoSecundaria}
+                  disabled={POSICOES_ALTERNATIVAS[identidade.posicao].length === 0}
                 >
                   <option value="">Nenhuma</option>
-                  {Object.entries(POSICOES)
-                    .filter(([codigo]) => codigo !== identidade.posicao)
-                    .map(([codigo, nome]) => (
-                      <option key={codigo} value={codigo}>
-                        {codigo} — {nome}
-                      </option>
-                    ))}
+                  {POSICOES_ALTERNATIVAS[identidade.posicao].map((codigo) => (
+                    <option key={codigo} value={codigo}>
+                      {codigo} — {POSICOES[codigo]}
+                    </option>
+                  ))}
                 </select>
+                {POSICOES_ALTERNATIVAS[identidade.posicao].length === 0 && (
+                  <span className="texto-suave">Goleiros não usam posição secundária.</span>
+                )}
                 {errosCampo.posicaoSecundaria && (
                   <span className="vz-campo-erro">
                     {errosCampo.posicaoSecundaria}

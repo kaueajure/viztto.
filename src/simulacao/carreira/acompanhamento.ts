@@ -126,7 +126,13 @@ export function escolherObjetivo(estado: EstadoCarreira, tipo: ObjetivoPessoalTi
     c,
     'objetivo-pessoal',
     `Seu foco: ${rotuloObjetivo(c, tipo)}`,
-    'Seu agente acompanhará esse caminho. A escolha orienta os próximos passos, sem alterar seus atributos.',
+    tipo === 'transferencia'
+      ? 'Seu agente intensificará a busca por clubes interessados.'
+      : tipo === 'titular' || tipo === 'tecnica'
+        ? 'O Centro de Treinamento priorizará exercícios alinhados a esse foco.'
+        : tipo === 'emprestimo'
+          ? 'Seu agente ficará mais aberto a oportunidades de empréstimo.'
+          : 'Seu agente acompanhará esse caminho e os sistemas relacionados.',
     'Agente',
     false,
   );

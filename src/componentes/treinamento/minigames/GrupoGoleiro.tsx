@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { mediaScores, type PropsMinigame } from "./tipos";
 
 export function MinigameInterceptacao({
@@ -17,12 +17,24 @@ export function MinigameInterceptacao({
   useEffect(() => {
     if (idx >= tentativas) return;
     setAtivo(false);
-    const t = window.setTimeout(() => {
-      setAlvo(Math.floor(aleatorio() * 3));
-      setAtivo(true);
-      window.setTimeout(() => setAtivo(false), 900 / multiplicadorTempo);
-    }, (350 + aleatorio() * 500) / multiplicadorTempo);
-    return () => clearTimeout(t);
+    let cancelado = false;
+    const timers: number[] = [];
+    timers.push(
+      window.setTimeout(() => {
+        if (cancelado) return;
+        setAlvo(Math.floor(aleatorio() * 3));
+        setAtivo(true);
+        timers.push(
+          window.setTimeout(() => {
+            if (!cancelado) setAtivo(false);
+          }, 900 / multiplicadorTempo),
+        );
+      }, (350 + aleatorio() * 500) / multiplicadorTempo),
+    );
+    return () => {
+      cancelado = true;
+      for (const t of timers) clearTimeout(t);
+    };
   }, [idx, aleatorio, multiplicadorTempo]);
 
   const escolher = (i: number) => {
@@ -74,30 +86,10 @@ export function MinigameGoleiroReflexos({
   const [scores, setScores] = useState<number[]>([]);
   const [ativo, setAtivo] = useState(false);
   const [inicio, setInicio] = useState(0);
+  const resolvido = useRef(false);
 
-  useEffect(() => {
-    if (idx >= tentativas) return;
-    setAtivo(false);
-    const t = window.setTimeout(() => {
-      setAlvo(Math.floor(aleatorio() * 6));
-      setAtivo(true);
-      setInicio(performance.now());
-    }, (250 + aleatorio() * 600) / multiplicadorTempo);
-    return () => clearTimeout(t);
-  }, [idx, aleatorio, multiplicadorTempo]);
-
-  const clicar = (i: number) => {
-    if (!ativo || idx >= tentativas) return;
-    const ms = performance.now() - inicio;
-    const s =
-      i === alvo
-        ? ms < 300
-          ? 100
-          : ms < 500
-            ? 85
-            : 65
-        : 20;
-    const novos = [...scores, s];
+  const finalizarTentativa = (s: number, acumulado: number[]) => {
+    const novos = [...acumulado, s];
     setScores(novos);
     setAtivo(false);
     const prox = idx + 1;
@@ -109,6 +101,57 @@ export function MinigameGoleiroReflexos({
         tentativas,
       });
     }
+  };
+
+  useEffect(() => {
+    if (idx >= tentativas) return;
+    resolvido.current = false;
+    setAtivo(false);
+    let inner = 0;
+    const outer = window.setTimeout(() => {
+      setAlvo(Math.floor(aleatorio() * 6));
+      setAtivo(true);
+      setInicio(performance.now());
+      inner = window.setTimeout(() => {
+        if (resolvido.current) return;
+        resolvido.current = true;
+        setScores((prev) => {
+          const novos = [...prev, 18];
+          const prox = idx + 1;
+          queueMicrotask(() => {
+            setAtivo(false);
+            setIdx(prox);
+            if (prox >= tentativas) {
+              onConcluido({
+                exercicioId: "goleiro-reflexos",
+                score: mediaScores(novos),
+                tentativas,
+              });
+            }
+          });
+          return novos;
+        });
+      }, 900 / multiplicadorTempo);
+    }, (250 + aleatorio() * 600) / multiplicadorTempo);
+    return () => {
+      clearTimeout(outer);
+      if (inner) clearTimeout(inner);
+    };
+  }, [idx, aleatorio, multiplicadorTempo, onConcluido, tentativas]);
+
+  const clicar = (i: number) => {
+    if (!ativo || idx >= tentativas || resolvido.current) return;
+    resolvido.current = true;
+    const ms = performance.now() - inicio;
+    const s =
+      i === alvo
+        ? ms < 300
+          ? 100
+          : ms < 500
+            ? 85
+            : 65
+        : 20;
+    finalizarTentativa(s, scores);
   };
 
   return (

@@ -1,4 +1,5 @@
 import type { Clube, EstadoCarreira, Jogador, Posicao } from '@/dominio/entidades/modelos';
+import { POSICOES_ALTERNATIVAS } from '@/dominio/regras/jogador';
 import { SLOTS_FORMACAO, type Formacao, type SlotFormacao } from '@/dominio/formacao';
 import { estaSemClube } from '@/simulacao/carreira/agente-livre';
 import { avaliarParaSlot, escalarElencoCompleto, jogadorMundoComoCandidato, jogadorUsuarioComoCandidato, pesoCompatibilidade } from './escalacao-elenco';
@@ -180,18 +181,12 @@ export function avaliarHierarquia(c: EstadoCarreira) {
   };
 }
 
-const ALTERNATIVAS: Record<Posicao, Posicao[]> = {
-  GOL: [],
-  LD: ['LE', 'VOL', 'PD'],
-  LE: ['LD', 'VOL', 'PE'],
-  ZAG: ['VOL'],
-  VOL: ['MC', 'ZAG'],
-  MC: ['VOL', 'MEI'],
-  MEI: ['MC', 'PD', 'PE', 'CA'],
-  PD: ['PE', 'MEI', 'CA'],
-  PE: ['PD', 'MEI', 'CA'],
-  CA: ['PD', 'PE', 'MEI'],
-};
+const ALTERNATIVAS = POSICOES_ALTERNATIVAS;
+
+/** Alternativas conceituais da posição (criação e adaptação). */
+export function posicoesAlternativas(posicao: Posicao): Posicao[] {
+  return [...ALTERNATIVAS[posicao]];
+}
 
 export function posicoesPlausiveis(j: Jogador): Posicao[] {
   return ALTERNATIVAS[j.posicao].filter((p) =>

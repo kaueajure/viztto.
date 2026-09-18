@@ -1,5 +1,5 @@
 "use client";
-import { ConversaContrato } from "@/componentes/clube/ConversaContrato";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { EstadoCarreira } from "@/dominio/entidades/modelos";
 import {
@@ -36,7 +36,6 @@ const ROTULO_STATUS = {
 export function MercadoAgente({ carreira: c }: { carreira: EstadoCarreira }) {
   const [secao, setSecao] = useState<keyof typeof SECOES>("geral");
   const conversar = useJogoStore((s) => s.conversarAgente);
-  const aposentar = useJogoStore((s) => s.aposentar);
   const salvar = useJogoStore((s) => s.definirPreferencias);
   const marcarMercadoLido = useJogoStore((s) => s.marcarMercadoLido);
   const erro = useJogoStore((s) => s.erro);
@@ -56,7 +55,6 @@ export function MercadoAgente({ carreira: c }: { carreira: EstadoCarreira }) {
     marcarMercadoLido,
   ]);
   const [aviso, setAviso] = useState("");
-  const [confirmarAposentadoria, setConfirmarAposentadoria] = useState(false);
   const livre = estaSemClube(c);
   const clubeAtual = livre
     ? undefined
@@ -289,7 +287,36 @@ export function MercadoAgente({ carreira: c }: { carreira: EstadoCarreira }) {
             ))}
         </div>
       )}
-      {secao === "agente" && <ConversaContrato carreira={c} />}
+      {secao === "agente" && (
+        <section className="painel espaco">
+          <h2>SITUAÇÃO CONTRATUAL</h2>
+          <dl className="ficha">
+            <div>
+              <dt>Status</dt>
+              <dd>
+                {livre
+                  ? "Sem contrato · agente livre"
+                  : `${c.jogador.contrato.tipo === "base" ? "Base" : "Profissional"} · ${c.jogador.status}`}
+              </dd>
+            </div>
+            {!livre && (
+              <>
+                <div>
+                  <dt>Salário semanal</dt>
+                  <dd>{dinheiro(c.jogador.contrato.salario)}</dd>
+                </div>
+                <div>
+                  <dt>Término</dt>
+                  <dd>{formatarData(c.jogador.contrato.dataTermino)}</dd>
+                </div>
+              </>
+            )}
+          </dl>
+          <Link className="botao secundario" href="/carreira/contrato">
+            Ver contrato →
+          </Link>
+        </section>
+      )}
       {secao === "agente" && (
         <section className="painel espaco" aria-labelledby="agente-titulo">
           <p className="sobretitulo">MEU AGENTE</p>
@@ -539,53 +566,6 @@ export function MercadoAgente({ carreira: c }: { carreira: EstadoCarreira }) {
                     Salvar preferências
                   </button>
                 </form>
-              </details>
-              <details className="espaco">
-                <summary>Solicitar aposentadoria</summary>
-                {!confirmarAposentadoria ? (
-                  <>
-                    <p>
-                      {c.jogador.idade < 30
-                        ? "Você ainda tem muitos anos de carreira pela frente. Tem certeza?"
-                        : "A aposentadoria encerra sua carreira profissional."}
-                    </p>
-                    <button
-                      className="botao secundario"
-                      onClick={() => setConfirmarAposentadoria(true)}
-                    >
-                      Quero me aposentar
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <p role="alert">
-                      TEM CERTEZA? A aposentadoria encerra sua carreira
-                      profissional. Você poderá continuar vendo o histórico
-                      desta carreira, mas não poderá voltar a jogar depois da
-                      confirmação.
-                    </p>
-                    <div className="acoes">
-                      <button
-                        className="botao principal"
-                        onClick={() => {
-                          aposentar();
-                          setConfirmarAposentadoria(false);
-                          notificar(
-                            "Carreira encerrada. O histórico foi preservado.",
-                          );
-                        }}
-                      >
-                        Confirmar aposentadoria
-                      </button>
-                      <button
-                        className="botao secundario"
-                        onClick={() => setConfirmarAposentadoria(false)}
-                      >
-                        Cancelar
-                      </button>
-                    </div>
-                  </>
-                )}
               </details>
             </>
           )}

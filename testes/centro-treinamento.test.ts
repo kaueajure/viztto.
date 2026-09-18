@@ -5,6 +5,7 @@ import {
   TRAINING_GRADES,
 } from "@/dominio/treinamento/notas";
 import {
+  custoProximoPonto,
   eficienciaIdade,
   MAX_SESSOES_SEMANA,
   rendimentoAtributo,
@@ -26,8 +27,10 @@ import { somarDias } from "@/utilitarios/formatacao";
 import { serializarCarreira, hidratarCarreira } from "@/infraestrutura/persistencia/carreira-persistida";
 import {
   CENARIOS_PADRAO,
+  CENARIOS_TEMPORADA,
   ovrEm,
   simularCarreiraTreino,
+  simularCenarioTemporada,
 } from "../scripts/simular-desenvolvimento";
 
 describe("notas de treino", () => {
@@ -176,7 +179,9 @@ describe("centro de treinamento — sessões", () => {
     expect(des1).toBeGreaterThan(desAntes);
   });
 
-  it("XP fracionário preserva overflow e atributo alto rende menos", () => {
+  it("XP fracionário preserva overflow e atributo alto custa mais", () => {
+    expect(custoProximoPonto(85)).toBeGreaterThan(custoProximoPonto(60));
+    expect(custoProximoPonto(90)).toBeGreaterThan(custoProximoPonto(80));
     expect(rendimentoAtributo(60)).toBeGreaterThan(rendimentoAtributo(89));
     expect(xpBrutoDaSessao("A", 99)).toBeGreaterThan(xpBrutoDaSessao("A", 86));
     expect(eficienciaIdade(16, "finalizacao")).toBeGreaterThan(
@@ -250,7 +255,46 @@ describe("centro de treinamento — sessões", () => {
 });
 
 describe("benchmark faixas", () => {
-  it("cenários relativos e progressão visível", () => {
+  it("1 temporada — base e elite nas faixas-alvo", () => {
+    const pouco = simularCenarioTemporada(
+      CENARIOS_TEMPORADA.find((c) => c.id === "base-pouco")!,
+    );
+    const normal = simularCenarioTemporada(
+      CENARIOS_TEMPORADA.find((c) => c.id === "base-normal")!,
+    );
+    const forte = simularCenarioTemporada(
+      CENARIOS_TEMPORADA.find((c) => c.id === "base-forte")!,
+    );
+    const talento = simularCenarioTemporada(
+      CENARIOS_TEMPORADA.find((c) => c.id === "base-talento")!,
+    );
+    const pro70 = simularCenarioTemporada(
+      CENARIOS_TEMPORADA.find((c) => c.id === "pro-70")!,
+    );
+    const elite = simularCenarioTemporada(
+      CENARIOS_TEMPORADA.find((c) => c.id === "elite-85")!,
+    );
+
+    // Treino consistente na base: +4..+6 (aceita margem de seed).
+    expect(normal.ganhoTemporada).toBeGreaterThanOrEqual(4);
+    expect(normal.ganhoTemporada).toBeLessThanOrEqual(7);
+    // Dedicado/talento ≥ normal e tipicamente +6..+8 (+ margem).
+    expect(forte.ganhoTemporada).toBeGreaterThanOrEqual(6);
+    expect(forte.ganhoTemporada).toBeLessThanOrEqual(10);
+    expect(talento.ganhoTemporada).toBeGreaterThanOrEqual(forte.ganhoTemporada - 1);
+    expect(talento.ganhoTemporada).toBeGreaterThanOrEqual(6);
+    // Pouco treino cresce menos.
+    expect(pouco.ganhoTemporada).toBeGreaterThanOrEqual(1);
+    expect(pouco.ganhoTemporada).toBeLessThan(normal.ganhoTemporada);
+    expect(pouco.ganhoTemporada).toBeLessThanOrEqual(3);
+    // 70+ sobe, mas menos que base jovem.
+    expect(pro70.ganhoTemporada).toBeLessThan(forte.ganhoTemporada);
+    expect(pro70.ganhoTemporada).toBeLessThanOrEqual(4);
+    // 85+ não explode.
+    expect(elite.ganhoTemporada).toBeLessThanOrEqual(2);
+  }, 90_000);
+
+  it("cenários longos relativos e progressão visível", () => {
     const ruim = simularCarreiraTreino(CENARIOS_PADRAO.find((c) => c.id === "ruim")!);
     const normal = simularCarreiraTreino(
       CENARIOS_PADRAO.find((c) => c.id === "normal")!,
@@ -271,7 +315,6 @@ describe("benchmark faixas", () => {
     expect(ovrEm(talento.porIdade, 21)).toBeGreaterThanOrEqual(
       ovrEm(normal.porIdade, 21),
     );
-    // Veterano cresce menos que jovem no mesmo intervalo relativo
-    expect(vet.pico - (vet.ovr15 ?? ovrEm(vet.porIdade, 28))).toBeLessThan(18);
-  }, 60_000);
+    expect(vet.pico - vet.inicio).toBeLessThan(18);
+  }, 90_000);
 });

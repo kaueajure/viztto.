@@ -86,7 +86,7 @@ function aplicarDesempenho(
     p.desenvolvimento = calcularEvolucao(
       j,
       Object.keys(PESOS_POSICOES[j.posicao]) as Atributo[],
-      (p.minutos / 90) * Math.max(1, p.nota! - 4) * 1.6,
+      (p.minutos / 90) * Math.max(1, p.nota! - 4) * 0.48,
       clube,
     );
     j.amarelosAcumulados += p.amarelos;
@@ -298,6 +298,7 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
     } else j.confianca = limitar(j.confianca - 0.5);
   }
   const estavaLesionado = !!j.lesao;
+  const sessoesCentro = j.preparacao.centro?.semana.sessoes.length ?? 0;
   processarTreinamento(
     j,
     carreira.focoTreino,
@@ -315,7 +316,7 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
   let escalacaoPreparada: Escalacao | null = null;
 
   if (!livre && clube) {
-    avaliarBase(carreira);
+    avaliarBase(carreira, sessoesCentro);
     convocado = relacionadoProfissional(carreira);
     motivoParticipacao = avaliarHierarquia(carreira).motivo;
     categoriaSemana = convocado ? "profissional" : j.categoria;

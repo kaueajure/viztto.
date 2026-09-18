@@ -1,12 +1,13 @@
 "use client";
 import { formatarTemporada } from "@/dominio/constantes/temporadas-iniciais";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { EstadoCarreira } from "@/dominio/entidades/modelos";
 import { formatarData } from "@/utilitarios/formatacao";
 import { EstatisticasLinha, Vazio } from "@/componentes/interface/Elementos";
 import { somarEstatisticas } from "@/simulacao/temporada/estatisticas";
 import { useJogoStore } from "@/estado/jogo-store";
 import { TabelaLiga } from "@/componentes/partida/TabelaLiga";
+
 export function NoticiasHistorico({
   carreira: c,
   secao,
@@ -15,7 +16,19 @@ export function NoticiasHistorico({
   secao: "noticias" | "historico";
 }) {
   const [filtro, definirFiltro] = useState("Todos"),
-    ler = useJogoStore((s) => s.lerNoticias);
+    [abertaId, definirAbertaId] = useState<string | null>(null),
+    lerTodas = useJogoStore((s) => s.lerNoticias),
+    lerNoticia = useJogoStore((s) => s.lerNoticia);
+
+  // Ao abrir Mensagens, marca como lidas as que estão na lista filtrada atual.
+  useEffect(() => {
+    if (secao !== "noticias") return;
+    const ids = c.noticias
+      .filter((n) => !n.lida && (filtro === "Todos" || n.remetente === filtro))
+      .map((n) => n.id);
+    if (ids.length) lerNoticia(ids);
+  }, [secao]); // eslint-disable-line react-hooks/exhaustive-deps -- só ao entrar na tela
+
   return (
     <>
       <p className="sobretitulo">
@@ -26,7 +39,7 @@ export function NoticiasHistorico({
           {secao === "historico" ? "Estatísticas" : "Mensagens"}
         </h1>
         {secao === "noticias" && (
-          <button className="botao-texto" onClick={ler}>
+          <button className="botao-texto" onClick={lerTodas}>
             Marcar todas como lidas
           </button>
         )}
@@ -54,21 +67,37 @@ export function NoticiasHistorico({
           <div className="lista-noticias">
             {c.noticias
               .filter((n) => filtro === "Todos" || n.remetente === filtro)
-              .map((n) => (
-                <article
-                  key={n.id}
-                  className={`noticia ${!n.lida ? "nao-lida" : ""}`}
-                >
-                  <div>
-                    <span className="rotulo">{n.remetente}</span>
-                    <time>{formatarData(n.data)}</time>
-                  </div>
-                  <section>
-                    <h2>{n.titulo}</h2>
-                    <p>{n.texto}</p>
-                  </section>
-                </article>
-              ))}
+              .map((n) => {
+                const expandida = abertaId === n.id;
+                return (
+                  <article
+                    key={n.id}
+                    className={`noticia ${!n.lida ? "nao-lida" : ""}${expandida ? " aberta" : ""}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      definirAbertaId(expandida ? null : n.id);
+                      if (!n.lida) lerNoticia([n.id]);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        definirAbertaId(expandida ? null : n.id);
+                        if (!n.lida) lerNoticia([n.id]);
+                      }
+                    }}
+                  >
+                    <div>
+                      <span className="rotulo">{n.remetente}</span>
+                      <time>{formatarData(n.data)}</time>
+                    </div>
+                    <section>
+                      <h2>{n.titulo}</h2>
+                      <p>{n.texto}</p>
+                    </section>
+                  </article>
+                );
+              })}
             {!c.noticias.some(
               (n) => filtro === "Todos" || n.remetente === filtro,
             ) && (
@@ -138,34 +167,46 @@ export function NoticiasHistorico({
               </div>
             )}
           </section>
-          {c.temporadasAnteriores.map((t) => (
-            <details
-              className="painel espaco"
-              key={`${t.ano}-${t.ligaId ?? t.campeaoId}`}
-            >
-              <summary>
-                Temporada{" "}
-                {formatarTemporada(
-                  t.ligaId ??
-                    c.clubes.find((cl) => cl.id === t.campeaoId)?.ligaId ??
-                    c.liga.id,
-                  t.ano,
-                )}{" "}
-                · Campeão: {c.clubes.find((cl) => cl.id === t.campeaoId)?.nome}
-              </summary>
-              <TabelaLiga
-                linhas={t.classificacao}
-                clubes={c.clubes}
-                clubeAtualId={c.clubeAtualId}
-              />
-              <h3>Categoria de base</h3>
-              <TabelaLiga
-                linhas={t.classificacaoBase}
-                clubes={c.clubes}
-                clubeAtualId={c.clubeAtualId}
-              />
-            </details>
-          ))}
+          {c.temporadasAnteriores.map((t) => {
+            const ligaIdTemp =
+              t.ligaId ??
+              c.clubes.find((cl) => cl.id === t.campeaoId)?.ligaId ??
+              c.liga.id;
+            const clubeNaTemporada =
+              c.registros.find((r) => r.ano === t.ano)?.clubeId ??
+              t.campeaoId;
+            const temBase =
+              t.classificacaoBase.length > 0 &&
+              c.registros.some(
+                (r) => r.ano === t.ano && r.categoria === "base",
+              );
+            return (
+              <details
+                className="painel espaco"
+                key={`${t.ano}-${ligaIdTemp}`}
+              >
+                <summary>
+                  Temporada {formatarTemporada(ligaIdTemp, t.ano)} · Campeão:{" "}
+                  {c.clubes.find((cl) => cl.id === t.campeaoId)?.nome}
+                </summary>
+                <TabelaLiga
+                  linhas={t.classificacao}
+                  clubes={c.clubes}
+                  clubeAtualId={clubeNaTemporada}
+                />
+                {temBase && (
+                  <>
+                    <h3>Categoria de base</h3>
+                    <TabelaLiga
+                      linhas={t.classificacaoBase}
+                      clubes={c.clubes}
+                      clubeAtualId={clubeNaTemporada}
+                    />
+                  </>
+                )}
+              </details>
+            );
+          })}
           <section className="linha-historico">
             <h2>SUA HISTÓRIA</h2>
             {[...c.eventos].reverse().map((e) => (

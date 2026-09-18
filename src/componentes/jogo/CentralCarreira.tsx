@@ -83,12 +83,13 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
       proximaTemporada,
       reiniciar,
       excluir,
+      aposentar,
     } = useJogoStore(),
     roteador = useRouter();
   const [menu, definirMenu] = useState(false),
     [configuracoes, definirConfiguracoes] = useState(false),
     [confirmacao, definirConfirmacao] = useState<
-      "excluir" | "reiniciar" | null
+      "excluir" | "reiniciar" | "aposentar" | null
     >(null),
     [resumo, definirResumo] = useState(false),
     [ocupado, definirOcupado] = useState(false);
@@ -264,13 +265,6 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
                 {nome}
               </Link>
             ))}
-            <button
-              type="button"
-              className={configuracoes ? "ativo" : ""}
-              onClick={() => definirConfiguracoes(true)}
-            >
-              Opções
-            </button>
           </nav>
           <div className="vz-topo-direita">
             <Link
@@ -287,7 +281,7 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
             </Link>
             <button
               className="botao-icone"
-              aria-label="Configurações da carreira"
+              aria-label="Opções da carreira"
               onClick={() => definirConfiguracoes(true)}
             >
               <Settings size={18} />
@@ -405,13 +399,16 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
                 <h3>
                   {confirmacao === "excluir"
                     ? "Excluir esta carreira?"
-                    : "Recomeçar esta carreira?"}
+                    : confirmacao === "reiniciar"
+                      ? "Recomeçar esta carreira?"
+                      : "Encerrar a carreira profissional?"}
                 </h3>
                 <p>
-                  O progresso atual será perdido.{" "}
-                  {confirmacao === "reiniciar"
-                    ? "Você voltará ao atleta e clube iniciais."
-                    : "Você poderá criar um novo jogador."}
+                  {confirmacao === "aposentar"
+                    ? "A aposentadoria é irreversível. Você poderá ver o histórico desta carreira, mas não voltará a jogar."
+                    : confirmacao === "reiniciar"
+                      ? "O progresso atual será perdido. Você voltará ao atleta e clube iniciais."
+                      : "O progresso atual será perdido. Você poderá criar um novo jogador."}
                 </p>
                 <div className="acoes">
                   <button
@@ -427,13 +424,21 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
                       if (confirmacao === "excluir") {
                         if (!(await excluir())) return;
                         roteador.push("/");
-                      } else if (!(await reiniciar())) return;
+                      } else if (confirmacao === "reiniciar") {
+                        if (!(await reiniciar())) return;
+                      } else {
+                        aposentar();
+                      }
                       definirConfiguracoes(false);
                       definirConfirmacao(null);
                     }}
                   >
                     Confirmar{" "}
-                    {confirmacao === "excluir" ? "exclusão" : "reinício"}
+                    {confirmacao === "excluir"
+                      ? "exclusão"
+                      : confirmacao === "reiniciar"
+                        ? "reinício"
+                        : "aposentadoria"}
                   </button>
                 </div>
               </>
@@ -450,6 +455,14 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
                   >
                     Reiniciar carreira
                   </button>
+                  {!c.aposentado && (
+                    <button
+                      className="botao secundario"
+                      onClick={() => definirConfirmacao("aposentar")}
+                    >
+                      Solicitar aposentadoria
+                    </button>
+                  )}
                   <button
                     className="botao perigo"
                     onClick={() => definirConfirmacao("excluir")}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { mediaScores, type PropsMinigame } from "./tipos";
 
 export function MinigameFinalizacaoColocada({
@@ -14,21 +14,48 @@ export function MinigameFinalizacaoColocada({
   const [scores, setScores] = useState<number[]>([]);
   const [inicio, setInicio] = useState(0);
   const tentativas = 5;
+  const resolvido = useRef(false);
 
   useEffect(() => {
     if (idx >= tentativas) return;
+    resolvido.current = false;
     setAtivo(false);
     const delay = (400 + aleatorio() * 700) / multiplicadorTempo;
-    const t = window.setTimeout(() => {
+    let inner = 0;
+    const outer = window.setTimeout(() => {
       setAlvo(Math.floor(aleatorio() * 6));
       setAtivo(true);
       setInicio(performance.now());
+      inner = window.setTimeout(() => {
+        if (resolvido.current) return;
+        resolvido.current = true;
+        setAtivo(false);
+        setScores((prev) => {
+          const novos = [...prev, 15];
+          const prox = idx + 1;
+          queueMicrotask(() => {
+            setIdx(prox);
+            if (prox >= tentativas) {
+              onConcluido({
+                exercicioId: "finalizacao-colocada",
+                score: mediaScores(novos),
+                tentativas,
+              });
+            }
+          });
+          return novos;
+        });
+      }, 900 / multiplicadorTempo);
     }, delay);
-    return () => clearTimeout(t);
-  }, [idx, aleatorio, multiplicadorTempo]);
+    return () => {
+      clearTimeout(outer);
+      if (inner) clearTimeout(inner);
+    };
+  }, [idx, aleatorio, multiplicadorTempo, onConcluido, tentativas]);
 
   const clicar = (zona: number) => {
-    if (!ativo || idx >= tentativas) return;
+    if (!ativo || idx >= tentativas || resolvido.current) return;
+    resolvido.current = true;
     const ms = performance.now() - inicio;
     let s = 0;
     if (zona === alvo) {

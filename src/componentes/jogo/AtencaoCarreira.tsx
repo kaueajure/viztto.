@@ -196,19 +196,6 @@ export function coletarAcoesAtencao(c: EstadoCarreira): AcaoAtencao[] {
     });
   }
 
-  // Plano legado: mantém CTA para saves/fixtures que ainda usam o campo.
-  // Não empurrar "treinos disponíveis" aqui — isso poluiria a rail toda semana.
-  if (!c.jogador.preparacao.planoId && !c.aposentado) {
-    itens.push({
-      id: "plano",
-      prioridade: 60,
-      titulo: "Defina seu plano de desenvolvimento",
-      detalhe: "Ou treine direto no Centro de Treinamento.",
-      href: "/carreira/treinamento",
-      cta: "Ir ao centro",
-    });
-  }
-
   for (const n of c.noticias.filter(n => !n.lida && ["treinador", "diretoria", "promessa", "hierarquia", "evolucao", "overall", "fim-contrato"].includes(n.tipo)).slice(0, 3))
     itens.push({ id: n.id, prioridade: n.tipo === "diretoria" || n.tipo === "promessa" || n.tipo === "fim-contrato" ? 88 : 72, titulo: n.titulo, detalhe: n.texto, href: n.tipo === "evolucao" || n.tipo === "overall" || n.tipo === "fim-contrato" ? "/carreira/noticias" : "/carreira/clube", cta: "Ver resposta" });
   return itens.sort((a, b) => b.prioridade - a.prioridade);

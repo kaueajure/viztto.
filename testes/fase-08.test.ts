@@ -102,21 +102,24 @@ describe('Fase 08 — treinamento', () => {
     expect(c.jogador.desenvolvimento.drible).toBeGreaterThan(antes);
     expect(hidratarCarreira(serializarCarreira(c),catalogo).jogador.desenvolvimento).toEqual(c.jogador.desenvolvimento);
   });
-  it('intensidade custa fadiga, descanso recupera e lesão impede treino normal', () => {
+  it('descanso sem sessão recupera fadiga; recuperação e lesão impedem treino normal', () => {
     const { carreira:c } = exemploCarreira();
-    c.jogador.preparacao.intensidade = 'intenso';
+    c.jogador.fadiga = 40;
     const antes = c.jogador.fadiga;
+    // Sem sessões: descanso leve (intensidade/foco legado não influenciam).
+    c.jogador.preparacao.intensidade = 'intenso';
     processarTreinamento(c.jogador,'fisico',c.clubes[0],c.dataAtual,new GeradorAleatorio(42));
-    expect(c.jogador.fadiga).toBeGreaterThan(antes);
-    processarTreinamento(c.jogador,'recuperacao',c.clubes[0],c.dataAtual,new GeradorAleatorio(42));
     expect(c.jogador.fadiga).toBeLessThan(antes);
+    c.jogador.fadiga = 40;
+    processarTreinamento(c.jogador,'recuperacao',c.clubes[0],c.dataAtual,new GeradorAleatorio(42));
+    expect(c.jogador.fadiga).toBeLessThan(40);
     c.jogador.lesao = { tipo:'Contusão',gravidade:'leve',diasRecuperacao:14,dataInicio:c.dataAtual,dataPrevistaRetorno:'2026-06-15' };
     const dev = {...c.jogador.desenvolvimento};
     processarTreinamento(c.jogador,'fisico',c.clubes[0],c.dataAtual,new GeradorAleatorio(42));
     expect(c.jogador.desenvolvimento).toEqual(dev);
     expect(c.jogador.preparacao.historico.at(-1)?.avaliacao).toBe('Recuperação');
   });
-  it('profissionalismo influencia avaliação e treino bom aumenta confiança', () => {
+  it('profissionalismo influencia avaliação e sessões do Centro aumentam confiança', () => {
     const { carreira:c } = exemploCarreira();
     c.jogador.personalidade.profissionalismo = 10;
     const baixa = avaliarTreino(c.jogador,new GeradorAleatorio(1));
@@ -124,10 +127,27 @@ describe('Fase 08 — treinamento', () => {
     c.jogador.personalidade.disciplina = 99;
     expect(avaliarTreino(c.jogador,new GeradorAleatorio(1))).toBeGreaterThan(baixa);
     const confianca = c.jogador.confianca;
-    // Plano legado ainda move confiança ao processar a semana.
+    const clube = c.clubes[0];
+    // Plano legado não concede mais XP — sessões do Centro sim.
     c.jogador.preparacao.planoId = 'invertido';
-    processarTreinamento(c.jogador,'equilibrado',c.clubes[0],c.dataAtual,new GeradorAleatorio(1));
+    c.jogador.preparacao.centro = {
+      progressoAtributos: {},
+      melhoresExercicios: {},
+      semana: {
+        chave: '',
+        sessoes: [{
+          id: 's1',
+          exercicioId: 'penaltis',
+          score: 90,
+          nota: 'A',
+          modo: 'jogar',
+          aplicada: true,
+        }],
+      },
+    };
+    processarTreinamento(c.jogador,'equilibrado',clube,c.dataAtual,new GeradorAleatorio(1));
     expect(c.jogador.confianca).toBeGreaterThan(confianca);
+    expect(c.jogador.preparacao.planoId).toBeNull();
   });
   it('potencial limita evolução e atributo alto tem retorno menor', () => {
     const { carreira:c } = exemploCarreira();

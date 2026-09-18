@@ -82,12 +82,19 @@ export function MinigameBarraTiming({
       /** Dispara a cobrança com a lógica real (scorePorDistancia). */
       chutar: () => pararRef.current(),
     };
-    (
-      window as unknown as { __vizttoTreinoBarra?: typeof api }
-    ).__vizttoTreinoBarra = api;
+    const podeExpor =
+      process.env.NODE_ENV !== "production" ||
+      process.env.NEXT_PUBLIC_E2E === "1";
+    if (podeExpor) {
+      (
+        window as unknown as { __vizttoTreinoBarra?: typeof api }
+      ).__vizttoTreinoBarra = api;
+    }
     return () => {
-      delete (window as unknown as { __vizttoTreinoBarra?: typeof api })
-        .__vizttoTreinoBarra;
+      if (podeExpor) {
+        delete (window as unknown as { __vizttoTreinoBarra?: typeof api })
+          .__vizttoTreinoBarra;
+      }
     };
   }, []);
 

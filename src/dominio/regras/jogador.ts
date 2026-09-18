@@ -19,7 +19,22 @@ export const POSICOES: Record<Posicao, string> = {
   PE: "Ponta esquerda",
   CA: "Centroavante",
 };
-export const esquemaIdentidade = z.object({
+
+/** Alternativas compatíveis por posição (criação = adaptação). GOL sem secundária. */
+export const POSICOES_ALTERNATIVAS: Record<Posicao, readonly Posicao[]> = {
+  GOL: [],
+  LD: ["LE", "VOL", "PD"],
+  LE: ["LD", "VOL", "PE"],
+  ZAG: ["VOL"],
+  VOL: ["MC", "ZAG"],
+  MC: ["VOL", "MEI"],
+  MEI: ["MC", "PD", "PE", "CA"],
+  PD: ["PE", "MEI", "CA"],
+  PE: ["PD", "MEI", "CA"],
+  CA: ["PD", "PE", "MEI"],
+};
+
+export const esquemaIdentidadeBase = z.object({
   nome: z.string().trim().min(2).max(30),
   sobrenome: z.string().trim().min(2).max(40),
   nacionalidade: z.string().trim().min(2).max(40),
@@ -60,6 +75,21 @@ export const esquemaIdentidade = z.object({
     "equilibrado",
     "paredao",
   ]),
+});
+
+/** Identidade na criação — valida secundária compatível com a principal. */
+export const esquemaIdentidade = esquemaIdentidadeBase.superRefine((v, ctx) => {
+  if (!v.posicaoSecundaria) return;
+  const ok = POSICOES_ALTERNATIVAS[v.posicao].includes(
+    v.posicaoSecundaria as Posicao,
+  );
+  if (!ok) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["posicaoSecundaria"],
+      message: "Posição secundária incompatível com a principal.",
+    });
+  }
 });
 export const PESOS_POSICOES: Record<
   Posicao,

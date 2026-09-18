@@ -933,15 +933,24 @@ export function avancarInteresses(
   const boostListado =
     c.mercado.statusPedidoSaida === "aceito" || c.mercado.pediuSaida ? 1.2 : 1;
   const boostLivre = estaSemClube(c) ? 1.75 : 1;
+  const boostObjetivo =
+    c.acompanhamento.objetivoPessoal &&
+    !c.acompanhamento.objetivoPessoal.concluido &&
+    (c.acompanhamento.objetivoPessoal.tipo === "transferencia" ||
+      (estaSemClube(c) &&
+        c.acompanhamento.objetivoPessoal.tipo === "emprestimo"))
+      ? 1.35
+      : 1;
   const chanceBase = Math.min(
     0.7,
-    0.08 * peso * boostPublico * boostListado * boostLivre,
+    0.08 * peso * boostPublico * boostListado * boostLivre * boostObjetivo,
   );
   const limiar = Math.max(
     18,
     LIMIAR_ELEGIBILIDADE -
       (c.mercado.pedidoPublico ? 8 : 0) -
-      (estaSemClube(c) ? 6 : 0),
+      (estaSemClube(c) ? 6 : 0) -
+      (boostObjetivo > 1 ? 4 : 0),
   );
 
   const candidatosNovos: {

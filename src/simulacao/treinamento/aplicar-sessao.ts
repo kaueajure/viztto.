@@ -28,8 +28,9 @@ import {
   MAX_SESSOES_SEMANA,
   chaveSemanaCarreira,
   eficienciaIdade,
+  fatorCategoria,
   fatorPotencial,
-  rendimentoAtributo,
+  progressoDeXp,
   xpBrutoDaSessao,
 } from "@/dominio/treinamento/progresso";
 import { limitar } from "@/utilitarios/formatacao";
@@ -98,7 +99,6 @@ function aplicarXpEmAtributo(
 
   const pot = fatorPotencial(jogador.overall, jogador.potencialInterno);
   const idade = eficienciaIdade(jogador.idade, atributo);
-  const rend = rendimentoAtributo(antes);
   const afinidade = afinidadeHistoria(
     jogador.perfilFormacao,
     atributo,
@@ -108,8 +108,15 @@ function aplicarXpEmAtributo(
     ? 0.85 + (jogador.categoria === "base" ? clube.qualidadeBase : clube.forcaGeral) / 400
     : 0.72;
   const moral = 0.85 + jogador.moral / 400;
-  const progresso =
-    xpBruto * idade * pot * rend * afinidade * estrutura * moral;
+  const xpEfetivo =
+    xpBruto *
+    idade *
+    pot *
+    afinidade *
+    estrutura *
+    moral *
+    fatorCategoria(jogador.categoria);
+  const progresso = progressoDeXp(xpEfetivo, antes);
 
   jogador.desenvolvimento[atributo] += progresso;
   while (
@@ -251,9 +258,7 @@ export function aplicarSessaoTreino(
   };
   centro.semana.sessoes.push(sessao);
 
-  // Condicionamento leve por sessão (sem intensidade).
-  jogador.fadiga = limitar(jogador.fadiga + 6);
-  jogador.condicionamento = limitar(jogador.condicionamento + 3);
+  // Fadiga/condicionamento ficam no fechamento semanal (evita carga dupla).
   if (clube) {
     jogador.moral = limitar(jogador.moral + (nota === "A" ? 1.2 : nota === "B" ? 0.6 : 0));
   } else {

@@ -59,6 +59,9 @@ test("Centro de treinamento — pênalti, slot, persistência e simular", async 
   await expect(page.getByTestId("minigame-penaltis")).toBeVisible();
 
   await chutarCentroVerde(page);
+  const revisao = page.getByTestId("treino-revisao");
+  await expect(revisao).toBeVisible({ timeout: 10000 });
+  await page.getByTestId("confirmar-treino").click();
   const erro = page.getByTestId("treino-resultado-erro");
   const ok = page.getByTestId("treino-resultado");
   await expect(ok.or(erro)).toBeVisible({ timeout: 10000 });

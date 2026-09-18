@@ -91,14 +91,14 @@ export const EXERCICIOS: readonly ExercicioTreino[] = [
   {
     id: "finalizacao-primeira",
     nome: "Finalização de primeira",
-    descricao: "Acerte o timing no momento em que a bola entra na zona verde.",
+    descricao: "Pare o indicador o mais perto possível do centro verde.",
     instrucao: "Finalize quando o indicador estiver na zona verde.",
     categoria: "ataque",
     recomendadoPara: ["CA", "PD", "PE"],
     primario: "finalizacao",
     secundarios: ["dominio"],
     terciarios: ["agilidade"],
-    mecanica: "timing-contato",
+    mecanica: "barra-timing",
     tentativas: 5,
   },
   {

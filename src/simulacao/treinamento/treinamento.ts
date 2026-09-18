@@ -10,8 +10,6 @@ import type {
 } from "@/dominio/entidades/modelos";
 import { GeradorAleatorio } from "@/utilitarios/aleatorio";
 import { limitar, somarDias } from "@/utilitarios/formatacao";
-import { calcularEvolucao } from "../evolucao/evolucao";
-import { PESOS_POSICOES } from "@/dominio/regras/jogador";
 import { garantirCentro } from "./aplicar-sessao";
 import { chaveSemanaCarreira } from "@/dominio/treinamento/progresso";
 import { TRAINING_GRADES } from "@/dominio/treinamento/notas";
@@ -116,10 +114,10 @@ export function focoTreinoEfetivo(
 /**
  * Ao avançar a semana:
  * - Com sessões do Centro: fecha histórico/fadiga (XP já aplicado nas sessões).
- * - Sem sessões: sem XP de atributo (treino é opt-in no Centro).
- * - Lesão: recuperação.
- * - Compatibilidade: se ainda há plano legado e 0 sessões, aplica resíduo mínimo
- *   do sistema antigo (saves em transição / testes fase 08).
+ * - Sem sessões: sem XP; descanso leve (Centro é opt-in).
+ * - Lesão ou foco recuperação: recuperação.
+ * - planoId / intensidade / focoTreino (exceto recuperação) NÃO afetam mais
+ *   evolução nem carga — o Centro é a única fonte de treino.
  */
 export function processarTreinamento(
   jogador: Jogador,
@@ -131,19 +129,20 @@ export function processarTreinamento(
   const preparacao = jogador.preparacao;
   const centro = garantirCentro(jogador);
   const sessoesFechadas = [...centro.semana.sessoes];
-  const focoUsado = focoTreinoEfetivo(foco, preparacao.planoId);
-  const recuperacao = !!jogador.lesao || focoUsado === "recuperacao";
+  const recuperacao =
+    !!jogador.lesao || foco === "recuperacao";
   const confiancaAntes = jogador.confianca;
   let progresso = 0;
   let nota = 0;
   let avaliacao: AvaliacaoTreino = "Recuperação";
 
-  if (jogador.lesao || focoUsado === "recuperacao") {
+  if (recuperacao) {
     jogador.fadiga = limitar(jogador.fadiga - 24);
     jogador.condicionamento = limitar(jogador.condicionamento + 6);
     avaliacao = "Recuperação";
     nota = 0;
   } else if (sessoesFechadas.length > 0) {
+    // Carga física única por sessão (não aplicada em aplicarSessaoTreino).
     const carga = sessoesFechadas.length * 7;
     jogador.fadiga = limitar(jogador.fadiga - 12 + carga * (clube ? 1 : 0.85));
     jogador.condicionamento = limitar(
@@ -174,81 +173,23 @@ export function processarTreinamento(
       aleatorio,
       0.0015 + jogador.fadiga * 0.0001 + sessoesFechadas.length * 0.0004,
     );
-  } else if (preparacao.planoId) {
-    // Legado: plano sem sessões do Centro (transição / testes).
-    const treino = FOCOS_TREINO.equilibrado;
-    const fatorCarga = { leve: 0.65, normal: 1, intenso: 1.65 }[
-      preparacao.intensidade
-    ];
-    nota = avaliarTreino(jogador, aleatorio);
-    jogador.fadiga = limitar(
-      jogador.fadiga - 15 + treino.carga * fatorCarga * (clube ? 1 : 0.85),
-    );
-    jogador.condicionamento = limitar(
-      jogador.condicionamento + 10 - treino.carga * fatorCarga * 0.4,
-    );
-    if (clube) {
-      jogador.confianca = limitar(jogador.confianca + (nota - 52) / 18);
-      jogador.moral = limitar(jogador.moral + (nota - 55) / 60);
-    }
-    jogador.forma = limitar(jogador.forma * 0.97 + nota * 0.03);
-    const plano = PLANOS.find(
-      (p) =>
-        p.id === preparacao.planoId && p.posicoes.includes(jogador.posicao),
-    );
-    const atributos =
-      plano?.atributos ??
-      (Object.keys(PESOS_POSICOES[jogador.posicao]) as Atributo[]);
-    const pontos =
-      4.2 *
-      (0.45 + nota / 100) *
-      (preparacao.intensidade === "intenso"
-        ? 1.12
-        : preparacao.intensidade === "leve"
-          ? 0.7
-          : 1);
-    progresso = calcularEvolucao(jogador, atributos, pontos, clube);
-    const prioridades = preparacao.prioridades.filter((a) =>
-      prioridadesDaPosicao(jogador.posicao).includes(a),
-    );
-    progresso += calcularEvolucao(jogador, prioridades, pontos * 0.35, clube);
-    gerarLesao(
-      jogador,
-      data,
-      aleatorio,
-      0.002 +
-        jogador.fadiga * 0.00012 +
-        (preparacao.intensidade === "intenso" ? 0.003 : 0),
-    );
-    avaliacao =
-      nota >= 82
-        ? "Excelente"
-        : nota >= 69
-          ? "Muito bom"
-          : nota >= 55
-            ? "Bom"
-            : nota >= 40
-              ? "Regular"
-              : "Ruim";
   } else {
-    // Sem sessões e sem plano: carga física do foco legado, sem XP de atributo.
-    // O Centro é opt-in — não treinar na semana não concede desenvolvimento.
-    const treino = FOCOS_TREINO[focoUsado];
-    const fatorCarga = { leve: 0.65, normal: 1, intenso: 1.65 }[
-      preparacao.intensidade
-    ];
-    jogador.fadiga = limitar(
-      jogador.fadiga - 15 + treino.carga * fatorCarga * (clube ? 1 : 0.85),
-    );
+    // Sem sessões no Centro: descanso leve, sem XP e sem influência de
+    // planoId / intensidade / focoTreino legado.
+    jogador.fadiga = limitar(jogador.fadiga - 10);
     jogador.condicionamento = limitar(
-      jogador.condicionamento +
-        10 -
-        Math.max(0, treino.carga) * fatorCarga * 0.4 +
-        (clube ? 0 : 2),
+      jogador.condicionamento + 4 + (clube ? 0 : 1),
     );
     nota = 0;
     avaliacao = "Regular";
     progresso = 0;
+  }
+
+  // Limpa campos legados que ainda podem existir em saves antigos.
+  if (preparacao.planoId) {
+    preparacao.planoId = null;
+    preparacao.prioridades = [];
+    preparacao.intensidade = "normal";
   }
 
   preparacao.historico = [

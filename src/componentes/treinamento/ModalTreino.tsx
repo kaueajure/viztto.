@@ -2,6 +2,7 @@
 
 import { useCallback, useId, useRef, useState } from "react";
 import type { ExercicioTreino } from "@/dominio/treinamento/exercicios";
+import { notaDeScore } from "@/dominio/treinamento/notas";
 import { NOMES_ATRIBUTOS } from "@/dominio/entidades/modelos";
 import { useFocoModal } from "@/componentes/interface/useFocoModal";
 import { renderMinigame } from "./minigames/registry";
@@ -9,7 +10,7 @@ import type { ResultadoMinigame } from "./minigames/tipos";
 import type { ResultadoSessaoTreino } from "@/simulacao/treinamento/aplicar-sessao";
 import { criarAleatorio } from "./minigames/tipos";
 
-type Fase = "jogando" | "resultado" | "confirmar-simular";
+type Fase = "jogando" | "revisao" | "resultado" | "confirmar-simular";
 
 export function ModalTreino({
   exercicio,
@@ -39,6 +40,9 @@ export function ModalTreino({
   );
   const [resultado, setResultado] = useState<ResultadoSessaoTreino | null>(null);
   const [scoreLive, setScoreLive] = useState<number | null>(null);
+  const [melhorScore, setMelhorScore] = useState(0);
+  const [ultimoScore, setUltimoScore] = useState(0);
+  const [replayKey, setReplayKey] = useState(0);
   const aplicado = useRef(false);
   const sessaoId = useRef(
     `${exercicio.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -55,13 +59,27 @@ export function ModalTreino({
   if (!aberto) return null;
 
   const concluirMinigame = (r: ResultadoMinigame) => {
+    if (aplicado.current) return;
     setScoreLive(r.score);
+    setUltimoScore(r.score);
+    setMelhorScore((prev) => Math.max(prev, r.score));
+    setFase("revisao");
+  };
+
+  const tentarDeNovo = () => {
+    if (aplicado.current) return;
+    setScoreLive(null);
+    setReplayKey((k) => k + 1);
+    setFase("jogando");
+  };
+
+  const confirmarSessao = (score: number) => {
     if (aplicado.current) return;
     aplicado.current = true;
     try {
       const res = onAplicar({
         exercicioId: exercicio.id,
-        score: r.score,
+        score,
         modo: "jogar",
         sessaoId: sessaoId.current,
       });
@@ -77,15 +95,24 @@ export function ModalTreino({
   const confirmarSimular = () => {
     if (aplicado.current) return;
     aplicado.current = true;
-    const res = onAplicar({
-      exercicioId: exercicio.id,
-      score: 0,
-      modo: "simular",
-      sessaoId: sessaoId.current,
-    });
-    setResultado(res);
-    setFase("resultado");
+    try {
+      const res = onAplicar({
+        exercicioId: exercicio.id,
+        score: 0,
+        modo: "simular",
+        sessaoId: sessaoId.current,
+      });
+      setResultado(res);
+      setFase("resultado");
+    } catch (erro) {
+      setResultado(null);
+      setFase("resultado");
+      console.error(erro);
+    }
   };
+
+  const scoreConfirmacao = Math.max(melhorScore, ultimoScore);
+  const notaPreview = notaDeScore(scoreConfirmacao);
 
   return (
     <div className="treino-modal-fundo">
@@ -135,12 +162,59 @@ export function ModalTreino({
             {scoreLive != null && (
               <p data-testid="treino-score-atual">Score atual: {scoreLive}</p>
             )}
-            {renderMinigame(exercicio.id, {
-              onConcluido: concluirMinigame,
-              aleatorio: rng.current,
-              multiplicadorTempo,
-            })}
+            {melhorScore > 0 && (
+              <p className="texto-suave" data-testid="treino-melhor-score">
+                Melhor nesta sessão: {melhorScore} (nota {notaDeScore(melhorScore)})
+              </p>
+            )}
+            <div key={replayKey}>
+              {renderMinigame(exercicio.id, {
+                onConcluido: concluirMinigame,
+                aleatorio: rng.current,
+                multiplicadorTempo,
+              })}
+            </div>
           </>
+        )}
+
+        {fase === "revisao" && (
+          <div className="treino-resultado" data-testid="treino-revisao">
+            <p className="sobretitulo">TENTATIVA</p>
+            <h3>{exercicio.nome}</h3>
+            <p>
+              Última pontuação: <strong data-testid="revisao-score">{ultimoScore}</strong>
+            </p>
+            <p className="treino-nota-grande" data-testid="revisao-nota">
+              NOTA {notaDeScore(ultimoScore)}
+            </p>
+            {melhorScore > ultimoScore && (
+              <p className="texto-suave" data-testid="revisao-melhor">
+                Melhor tentativa: {melhorScore} (nota {notaDeScore(melhorScore)})
+              </p>
+            )}
+            <p className="texto-suave">
+              Você pode tentar de novo para melhorar a nota. A sessão só é
+              consumida ao confirmar.
+            </p>
+            <div className="treino-card-acoes">
+              <button
+                type="button"
+                className="botao"
+                onClick={tentarDeNovo}
+                data-testid="tentar-de-novo"
+              >
+                TENTAR DE NOVO
+              </button>
+              <button
+                type="button"
+                className="botao primario"
+                onClick={() => confirmarSessao(scoreConfirmacao)}
+                data-testid="confirmar-treino"
+              >
+                CONFIRMAR (NOTA {notaPreview})
+              </button>
+            </div>
+          </div>
         )}
 
         {fase === "resultado" && resultado && (

@@ -22,20 +22,69 @@ const TECLAS: Record<string, number> = {
 export function MinigameDrible({
   onConcluido,
   aleatorio = Math.random,
+  multiplicadorTempo = 1,
 }: PropsMinigame) {
   const tentativas = 5;
   const [idx, setIdx] = useState(0);
   const [seq, setSeq] = useState<number[]>([]);
   const [entrada, setEntrada] = useState<number[]>([]);
   const [scores, setScores] = useState<number[]>([]);
+  const [restanteMs, setRestanteMs] = useState(0);
+  const resolvido = useRef(false);
+  const entradaRef = useRef<number[]>([]);
+  const seqRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    entradaRef.current = entrada;
+  }, [entrada]);
 
   useEffect(() => {
     if (idx >= tentativas) return;
+    resolvido.current = false;
     const len = 2 + Math.min(3, idx);
     const s = Array.from({ length: len }, () => Math.floor(aleatorio() * 4));
+    seqRef.current = s;
     setSeq(s);
     setEntrada([]);
-  }, [idx, aleatorio]);
+    const limite = (3500 + len * 700) / multiplicadorTempo;
+    setRestanteMs(limite);
+    const inicio = performance.now();
+    const tick = window.setInterval(() => {
+      const left = Math.max(0, limite - (performance.now() - inicio));
+      setRestanteMs(left);
+    }, 100);
+    const timer = window.setTimeout(() => {
+      if (resolvido.current) return;
+      resolvido.current = true;
+      const parciais = entradaRef.current;
+      const alvo = seqRef.current;
+      const okParcial =
+        parciais.length > 0 &&
+        parciais.every((v, i) => v === alvo[i]);
+      const sScore = okParcial
+        ? 35 + Math.round((parciais.length / alvo.length) * 25)
+        : 20;
+      setScores((prev) => {
+        const novos = [...prev, sScore];
+        const prox = idx + 1;
+        queueMicrotask(() => {
+          setIdx(prox);
+          if (prox >= tentativas) {
+            onConcluido({
+              exercicioId: "drible",
+              score: mediaScores(novos),
+              tentativas,
+            });
+          }
+        });
+        return novos;
+      });
+    }, limite);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(tick);
+    };
+  }, [idx, aleatorio, multiplicadorTempo, onConcluido, tentativas]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -49,10 +98,11 @@ export function MinigameDrible({
   });
 
   const registrar = (d: number) => {
-    if (idx >= tentativas || !seq.length) return;
+    if (idx >= tentativas || !seq.length || resolvido.current) return;
     const nova = [...entrada, d];
     setEntrada(nova);
     if (nova.length < seq.length) return;
+    resolvido.current = true;
     const ok = nova.every((v, i) => v === seq[i]);
     const s = ok ? 85 + Math.round(aleatorio() * 15) : 30 + Math.round(aleatorio() * 25);
     const novos = [...scores, s];
@@ -72,6 +122,9 @@ export function MinigameDrible({
     <div className="treino-minigame" data-testid="minigame-drible">
       <p className="treino-tentativa">
         Tentativa {Math.min(idx + 1, tentativas)} / {tentativas}
+      </p>
+      <p className="texto-suave" data-testid="drible-tempo">
+        Tempo: {(restanteMs / 1000).toFixed(1)}s
       </p>
       <p className="treino-seq" aria-live="polite">
         {seq.map((d) => DIRS[d]).join(" ")}

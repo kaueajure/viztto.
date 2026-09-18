@@ -5,15 +5,13 @@ import { solicitarContrato, type PedidoContrato } from "@/simulacao/transferenci
 import { conversarTreinador } from "@/simulacao/elenco/treinador";
 import type { AcaoTreinador } from "@/dominio/desenvolvimento";
 import type { Posicao } from "@/dominio/entidades/modelos";
-import { configurarDesenvolvimento, escolherFocoTreino } from "@/simulacao/treinamento/treinamento";
+import { escolherFocoTreino } from "@/simulacao/treinamento/treinamento";
 import {
   aplicarSessaoTreino,
   type EntradaSessaoTreino,
   type ResultadoSessaoTreino,
 } from "@/simulacao/treinamento/aplicar-sessao";
 import { estaSemClube } from "@/simulacao/carreira/agente-livre";
-import type { IntensidadeTreino } from "@/dominio/desenvolvimento";
-import type { Atributo } from "@/dominio/entidades/modelos";
 import { create } from "zustand";
 import type { EstadoCarreira, FocoTreino } from "@/dominio/entidades/modelos";
 import {
@@ -76,7 +74,7 @@ interface JogoStore {
   escolherObjetivo: (tipo: ObjetivoPessoalTipo) => void;
   solicitarContrato: (pedido: PedidoContrato) => void;
   conversarTreinador: (acao: AcaoTreinador, posicao?: Posicao) => void;
-  configurarDesenvolvimento: (plano: string, prioridades: Atributo[], intensidade: IntensidadeTreino) => void;
+  /** Mantido para foco de recuperação e testes de persistência. */
   escolherTreino: (foco: FocoTreino) => void;
   concluirSessaoTreino: (entrada: EntradaSessaoTreino) => ResultadoSessaoTreino | null;
   responder: (id: string, aceitar: boolean) => void;
@@ -102,6 +100,7 @@ interface JogoStore {
   ) => void;
   contrapropor: (id: string, termos: TermosContrato) => void;
   lerNoticias: () => void;
+  lerNoticia: (ids: string[]) => void;
   marcarMercadoLido: () => void;
 }
 
@@ -509,7 +508,6 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
       escolherObjetivo: t => aplicar(c => escolherObjetivo(c,t)),
       solicitarContrato: p => aplicar(c => solicitarContrato(c,p)),
       conversarTreinador: (a,p) => aplicar(c => conversarTreinador(c,a,p)),
-      configurarDesenvolvimento: (p,a,i) => aplicar(c => configurarDesenvolvimento(c,p,a,i)),
       escolherTreino: (foco) => aplicar((c) => escolherFocoTreino(c, foco)),
       concluirSessaoTreino: (entrada) => {
         let resultado: ResultadoSessaoTreino | null = null;
@@ -544,6 +542,17 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
             ? c
             : { ...c, noticias: c.noticias.map((n) => ({ ...n, lida: true })) },
         ),
+      lerNoticia: (ids) =>
+        aplicar((c) => {
+          const set = new Set(ids);
+          if (!c.noticias.some((n) => set.has(n.id) && !n.lida)) return c;
+          return {
+            ...c,
+            noticias: c.noticias.map((n) =>
+              set.has(n.id) ? { ...n, lida: true } : n,
+            ),
+          };
+        }),
       marcarMercadoLido: () => aplicar(marcarRespostasMercadoLidas),
     };
   });

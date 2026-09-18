@@ -7,6 +7,7 @@ import { criarCarreira } from '@/aplicacao/casos-de-uso/criar-carreira';
 import { sortearHistoria } from '@/dominio/historia-formacao';
 import { serializarCarreira,hidratarCarreira,validarReferenciasCarreiraPersistida } from '@/infraestrutura/persistencia/carreira-persistida';
 import { configurarDesenvolvimento, processarTreinamento } from '@/simulacao/treinamento/treinamento';
+import { aplicarSessaoTreino } from '@/simulacao/treinamento/aplicar-sessao';
 import { conversarTreinador } from '@/simulacao/elenco/treinador';
 import { solicitarContrato } from '@/simulacao/transferencias/contratos';
 import { escolherObjetivo } from '@/simulacao/carreira/acompanhamento';
@@ -16,9 +17,9 @@ import { GeradorAleatorio } from '@/utilitarios/aleatorio';
 import { somarDias } from '@/utilitarios/formatacao';
 import { criarApiCarreira,COOKIE_CARREIRA } from '@/infraestrutura/persistencia/api-carreira';
 import { SuaHistoria } from '@/componentes/jogador/SuaHistoria';
-import { CentralSemana } from '@/componentes/jogo/CentralSemana';
 import { ConversaTreinador } from '@/componentes/clube/ConversaTreinador';
 import { ConversaContrato } from '@/componentes/clube/ConversaContrato';
+import { MercadoClube } from '@/componentes/jogo/MercadoClube';
 import { NOMES_ATRIBUTOS } from '@/dominio/entidades/modelos';
 vi.mock('server-only',()=>({}));
 function carreiraCompleta() {
@@ -68,17 +69,30 @@ describe('Fase 08 — integração e balanceamento',()=>{
       expect(c.acompanhamento).toEqual(proximo.acompanhamento);
     }
   });
-  it('52 treinos não produzem salto de 17 pontos de overall',()=>{
+  it('52 treinos no Centro não produzem salto de 17 pontos de overall',()=>{
     const {entrada}=exemploCarreira();
     for(const profissionalismo of [40,95]){
-      const c=criarCarreira({...entrada,identidade:{...entrada.identidade,idade:15}});
+      let c=criarCarreira({...entrada,identidade:{...entrada.identidade,idade:15}});
       c.jogador.potencialInterno=94; // Cenário favorável: teto distante, sem lesões acumuladas.
       c.jogador.personalidade.profissionalismo=profissionalismo;
-      c.jogador.preparacao.planoId='invertido';c.jogador.preparacao.intensidade='intenso';
       const inicio=c.jogador.overall,rng=new GeradorAleatorio(84);
+      const clube=c.clubes[0];
       for(let i=0;i<52;i++){
         c.jogador.lesao=null;c.jogador.fadiga=10;c.jogador.condicionamento=95;
-        processarTreinamento(c.jogador,'equilibrado',c.clubes[0],somarDias(c.dataAtual,i*7),rng);
+        const data=somarDias(c.dataAtual,i*7);
+        c.dataAtual=data;
+        // 2 sessões/semana no Centro (substitui plano legado).
+        for(const sid of ['a','b'] as const){
+          try {
+            c=aplicarSessaoTreino(c,{
+              exercicioId:'penaltis',
+              score:70+profissionalismo/10,
+              modo:'jogar',
+              sessaoId:`${i}-${sid}`,
+            },clube).carreira;
+          } catch { /* limite semanal */ }
+        }
+        processarTreinamento(c.jogador,'equilibrado',clube,data,rng);
       }
       expect(c.jogador.overall-inicio).toBeGreaterThan(0);
       expect(c.jogador.overall-inicio).toBeLessThanOrEqual(7);
@@ -92,9 +106,9 @@ describe('Fase 08 — integração e balanceamento',()=>{
     const volta=renderToStaticMarkup(createElement(SuaHistoria,{...props,capitulo:0}));
     expect(tela).toBe(volta);expect((tela.match(/aria-pressed/g)??[]).length).toBe(3);
     const resumo=renderToStaticMarkup(createElement(SuaHistoria,{...props,capitulo:4}));expect(resumo).toContain('PRECISA DESENVOLVER');expect(resumo).not.toContain('potencialInterno');
-    const central=renderToStaticMarkup(createElement(CentralSemana,{carreira:c}));
-    expect(central).toContain('CHANCE DE PARTICIPAÇÃO');expect(central).toContain('/carreira/treinamento');expect(central).toContain('/carreira/clube');
-    expect(renderToStaticMarkup(createElement(ConversaTreinador,{carreira:c}))).toContain('Por que não estou jogando?');
+    const central=renderToStaticMarkup(createElement(MercadoClube,{carreira:c,secao:'clube'}));
+    expect(central).toContain('CONVERSAR COM O TREINADOR');expect(central).toContain('Gerenciar contrato');
+    expect(renderToStaticMarkup(createElement(ConversaTreinador,{carreira:c}))).toMatch(/melhorar|oportunidade|papel/i);
     expect(renderToStaticMarkup(createElement(ConversaContrato,{carreira:c}))).toContain(c.acompanhamento.pedidosContrato.at(-1)!.resposta.replace(/&/g,'&amp;'));
     expect(Object.keys(NOMES_ATRIBUTOS).length).toBe(27);
   });

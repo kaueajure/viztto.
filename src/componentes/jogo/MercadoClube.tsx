@@ -1,4 +1,4 @@
-import { ConversaContrato } from "@/componentes/clube/ConversaContrato";
+import Link from "next/link";
 import { ConversaTreinador } from "@/componentes/clube/ConversaTreinador";
 import { MercadoAgente } from "./MercadoAgente";
 import type { EstadoCarreira } from "@/dominio/entidades/modelos";
@@ -9,6 +9,7 @@ import {
   estaSemClube,
   semanasSemClube,
 } from "@/simulacao/carreira/agente-livre";
+import { criarMercado } from "@/dominio/mercado";
 
 export function MercadoClube({
   carreira: c,
@@ -32,37 +33,39 @@ export function MercadoClube({
 
   if (secao === "clube") {
     if (livre || !clube) {
+      const m = c.mercado ?? criarMercado();
+      const observando = m.interesses.filter(
+        (i) => i.status !== "encerrado",
+      ).length;
+      const clubesMercado = c.clubes.filter(
+        (cl) => cl.id !== c.ultimoClubeId,
+      ).length;
       return (
-        <>
-          <p className="sobretitulo">CLUBE</p>
-          <h1>Sem clube</h1>
-          <ConversaTreinador carreira={c} />
-          <ConversaContrato carreira={c} />
-          <section className="painel espaco">
-            <div className="linha-titulo">
-              <h2>SEU VÍNCULO</h2>
-              {ultimo && <Escudo clube={ultimo} tamanho={40} />}
-            </div>
-            <dl className="ficha">
-              <div>
-                <dt>Status</dt>
-                <dd>Sem contrato · agente livre</dd>
-              </div>
-              <div>
-                <dt>Último clube</dt>
-                <dd>{ultimo?.nome ?? "—"}</dd>
-              </div>
-              <div>
-                <dt>Tempo sem clube</dt>
-                <dd>
-                  {semanasSemClube(c) > 0
-                    ? `${semanasSemClube(c)} semana(s)`
-                    : "Recém-liberado"}
-                </dd>
-              </div>
-            </dl>
+        <div className="vz-pagina">
+          <header className="vz-page-head">
+            <p className="vz-card-sub">CLUBE</p>
+            <h1>Você está sem clube</h1>
+          </header>
+          <section className="vz-card vz-hero-compacto">
+            <p>
+              {ultimo
+                ? `Seu último vínculo com o ${ultimo.nome} terminou.`
+                : "Você não possui vínculo ativo com nenhum clube."}
+            </p>
+            <p className="texto-suave">
+              {clubesMercado} clubes disponíveis no mercado
+              {observando > 0
+                ? ` · ${observando} acompanhando sua situação`
+                : ""}
+              {semanasSemClube(c) > 0
+                ? ` · ${semanasSemClube(c)} semana(s) sem clube`
+                : ""}
+            </p>
+            <Link className="botao principal" href="/carreira/mercado">
+              Ver o mercado
+            </Link>
           </section>
-        </>
+        </div>
       );
     }
     return (
@@ -70,7 +73,6 @@ export function MercadoClube({
         <p className="sobretitulo">CLUBE</p>
         <h1>{clube.nome}</h1>
         <ConversaTreinador carreira={c} />
-        <ConversaContrato carreira={c} />
         <PainelEquipe clube={clube} jogadorUsuario={c.jogador} />
         <section className="painel espaco">
           <div className="linha-titulo">
@@ -101,6 +103,9 @@ export function MercadoClube({
               <dd>{contrato.papelEsperado.replace("rotacao", "rotação")}</dd>
             </div>
           </dl>
+          <Link className="botao secundario" href="/carreira/contrato">
+            Gerenciar contrato →
+          </Link>
         </section>
       </>
     );

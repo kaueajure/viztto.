@@ -20,9 +20,13 @@ export function CalendarioCompeticao({
   const [categoria, definirCategoria] = useState<"profissional" | "base">(
       c.jogador.categoria === "base" ? "base" : "profissional",
     ),
-    [rodada, definirRodada] = useState(
-      Math.min(c.temporada.totalRodadas, Math.max(1, c.temporada.rodadaAtual)),
-    ),
+    [rodada, definirRodada] = useState(() => {
+      const atual = c.temporada.rodadaAtual;
+      const total = c.temporada.totalRodadas;
+      // Abre na próxima rodada ainda não disputada, se existir.
+      const proxima = atual < total ? atual + 1 : Math.max(1, atual);
+      return Math.min(total, Math.max(1, proxima));
+    }),
     [aba, definirAba] = useState<AbaMundo>("classificacao"),
     [ligaId, definirLigaId] = useState(c.liga.id);
 
@@ -102,19 +106,43 @@ export function CalendarioCompeticao({
         <section className="painel">
           <div className="linha-titulo">
             <h2>Jogos da liga</h2>
-            <label className="seletor-rodada">
-              Rodada
-              <select
-                value={Math.min(rodada, c.temporada.totalRodadas)}
-                onChange={(e) => definirRodada(Number(e.target.value))}
+            <div className="seletor-rodada" style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+              <button
+                type="button"
+                className="botao-texto"
+                disabled={rodada <= 1}
+                onClick={() => definirRodada((r) => Math.max(1, r - 1))}
+                aria-label="Rodada anterior"
               >
-                {Array.from({ length: c.temporada.totalRodadas }, (_, i) => (
-                  <option value={i + 1} key={i}>
-                    {String(i + 1).padStart(2, "0")}
-                  </option>
-                ))}
-              </select>
-            </label>
+                ← Anterior
+              </button>
+              <label>
+                Rodada
+                <select
+                  value={Math.min(rodada, c.temporada.totalRodadas)}
+                  onChange={(e) => definirRodada(Number(e.target.value))}
+                >
+                  {Array.from({ length: c.temporada.totalRodadas }, (_, i) => (
+                    <option value={i + 1} key={i}>
+                      {String(i + 1).padStart(2, "0")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="botao-texto"
+                disabled={rodada >= c.temporada.totalRodadas}
+                onClick={() =>
+                  definirRodada((r) =>
+                    Math.min(c.temporada.totalRodadas, r + 1),
+                  )
+                }
+                aria-label="Próxima rodada"
+              >
+                Próxima →
+              </button>
+            </div>
           </div>
           <ListaJogos
             carreira={c}

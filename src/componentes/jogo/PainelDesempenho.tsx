@@ -1,7 +1,11 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import type { EstadoCarreira } from "@/dominio/entidades/modelos";
 import { EstatisticasLinha } from "@/componentes/interface/Elementos";
 import { PainelUltimaPartida } from "@/componentes/partida/PainelUltimaPartida";
+import { ResumoPartida } from "@/componentes/partida/ResumoPartida";
 import { somarEstatisticas } from "@/simulacao/temporada/estatisticas";
 import { formatarTemporada } from "@/dominio/constantes/temporadas-iniciais";
 
@@ -10,6 +14,7 @@ export function PainelDesempenho({
 }: {
   carreira: EstadoCarreira;
 }) {
+  const [resumo, definirResumo] = useState(false);
   const estatisticas = somarEstatisticas(
     c.registros
       .filter((r) => r.ano === c.temporada.ano)
@@ -20,6 +25,9 @@ export function PainelDesempenho({
       ? (estatisticas.somaNotas / estatisticas.jogos).toFixed(2)
       : "—";
   const notas = c.jogador.notasRecentes.slice(-8);
+  const ultima = [...c.temporada.partidas, ...c.temporada.partidasBase].find(
+    (p) => p.id === c.ultimaPartidaId,
+  );
 
   return (
     <div className="vz-pagina">
@@ -78,8 +86,21 @@ export function PainelDesempenho({
       </div>
 
       <div className="espaco">
-        <PainelUltimaPartida carreira={c} abrirDetalhes={() => undefined} />
+        <PainelUltimaPartida
+          carreira={c}
+          abrirDetalhes={() => {
+            if (ultima) definirResumo(true);
+          }}
+        />
       </div>
+
+      {resumo && ultima && (
+        <ResumoPartida
+          partida={ultima}
+          carreira={c}
+          fechar={() => definirResumo(false)}
+        />
+      )}
     </div>
   );
 }

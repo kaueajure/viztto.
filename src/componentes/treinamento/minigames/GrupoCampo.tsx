@@ -90,19 +90,47 @@ export function MinigamePasseRapido({
   const [livre, setLivre] = useState(0);
   const [scores, setScores] = useState<number[]>([]);
   const [ativo, setAtivo] = useState(false);
+  const resolvido = useRef(false);
 
   useEffect(() => {
     if (idx >= tentativas) return;
+    resolvido.current = false;
     setAtivo(false);
-    const t = window.setTimeout(() => {
+    let inner = 0;
+    const outer = window.setTimeout(() => {
       setLivre(Math.floor(aleatorio() * 3));
       setAtivo(true);
+      // Janela de passe — se não passar a tempo, erra a tentativa.
+      inner = window.setTimeout(() => {
+        if (resolvido.current) return;
+        resolvido.current = true;
+        setAtivo(false);
+        setScores((prev) => {
+          const novos = [...prev, 20 + Math.round(aleatorio() * 10)];
+          const prox = idx + 1;
+          queueMicrotask(() => {
+            setIdx(prox);
+            if (prox >= tentativas) {
+              onConcluido({
+                exercicioId: "passe-rapido",
+                score: mediaScores(novos),
+                tentativas,
+              });
+            }
+          });
+          return novos;
+        });
+      }, 1100 / multiplicadorTempo);
     }, (300 + aleatorio() * 500) / multiplicadorTempo);
-    return () => clearTimeout(t);
-  }, [idx, aleatorio, multiplicadorTempo]);
+    return () => {
+      clearTimeout(outer);
+      if (inner) clearTimeout(inner);
+    };
+  }, [idx, aleatorio, multiplicadorTempo, onConcluido, tentativas]);
 
   const clicar = (i: number) => {
-    if (!ativo || idx >= tentativas) return;
+    if (!ativo || idx >= tentativas || resolvido.current) return;
+    resolvido.current = true;
     const s = i === livre ? 90 + Math.round(aleatorio() * 10) : 25 + Math.round(aleatorio() * 20);
     const novos = [...scores, s];
     setScores(novos);

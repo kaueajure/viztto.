@@ -178,7 +178,13 @@ export function PainelJogador({ carreira: c }: { carreira: EstadoCarreira }) {
         )}
       </section>
       <div className="grade-atributos">
-        {Object.entries(GRUPOS).map(([nome, atributos]) => (
+        {Object.entries(GRUPOS)
+          .filter(([nome]) =>
+            j.posicao === "GOL"
+              ? nome !== "Técnicos"
+              : nome !== "Goleiro",
+          )
+          .map(([nome, atributos]) => (
           <section className="painel" key={nome}>
             <h2>{nome.toUpperCase()}</h2>
             {atributos.map((a) => (

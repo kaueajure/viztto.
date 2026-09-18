@@ -49,16 +49,44 @@ export function CentroTreinamento({ carreira: c }: { carreira: EstadoCarreira })
     () => exerciciosVisiveisPara(c.jogador.posicao),
     [c.jogador.posicao],
   );
-  const recomendados = useMemo(
-    () => exerciciosRecomendados(c.jogador.posicao),
-    [c.jogador.posicao],
-  );
+  const recomendados = useMemo(() => {
+    const base = exerciciosRecomendados(c.jogador.posicao);
+    const obj = c.acompanhamento.objetivoPessoal;
+    if (!obj || obj.concluido) return base;
+    if (obj.tipo !== "titular" && obj.tipo !== "tecnica") return base;
+    const coach = recomendacaoTreinador(
+      c.jogador.posicao,
+      c.jogador.atributos,
+      obj.tipo,
+    );
+    const ids = new Set(coach.exercicios.map((e) => e.id));
+    return [
+      ...coach.exercicios,
+      ...base.filter((e) => !ids.has(e.id)),
+    ];
+  }, [
+    c.jogador.posicao,
+    c.jogador.atributos,
+    c.acompanhamento.objetivoPessoal,
+  ]);
   const coach = useMemo(
     () =>
       livre
         ? null
-        : recomendacaoTreinador(c.jogador.posicao, c.jogador.atributos),
-    [livre, c.jogador.posicao, c.jogador.atributos],
+        : recomendacaoTreinador(
+            c.jogador.posicao,
+            c.jogador.atributos,
+            c.acompanhamento.objetivoPessoal &&
+              !c.acompanhamento.objetivoPessoal.concluido
+              ? c.acompanhamento.objetivoPessoal.tipo
+              : null,
+          ),
+    [
+      livre,
+      c.jogador.posicao,
+      c.jogador.atributos,
+      c.acompanhamento.objetivoPessoal,
+    ],
   );
 
   const catalogo = visiveis.filter(

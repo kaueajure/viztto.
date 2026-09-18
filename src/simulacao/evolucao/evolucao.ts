@@ -4,13 +4,14 @@ import { calcularOverall } from "@/dominio/regras/jogador";
 import {
   eficienciaIdade,
   fatorPotencial,
-  rendimentoAtributo,
+  progressoDeXp,
 } from "@/dominio/treinamento/progresso";
 import { limitar } from "@/utilitarios/formatacao";
 
 /**
  * Evolução genérica (partidas / legado).
  * Potencial é soft — não bloqueia o level-up em 99.
+ * Custo crescente por atributo (mesma curva do Centro).
  */
 export function calcularEvolucao(
   jogador: Jogador,
@@ -36,13 +37,12 @@ export function calcularEvolucao(
   let total = 0;
   for (const atributo of atributos) {
     const idade = eficienciaIdade(jogador.idade, atributo);
-    const rendimento = rendimentoAtributo(jogador.atributos[atributo]);
-    const ganho =
+    const xpEfetivo =
       pontos *
       idade *
       contexto *
-      rendimento *
       afinidadeHistoria(jogador.perfilFormacao, atributo, jogador.idade);
+    const ganho = progressoDeXp(xpEfetivo, jogador.atributos[atributo]);
     total += ganho;
     if (jogador.atributos[atributo] >= 99) {
       jogador.desenvolvimento[atributo] = 0;

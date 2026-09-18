@@ -120,7 +120,7 @@ export function conversarTreinador(estado: EstadoCarreira, acao: AcaoTreinador, 
       resposta = condicao;
     } else resposta = `Ainda não é hora de prometer uma chance. ${h.motivo} ${h.proximoPasso}`;
   } else if (acao === 'melhorar') {
-    resposta = `${h.proximoPasso} ${j.preparacao.historico.at(-1)?.nota && j.preparacao.historico.at(-1)!.nota < 55 ? 'O último treino ficou abaixo do esperado.' : 'Escolha um plano compatível com a função que quer disputar.'}`;
+    resposta = `${h.proximoPasso} ${j.preparacao.historico.at(-1)?.nota && j.preparacao.historico.at(-1)!.nota < 55 ? 'O último treino ficou abaixo do esperado.' : 'Treine no Centro os fundamentos da função que quer disputar.'}`;
   } else if (acao === 'papel') resposta = `Seu papel atual é ${j.status}; o contrato prevê ${j.contrato.papelEsperado}. ${h.motivo}`;
   else if (acao === 'aceitar') {
     const mesmoContexto = a.papelAceito?.clubeId === clube.id && a.papelAceito.status === j.status;
@@ -155,7 +155,7 @@ export function conversarTreinador(estado: EstadoCarreira, acao: AcaoTreinador, 
       j.preparacao.planoId = null;
       j.preparacao.prioridades = [];
       a.adaptacao = null;
-      resposta = `Seu trabalho sustentou a mudança. ${posicao} passa a ser sua posição principal; escolha um plano para essa função.`;
+      resposta = `Seu trabalho sustentou a mudança. ${posicao} passa a ser sua posição principal.`;
     } else if (a.adaptacao?.status === 'ativa') {
       resposta = 'Conclua a fase 1 da adaptação atual antes de começar outro teste. A secundária ainda está em avaliação.';
     } else if (progresso && !progresso.podePrincipal) {

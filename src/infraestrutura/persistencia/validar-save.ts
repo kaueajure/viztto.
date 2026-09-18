@@ -5,7 +5,7 @@ import { esquemaMercado, camposProposta } from "./esquema-mercado";
 import { z } from "zod";
 import type { EstadoCarreira } from "@/dominio/entidades/modelos";
 import { NOMES_ATRIBUTOS } from "@/dominio/entidades/modelos";
-import { esquemaIdentidade } from "@/dominio/regras/jogador";
+import { esquemaIdentidadeBase } from "@/dominio/regras/jogador";
 import { esquemaClube } from "@/infraestrutura/transfermarkt/esquemas";
 import { prepararClubesParaMundo } from "@/dominio/mundo-futebol";
 import { criarTreinador } from "@/dominio/mundo-futebol";
@@ -125,7 +125,7 @@ export const esquemaCarreira = z.object({
   estadoAleatorio: numero,
   dataAtual: data,
   dataInicio: data,
-  identidadeInicial: esquemaIdentidade,
+  identidadeInicial: esquemaIdentidadeBase,
   clubeInicialId: texto,
   clubeAtualId: texto.nullable(),
   agenteLivreDesde: data.nullable().default(null),
@@ -152,7 +152,7 @@ export const esquemaCarreira = z.object({
   clubes: z.array(esquemaClube).min(2),
   liga: esquemaLiga,
   ligas: z.array(esquemaLiga).min(1),
-  jogador: esquemaIdentidade.extend({
+  jogador: esquemaIdentidadeBase.extend({
     perfilFormacao: esquemaHistoria,
     preparacao: esquemaPreparacao,
     idade: numero.min(15),
