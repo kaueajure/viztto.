@@ -45,7 +45,7 @@ export function mensagemAmigavelPersistencia(
       return "A carreira foi alterada em outra aba. Carregue o save do servidor antes de continuar.";
     case CODIGOS_ERRO_SAVE.CATALOG_INCOMPATIBLE:
     case CODIGOS_ERRO_SAVE.INCOMPATIVEL:
-      return "Este save não é compatível com a versão atual do jogo. O progresso no servidor foi preservado.";
+      return "Esta carreira não pode ser carregada nesta versão do jogo. O progresso no servidor foi preservado — você pode criar uma nova carreira ou excluir a antiga.";
     case CODIGOS_ERRO_SAVE.SAVE_INVALID:
     case CODIGOS_ERRO_SAVE.INVALIDO:
       return "Não foi possível validar o progresso para salvar. Suas alterações continuam nesta página.";
@@ -55,6 +55,14 @@ export function mensagemAmigavelPersistencia(
     case CODIGOS_ERRO_SAVE.AUSENTE:
       return "Carreira não encontrada no servidor.";
     default:
-      return fallback;
+      return fallback || "Algo deu errado. Tente novamente.";
   }
+}
+
+/** True quando o código indica save legado/incompatível (não é falha de gravação). */
+export function ehErroCompatibilidadeSave(codigo: string | undefined): boolean {
+  return (
+    codigo === CODIGOS_ERRO_SAVE.CATALOG_INCOMPATIBLE ||
+    codigo === CODIGOS_ERRO_SAVE.INCOMPATIVEL
+  );
 }

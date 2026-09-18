@@ -35,46 +35,58 @@ export const POSICOES_ALTERNATIVAS: Record<Posicao, readonly Posicao[]> = {
 };
 
 export const esquemaIdentidadeBase = z.object({
-  nome: z.string().trim().min(2).max(30),
-  sobrenome: z.string().trim().min(2).max(40),
-  nacionalidade: z.string().trim().min(2).max(40),
-  idade: z.number().int().min(15).max(40),
-  posicao: z.enum([
-    "GOL",
-    "LD",
-    "ZAG",
-    "LE",
-    "VOL",
-    "MC",
-    "MEI",
-    "PD",
-    "PE",
-    "CA",
-  ]),
-  posicaoSecundaria: z.enum([
-    "",
-    "GOL",
-    "LD",
-    "ZAG",
-    "LE",
-    "VOL",
-    "MC",
-    "MEI",
-    "PD",
-    "PE",
-    "CA",
-  ]),
-  peDominante: z.enum(["direito", "esquerdo", "ambos"]),
-  altura: z.number().int().min(150).max(215),
-  peso: z.number().int().min(45).max(120),
-  arquetipo: z.enum([
-    "artilheiro",
-    "criador",
-    "velocista",
-    "marcador",
-    "equilibrado",
-    "paredao",
-  ]),
+  nome: z
+    .string()
+    .trim()
+    .min(2, "Nome precisa ter pelo menos 2 caracteres.")
+    .max(30, "Nome muito longo."),
+  sobrenome: z
+    .string()
+    .trim()
+    .min(2, "Informe seu sobrenome.")
+    .max(40, "Sobrenome muito longo."),
+  nacionalidade: z
+    .string()
+    .trim()
+    .min(2, "Informe a nacionalidade.")
+    .max(40, "Nacionalidade muito longa."),
+  idade: z
+    .number({ error: "Informe uma idade válida." })
+    .int("Idade deve ser um número inteiro.")
+    .min(15, "Idade mínima: 15 anos.")
+    .max(40, "Idade máxima: 40 anos."),
+  posicao: z.enum(
+    ["GOL", "LD", "ZAG", "LE", "VOL", "MC", "MEI", "PD", "PE", "CA"],
+    { error: "Selecione uma posição." },
+  ),
+  posicaoSecundaria: z.enum(
+    ["", "GOL", "LD", "ZAG", "LE", "VOL", "MC", "MEI", "PD", "PE", "CA"],
+    { error: "Posição secundária inválida." },
+  ),
+  peDominante: z.enum(["direito", "esquerdo", "ambos"], {
+    error: "Selecione o pé dominante.",
+  }),
+  altura: z
+    .number({ error: "Informe a altura." })
+    .int("Altura deve ser um número inteiro.")
+    .min(150, "Altura mínima: 150 cm.")
+    .max(215, "Altura máxima: 215 cm."),
+  peso: z
+    .number({ error: "Informe o peso." })
+    .int("Peso deve ser um número inteiro.")
+    .min(45, "Peso mínimo: 45 kg.")
+    .max(120, "Peso máximo: 120 kg."),
+  arquetipo: z.enum(
+    [
+      "artilheiro",
+      "criador",
+      "velocista",
+      "marcador",
+      "equilibrado",
+      "paredao",
+    ],
+    { error: "Selecione um arquétipo." },
+  ),
 });
 
 /** Identidade na criação — valida secundária compatível com a principal. */

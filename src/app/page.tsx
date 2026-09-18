@@ -7,8 +7,15 @@ import { EstadoPersistencia } from "@/componentes/jogo/EstadoPersistencia";
 import { useJogoStore } from "@/estado/jogo-store";
 import { useState } from "react";
 export default function Inicio() {
-  const { carreira, hidratado, excluir, erro, temSave, operando } =
-    useJogoStore();
+  const {
+    carreira,
+    hidratado,
+    excluir,
+    erro,
+    temSave,
+    saveIncompativel,
+    operando,
+  } = useJogoStore();
   const [confirmar, definirConfirmar] = useState(false);
   useFocoModal(confirmar, () => definirConfirmar(false));
   return (
@@ -55,7 +62,11 @@ export default function Inicio() {
             </Link>
           ) : (
             <button className="botao secundario" disabled>
-              {hidratado ? "Continuar carreira" : "Carregando carreira…"}
+              {hidratado
+                ? saveIncompativel
+                  ? "Carreira antiga indisponível"
+                  : "Continuar carreira"
+                : "Carregando carreira…"}
             </button>
           )}
         </div>
@@ -65,6 +76,12 @@ export default function Inicio() {
             <span> / </span>{" "}
             {formatarTemporada(carreira.liga.id, carreira.temporada.ano)}{" "}
             <span> / </span> Rodada {carreira.temporada.rodadaAtual}
+          </p>
+        )}
+        {hidratado && saveIncompativel && (
+          <p className="aviso" role="status">
+            Há uma carreira no servidor que não pode ser carregada nesta versão.
+            Crie uma nova (marcando substituir) ou exclua a antiga abaixo.
           </p>
         )}
         <EstadoPersistencia />
@@ -96,22 +113,27 @@ export default function Inicio() {
           >
             <h2 id="titulo-excluir">Excluir carreira?</h2>
             <EstadoPersistencia />
-            <p>Todo o progresso desta carreira será apagado do servidor.</p>
+            <p>
+              {saveIncompativel
+                ? "A carreira antiga no servidor será apagada. Depois você poderá criar uma nova sem conflito."
+                : "Todo o progresso desta carreira será apagado do servidor."}
+            </p>
             <div className="acoes">
               <button
-                className="botao secundario"
+                className="botao-texto"
                 onClick={() => definirConfirmar(false)}
+                disabled={operando}
               >
                 Cancelar
               </button>
               <button
-                className="botao perigo"
+                className="botao principal"
                 disabled={operando}
                 onClick={async () => {
                   if (await excluir()) definirConfirmar(false);
                 }}
               >
-                Excluir carreira
+                Excluir
               </button>
             </div>
           </section>

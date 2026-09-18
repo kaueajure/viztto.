@@ -4,6 +4,7 @@ import { useJogoStore } from "@/estado/jogo-store";
 export function EstadoPersistencia() {
   const {
     erroPersistencia,
+    codigoErroPersistencia,
     alteracoesPendentes,
     salvando,
     operando,
@@ -13,6 +14,14 @@ export function EstadoPersistencia() {
     carregar,
     tentarSalvar,
   } = useJogoStore();
+
+  // Compatibilidade de save legado não é falha de autosave — tratada na UI de
+  // continuar/criar carreira.
+  if (
+    codigoErroPersistencia === "CATALOG_INCOMPATIBLE" ||
+    codigoErroPersistencia === "INCOMPATIVEL"
+  )
+    return null;
 
   const mostrarBanner =
     conflito ||

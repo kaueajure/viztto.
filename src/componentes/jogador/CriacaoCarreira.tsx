@@ -34,6 +34,7 @@ export function CriacaoCarreira() {
   const roteador = useRouter(),
     iniciar = useJogoStore((s) => s.iniciar),
     existente = useJogoStore((s) => s.temSave),
+    saveIncompativel = useJogoStore((s) => s.saveIncompativel),
     hidratado = useJogoStore((s) => s.hidratado),
     operando = useJogoStore((s) => s.operando);
   const [etapa, definirEtapa] = useState(0),
@@ -338,7 +339,11 @@ export function CriacaoCarreira() {
       );
       const estado = useJogoStore.getState();
       if (criada) roteador.push("/carreira");
-      else definirErro(estado.erro);
+      else
+        definirErro(
+          estado.erro ??
+            "Não foi possível criar a carreira. Tente novamente.",
+        );
     } catch (falha) {
       definirErro(
         falha instanceof Error
@@ -853,8 +858,16 @@ export function CriacaoCarreira() {
                     checked={substituir}
                     onChange={(e) => definirSubstituir(e.target.checked)}
                   />
-                  Substituir a carreira atual
+                  {saveIncompativel
+                    ? "Substituir a carreira antiga do servidor"
+                    : "Substituir a carreira atual"}
                 </label>
+              )}
+              {existente && saveIncompativel && !substituir && (
+                <p className="aviso" role="status">
+                  Existe uma carreira antiga no servidor que não abre nesta
+                  versão. Marque a opção acima para criar uma nova no lugar.
+                </p>
               )}
             </div>
           )}

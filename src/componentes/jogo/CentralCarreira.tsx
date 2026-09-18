@@ -79,6 +79,7 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
       statusPersistencia,
       operando,
       erro,
+      saveIncompativel,
       avancar,
       proximaTemporada,
       reiniciar,
@@ -117,7 +118,11 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
           viztto<span>.</span>
         </span>
         <h1>SEU CAMINHO COMEÇA AQUI.</h1>
-        <p>{erro ?? "Nenhuma carreira encontrada."}</p>
+        <p>
+          {saveIncompativel
+            ? "Esta carreira não pode ser carregada nesta versão do jogo. O progresso no servidor foi preservado — crie uma nova carreira (substituindo) ou exclua a antiga no menu."
+            : (erro ?? "Nenhuma carreira encontrada.")}
+        </p>
         <EstadoPersistencia />
         <Link className="botao principal" href="/nova-carreira">
           Nova carreira

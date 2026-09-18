@@ -39,6 +39,7 @@ import {
 } from "@/infraestrutura/persistencia/cliente-carreira";
 import {
   CODIGOS_ERRO_SAVE,
+  ehErroCompatibilidadeSave,
   erroHttpRetentavel,
   mensagemAmigavelPersistencia,
 } from "@/infraestrutura/persistencia/codigos-erro";
@@ -55,6 +56,8 @@ interface JogoStore {
   carreira: EstadoCarreira | null;
   revision: number | null;
   temSave: boolean;
+  /** Save no servidor existe mas não pode ser hidratado nesta versão. */
+  saveIncompativel: boolean;
   hidratado: boolean;
   salvando: boolean;
   operando: boolean;
@@ -346,6 +349,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
       carreira: null,
       revision: null,
       temSave: false,
+      saveIncompativel: false,
       hidratado: false,
       salvando: false,
       operando: false,
@@ -374,6 +378,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
               carreira: resultado?.carreira ?? null,
               revision: resultado?.revision ?? null,
               temSave: !!resultado,
+              saveIncompativel: false,
               alteracoesPendentes: false,
               conflito: false,
               erro: null,
@@ -384,6 +389,27 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
             });
             return true;
           } catch (erro) {
+            // Save legado: não polui banner de persistência nem bloqueia criar carreira.
+            if (
+              erro instanceof ErroApiCarreira &&
+              ehErroCompatibilidadeSave(erro.codigo)
+            ) {
+              falhasConsecutivas = 0;
+              set({
+                carreira: null,
+                revision: erro.revision ?? get().revision,
+                temSave: true,
+                saveIncompativel: true,
+                alteracoesPendentes: false,
+                conflito: false,
+                erro: null,
+                erroPersistencia: null,
+                codigoErroPersistencia: null,
+                falhasPersistencia: 0,
+                statusPersistencia: "salvo",
+              });
+              return false;
+            }
             falha(erro);
             if (erro instanceof ErroApiCarreira && erro.revision !== undefined)
               set({ revision: erro.revision, temSave: true });
@@ -408,7 +434,11 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
       iniciar: async (entrada, substituir = false) => {
         if (get().operando || !get().hidratado) return false;
         if (get().temSave && !substituir) {
-          set({ erro: "Confirme a substituição da carreira existente." });
+          set({
+            erro: get().saveIncompativel
+              ? "Há uma carreira antiga no servidor que não pode ser carregada. Marque “Substituir a carreira atual” para criar uma nova."
+              : "Confirme a substituição da carreira existente.",
+          });
           return false;
         }
         set({ operando: true, erro: null });
@@ -429,8 +459,10 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
             carreira: resultado.carreira,
             revision: resultado.revision,
             temSave: true,
+            saveIncompativel: false,
             alteracoesPendentes: false,
             conflito: false,
+            erro: null,
             erroPersistencia: null,
             codigoErroPersistencia: null,
             falhasPersistencia: 0,
@@ -438,7 +470,9 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
           });
           return true;
         } catch (erro) {
-          falha(erro);
+          const info = classificarFalha(erro);
+          // Falha ao criar: mensagem na UI de criação — não banner de autosave.
+          set({ erro: info.mensagem });
           return false;
         } finally {
           set({ operando: false });
@@ -459,6 +493,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
             carreira: null,
             revision: null,
             temSave: false,
+            saveIncompativel: false,
             alteracoesPendentes: false,
             conflito: false,
             erro: null,
