@@ -389,7 +389,6 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
             <div className="linha-titulo">
               <h2 id="config-titulo">OPÇÕES DA CARREIRA</h2>
               <button
-                autoFocus
                 className="botao-icone"
                 aria-label="Fechar configurações"
                 onClick={() => {

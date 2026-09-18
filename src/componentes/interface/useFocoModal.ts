@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 /**
  * Trava o foco no diálogo ativo.
@@ -18,13 +18,13 @@ export function useFocoModal(
     fecharAtual.current = fechar;
   }, [fechar]);
 
-  // Body lock + restore só quando a cadeia de modais fecha por completo.
-  useEffect(() => {
+  // Captura o acionador em layout (antes de efeitos filhos / autoFocus).
+  useLayoutEffect(() => {
     if (!aberta) {
       const el = acionador.current;
       acionador.current = null;
       document.body.style.overflow = "";
-      el?.focus();
+      el?.focus({ preventScroll: true });
       return;
     }
     if (
