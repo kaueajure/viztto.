@@ -34,12 +34,21 @@ export interface SemanaCentroTreinamento {
   sessoes: SessaoTreinoSemana[];
 }
 
+/** Preferências de treino automático (até 3 exercícios por semana). */
+export interface AutoTreinoCentro {
+  ativo: boolean;
+  /** Ordem de preenchimento dos slots ao avançar a semana. */
+  exercicioIds: string[];
+}
+
 /** Centro de treinamento jogável — campos opcionais para saves legados. */
 export interface CentroTreinamentoEstado {
   /** Progresso fracionário 0–100 por atributo (espelha desenvolvimento quando hidratado). */
   progressoAtributos: Partial<Record<Atributo, number>>;
   melhoresExercicios: Partial<Record<string, RecordeExercicio>>;
   semana: SemanaCentroTreinamento;
+  /** Ausente em saves antigos — default desligado. */
+  autoTreino?: AutoTreinoCentro;
 }
 
 export interface PreparacaoJogador {
@@ -99,6 +108,7 @@ export function criarCentroTreinamento(chaveSemana = ""): CentroTreinamentoEstad
     progressoAtributos: {},
     melhoresExercicios: {},
     semana: { chave: chaveSemana, sessoes: [] },
+    autoTreino: { ativo: false, exercicioIds: [] },
   };
 }
 

@@ -18,6 +18,7 @@ import {
   processarTreinamento,
   gerarLesao,
 } from "@/simulacao/treinamento/treinamento";
+import { aplicarAutoTreinoSemana } from "@/simulacao/treinamento/aplicar-sessao";
 import {
   aplicarDeclinio,
   calcularEvolucao,
@@ -86,7 +87,7 @@ function aplicarDesempenho(
     p.desenvolvimento = calcularEvolucao(
       j,
       Object.keys(PESOS_POSICOES[j.posicao]) as Atributo[],
-      (p.minutos / 90) * Math.max(1, p.nota! - 4) * 0.62,
+      (p.minutos / 90) * Math.max(1, p.nota! - 4) * 1.05,
       clube,
     );
     j.amarelosAcumulados += p.amarelos;
@@ -250,6 +251,10 @@ export function avancarSemana(estado: EstadoCarreira): EstadoCarreira {
   if (!carreira.historicoContratos) carreira.historicoContratos = [];
   if (carreira.agenteLivreDesde === undefined) carreira.agenteLivreDesde = null;
   if (carreira.ultimoClubeId === undefined) carreira.ultimoClubeId = null;
+
+  // Treino automático preenche a semana atual antes de fechar o ciclo.
+  carreira = aplicarAutoTreinoSemana(carreira);
+  j = carreira.jogador;
 
   carreira.dataAtual = somarDias(carreira.dataAtual, 7);
   carreira.ultimaPartidaId = null;

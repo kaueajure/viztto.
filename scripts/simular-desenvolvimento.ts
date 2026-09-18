@@ -375,7 +375,7 @@ function rodarSemanas(
       calcularEvolucao(
         carreira.jogador,
         attrs,
-        (cenario.minutosPorSemana / 90) * Math.max(1, nota - 4) * 0.62,
+        (cenario.minutosPorSemana / 90) * Math.max(1, nota - 4) * 1.05,
         clube,
       );
     }
@@ -477,22 +477,22 @@ function main() {
     const r = simularCenarioTemporada(cen);
     const meta =
       cen.id === "base-pouco"
-        ? "+1..+3"
+        ? "+2..+12"
         : cen.id === "base-normal"
-          ? "+4..+9"
+          ? "+7..+22"
           : cen.id.startsWith("base-")
-            ? "+6..+12"
+            ? "+10..+28"
             : cen.id === "pro-jovem-67"
-              ? "+4..+7"
+              ? "+6..+14"
               : cen.id === "pro-jovem-67-2t"
-                ? "+8..+14"
+                ? "+12..+24"
                 : cen.id === "pro-70"
-                  ? "+3..+6"
+                  ? "+4..+12"
                   : cen.id === "pro-80"
-                    ? "+1..+3"
+                    ? "+2..+6"
                     : cen.id === "elite-85"
-                      ? "≤+2"
-                      : "≤+1";
+                      ? "≤+3"
+                      : "≤+2";
     console.log(
       [
         cen.label.padEnd(22),

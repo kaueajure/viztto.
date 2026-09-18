@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { EstadoCarreira } from "@/dominio/entidades/modelos";
 import {
   EXERCICIOS,
@@ -23,6 +23,114 @@ import { CardExercicio } from "./CardExercicio";
 import { ModalTreino } from "./ModalTreino";
 import { Barra } from "@/componentes/interface/Elementos";
 
+function PainelAutoTreino({
+  carreira: c,
+  visiveis,
+}: {
+  carreira: EstadoCarreira;
+  visiveis: ExercicioTreino[];
+}) {
+  const salvarAuto = useJogoStore((s) => s.definirAutoTreino);
+  const auto = c.jogador.preparacao.centro?.autoTreino ?? {
+    ativo: false,
+    exercicioIds: [] as string[],
+  };
+  const [selecao, setSelecao] = useState<string[]>(auto.exercicioIds);
+  const [ativoLocal, setAtivoLocal] = useState(auto.ativo);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSelecao(auto.exercicioIds);
+    setAtivoLocal(auto.ativo);
+  }, [auto.ativo, auto.exercicioIds.join("|")]);
+
+  const toggleExercicio = (id: string) => {
+    setErro(null);
+    setSelecao((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= MAX_SESSOES_SEMANA) return prev;
+      return [...prev, id];
+    });
+  };
+
+  const aplicar = (ligar: boolean) => {
+    try {
+      setErro(null);
+      salvarAuto(ligar, selecao);
+      setAtivoLocal(ligar);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível salvar.");
+    }
+  };
+
+  return (
+    <section className="painel" data-testid="treino-automatico">
+      <h2>TREINO AUTOMÁTICO</h2>
+      <p className="texto-suave">
+        Escolha até {MAX_SESSOES_SEMANA} exercícios. Com o automático ligado, ao
+        avançar a semana as sessões restantes são preenchidas sozinhas (usa seu
+        recorde; se ainda não tiver, aplica um treino padrão).
+      </p>
+      <label className="treino-auto-toggle">
+        <input
+          type="checkbox"
+          checked={ativoLocal}
+          data-testid="toggle-treino-automatico"
+          onChange={(e) => {
+            const ligar = e.target.checked;
+            if (ligar && selecao.length === 0) {
+              setErro("Escolha ao menos um exercício antes de ativar.");
+              return;
+            }
+            aplicar(ligar);
+          }}
+        />
+        <span>Ativar treino automático</span>
+      </label>
+      {ativoLocal && (
+        <p className="texto-suave" data-testid="treino-auto-ativo">
+          Ativo — {selecao.length} exercício(s) configurado(s).
+        </p>
+      )}
+      <div className="treino-auto-escolhas" role="group" aria-label="Exercícios do automático">
+        {visiveis.map((ex) => {
+          const marcado = selecao.includes(ex.id);
+          const cheio = !marcado && selecao.length >= MAX_SESSOES_SEMANA;
+          return (
+            <button
+              key={ex.id}
+              type="button"
+              className={`treino-auto-chip ${marcado ? "ativo" : ""}`}
+              disabled={cheio}
+              aria-pressed={marcado}
+              data-testid={`auto-treino-${ex.id}`}
+              onClick={() => toggleExercicio(ex.id)}
+            >
+              {marcado ? "✓ " : ""}
+              {ex.nome}
+            </button>
+          );
+        })}
+      </div>
+      <div className="treino-auto-acoes">
+        <button
+          type="button"
+          className="botao secundario"
+          data-testid="salvar-treino-automatico"
+          onClick={() => aplicar(ativoLocal)}
+        >
+          Salvar seleção
+        </button>
+      </div>
+      {erro && (
+        <p className="aviso erro" role="alert">
+          {erro}
+        </p>
+      )}
+    </section>
+  );
+}
+
 export function CentroTreinamento({ carreira: c }: { carreira: EstadoCarreira }) {
   const concluir = useJogoStore((s) => s.concluirSessaoTreino);
   const livre = estaSemClube(c);
@@ -34,6 +142,7 @@ export function CentroTreinamento({ carreira: c }: { carreira: EstadoCarreira })
     progressoAtributos: {},
     melhoresExercicios: {},
     semana: { chave: "", sessoes: [] },
+    autoTreino: { ativo: false, exercicioIds: [] },
   };
   const usadas = centro.semana.sessoes.length;
   const restantes = Math.max(0, MAX_SESSOES_SEMANA - usadas);
@@ -169,6 +278,10 @@ export function CentroTreinamento({ carreira: c }: { carreira: EstadoCarreira })
           })}
         </div>
       </section>
+
+      {!aposentado && !lesionado && (
+        <PainelAutoTreino carreira={c} visiveis={visiveis} />
+      )}
 
       {!livre && coach && (
         <section className="painel">

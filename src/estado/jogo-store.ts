@@ -8,6 +8,7 @@ import type { Posicao } from "@/dominio/entidades/modelos";
 import { escolherFocoTreino } from "@/simulacao/treinamento/treinamento";
 import {
   aplicarSessaoTreino,
+  definirAutoTreino,
   type EntradaSessaoTreino,
   type ResultadoSessaoTreino,
 } from "@/simulacao/treinamento/aplicar-sessao";
@@ -77,6 +78,7 @@ interface JogoStore {
   /** Mantido para foco de recuperação e testes de persistência. */
   escolherTreino: (foco: FocoTreino) => void;
   concluirSessaoTreino: (entrada: EntradaSessaoTreino) => ResultadoSessaoTreino | null;
+  definirAutoTreino: (ativo: boolean, exercicioIds: string[]) => void;
   responder: (id: string, aceitar: boolean) => void;
   responderDecisao: (id: string, opcaoId: string) => void;
   conversarAgente: (
@@ -526,6 +528,8 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
         }
         return resultado;
       },
+      definirAutoTreino: (ativo, exercicioIds) =>
+        aplicar((c) => definirAutoTreino(c, ativo, exercicioIds)),
       responder: (id, aceitar) =>
         aplicar((c) => responderProposta(c, id, aceitar)),
       responderDecisao: (id, opcaoId) =>

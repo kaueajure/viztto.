@@ -34,6 +34,7 @@ import {
   xpBrutoDaSessao,
 } from "@/dominio/treinamento/progresso";
 import { limitar } from "@/utilitarios/formatacao";
+import { estaSemClube } from "@/simulacao/carreira/agente-livre";
 
 export interface GanhoAtributoSessao {
   atributo: Atributo;
@@ -280,6 +281,71 @@ export function aplicarSessaoTreino(
       overallDepois: jogador.overall,
     },
   };
+}
+
+/** Score padrão quando o treino automático roda sem recorde prévio. */
+const SCORE_AUTO_SEM_RECORDE = 72;
+
+/**
+ * Preenche slots restantes com os exercícios do treino automático.
+ * Deve rodar antes de avançar a data da semana.
+ */
+export function aplicarAutoTreinoSemana(
+  estado: EstadoCarreira,
+): EstadoCarreira {
+  if (estado.aposentado || estado.jogador.lesao) return estado;
+  const centro = estado.jogador.preparacao.centro;
+  const auto = centro?.autoTreino;
+  if (!auto?.ativo || auto.exercicioIds.length === 0) return estado;
+
+  let carreira = estado;
+  const livre = estaSemClube(carreira);
+  const clube = livre
+    ? null
+    : (carreira.clubes.find((c) => c.id === carreira.clubeAtualId) ?? null);
+
+  for (const exercicioId of auto.exercicioIds.slice(0, MAX_SESSOES_SEMANA)) {
+    sincronizarSemanaCentro(carreira.jogador, carreira.dataAtual);
+    const atual = garantirCentro(carreira.jogador, carreira.dataAtual);
+    if (atual.semana.sessoes.length >= MAX_SESSOES_SEMANA) break;
+    if (atual.semana.sessoes.some((s) => s.exercicioId === exercicioId)) continue;
+    if (!exercicioPorId(exercicioId)) continue;
+
+    const recorde = atual.melhoresExercicios[exercicioId];
+    const r = aplicarSessaoTreino(
+      carreira,
+      {
+        exercicioId,
+        score: recorde?.score ?? SCORE_AUTO_SEM_RECORDE,
+        modo: recorde ? "simular" : "jogar",
+        sessaoId: `auto-${exercicioId}-${carreira.dataAtual}-${atual.semana.sessoes.length}`,
+      },
+      clube,
+    );
+    carreira = r.carreira;
+  }
+  return carreira;
+}
+
+export function definirAutoTreino(
+  estado: EstadoCarreira,
+  ativo: boolean,
+  exercicioIds: string[],
+): EstadoCarreira {
+  const carreira = structuredClone(estado);
+  const centro = garantirCentro(carreira.jogador, carreira.dataAtual);
+  const unicos: string[] = [];
+  for (const id of exercicioIds) {
+    if (!exercicioPorId(id)) continue;
+    if (unicos.includes(id)) continue;
+    unicos.push(id);
+    if (unicos.length >= MAX_SESSOES_SEMANA) break;
+  }
+  if (ativo && unicos.length === 0) {
+    throw new Error("Escolha ao menos um exercício para o treino automático.");
+  }
+  centro.autoTreino = { ativo, exercicioIds: unicos };
+  return carreira;
 }
 
 export function rotuloGanho(atributo: Atributo, papel: "primario" | "secundario" | "terciario"): string {

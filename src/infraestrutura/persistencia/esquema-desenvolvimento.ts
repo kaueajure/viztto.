@@ -31,6 +31,10 @@ const esquemaCentroTreinamento = z.object({
     chave: z.string(),
     sessoes: z.array(esquemaSessaoCentro).max(3),
   }).strict(),
+  autoTreino: z.object({
+    ativo: z.boolean(),
+    exercicioIds: z.array(texto).max(3),
+  }).strict().optional(),
 }).strict();
 export const esquemaPreparacao = z.object({
   planoId: texto.nullable(), prioridades: z.array(esquemaAtributo).max(2).refine(v => new Set(v).size === v.length),

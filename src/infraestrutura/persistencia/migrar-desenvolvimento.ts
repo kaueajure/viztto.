@@ -107,6 +107,15 @@ export function migrarDesenvolvimento(valor: unknown, persistido = false): unkno
           if (!Array.isArray(sem.sessoes)) sem.sessoes = [];
           centro.semana = sem;
         }
+        if (!centro.autoTreino || typeof centro.autoTreino !== "object") {
+          centro.autoTreino = { ativo: false, exercicioIds: [] };
+        } else {
+          const auto = { ...(centro.autoTreino as Record<string, unknown>) };
+          if (typeof auto.ativo !== "boolean") auto.ativo = false;
+          if (!Array.isArray(auto.exercicioIds)) auto.exercicioIds = [];
+          else auto.exercicioIds = auto.exercicioIds.filter((id) => typeof id === "string").slice(0, 3);
+          centro.autoTreino = auto;
+        }
         prep.centro = centro;
         resultado = { ...resultado, jogador: { ...j, preparacao: prep } };
       }

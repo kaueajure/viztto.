@@ -18,9 +18,12 @@ import {
 import { exemploCarreira } from "./auxiliar-carreira-persistida";
 import {
   aplicarSessaoTreino,
+  aplicarAutoTreinoSemana,
+  definirAutoTreino,
   garantirCentro,
   sincronizarSemanaCentro,
 } from "@/simulacao/treinamento/aplicar-sessao";
+import { avancarSemana } from "@/aplicacao/casos-de-uso/avancar-tempo";
 import { processarTreinamento } from "@/simulacao/treinamento/treinamento";
 import { GeradorAleatorio } from "@/utilitarios/aleatorio";
 import { somarDias } from "@/utilitarios/formatacao";
@@ -276,20 +279,20 @@ describe("benchmark faixas", () => {
     );
 
     // Treino consistente na base: jovem sobe com frequência (faixa ampla por seed).
-    expect(normal.ganhoTemporada).toBeGreaterThanOrEqual(4);
-    expect(normal.ganhoTemporada).toBeLessThanOrEqual(11);
-    expect(forte.ganhoTemporada).toBeGreaterThanOrEqual(6);
-    expect(forte.ganhoTemporada).toBeLessThanOrEqual(14);
+    expect(normal.ganhoTemporada).toBeGreaterThanOrEqual(7);
+    expect(normal.ganhoTemporada).toBeLessThanOrEqual(22);
+    expect(forte.ganhoTemporada).toBeGreaterThanOrEqual(10);
+    expect(forte.ganhoTemporada).toBeLessThanOrEqual(28);
     expect(talento.ganhoTemporada).toBeGreaterThanOrEqual(forte.ganhoTemporada - 1);
-    expect(talento.ganhoTemporada).toBeGreaterThanOrEqual(6);
+    expect(talento.ganhoTemporada).toBeGreaterThanOrEqual(10);
     // Pouco treino cresce menos.
-    expect(pouco.ganhoTemporada).toBeGreaterThanOrEqual(1);
+    expect(pouco.ganhoTemporada).toBeGreaterThanOrEqual(2);
     expect(pouco.ganhoTemporada).toBeLessThan(normal.ganhoTemporada);
-    expect(pouco.ganhoTemporada).toBeLessThanOrEqual(4);
+    expect(pouco.ganhoTemporada).toBeLessThanOrEqual(12);
     // 70+ sobe, mas menos que base jovem forte.
-    expect(pro70.ganhoTemporada).toBeGreaterThanOrEqual(2);
+    expect(pro70.ganhoTemporada).toBeGreaterThanOrEqual(4);
     expect(pro70.ganhoTemporada).toBeLessThan(forte.ganhoTemporada);
-    expect(pro70.ganhoTemporada).toBeLessThanOrEqual(7);
+    expect(pro70.ganhoTemporada).toBeLessThanOrEqual(14);
     // 85+ não explode.
     expect(elite.ganhoTemporada).toBeLessThanOrEqual(3);
   }, 90_000);
@@ -303,9 +306,9 @@ describe("benchmark faixas", () => {
     );
     expect(uma.inicio).toBeGreaterThanOrEqual(65);
     expect(uma.inicio).toBeLessThanOrEqual(70);
-    expect(uma.ganhoTemporada).toBeGreaterThanOrEqual(4);
-    expect(duas.ganhoTemporada).toBeGreaterThanOrEqual(8);
-    expect(duas.fimTemporada).toBeGreaterThan(duas.inicio + 7);
+    expect(uma.ganhoTemporada).toBeGreaterThanOrEqual(6);
+    expect(duas.ganhoTemporada).toBeGreaterThanOrEqual(12);
+    expect(duas.fimTemporada).toBeGreaterThan(duas.inicio + 10);
   }, 120_000);
 
   it("cenários longos relativos e progressão visível", () => {
@@ -331,4 +334,61 @@ describe("benchmark faixas", () => {
     );
     expect(vet.pico - vet.inicio).toBeLessThan(18);
   }, 90_000);
+});
+
+describe("treino automático", () => {
+  it("define preferências e preenche slots ao avançar a semana", () => {
+    let { carreira: c } = exemploCarreira();
+    c.jogador.idade = 18;
+    c.jogador.lesao = null;
+    c.aposentado = false;
+    garantirCentro(c.jogador, c.dataAtual);
+
+    c = definirAutoTreino(c, true, [
+      "penaltis",
+      "finalizacao-colocada",
+      "drible",
+    ]);
+    expect(c.jogador.preparacao.centro!.autoTreino).toEqual({
+      ativo: true,
+      exercicioIds: ["penaltis", "finalizacao-colocada", "drible"],
+    });
+
+    const ovrAntes = c.jogador.overall;
+    c = avancarSemana(c);
+    expect(c.jogador.overall).toBeGreaterThanOrEqual(ovrAntes);
+    // Semana fechada: slots limpos, mas histórico registra treino.
+    expect(c.jogador.preparacao.historico.at(-1)?.avaliacao).not.toBe(
+      "Recuperação",
+    );
+    expect(c.jogador.preparacao.historico.at(-1)?.progresso).toBeGreaterThan(0);
+  });
+
+  it("não sobrescreve sessões já feitas na semana", () => {
+    let { carreira: c } = exemploCarreira();
+    c.jogador.lesao = null;
+    const clube = c.clubes.find((x) => x.id === c.clubeAtualId)!;
+    c = definirAutoTreino(c, true, [
+      "penaltis",
+      "finalizacao-colocada",
+      "drible",
+    ]);
+    c = aplicarSessaoTreino(
+      c,
+      {
+        exercicioId: "resistencia",
+        score: 80,
+        modo: "jogar",
+        sessaoId: "manual-1",
+      },
+      clube,
+    ).carreira;
+    c = aplicarAutoTreinoSemana(c);
+    const ids = c.jogador.preparacao.centro!.semana.sessoes.map(
+      (s) => s.exercicioId,
+    );
+    expect(ids[0]).toBe("resistencia");
+    expect(ids).toHaveLength(3);
+    expect(ids.slice(1)).toEqual(["penaltis", "finalizacao-colocada"]);
+  });
 });
