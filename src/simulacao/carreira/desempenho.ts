@@ -31,8 +31,10 @@ export function aplicarDesempenho(
     j.notasRecentes = [...j.notasRecentes, p.nota!].slice(-5);
     j.forma = limitar(j.forma * 0.7 + ((p.nota! - 3) / 7) * 100 * 0.3);
     j.confianca = limitar(j.confianca + p.confianca);
+    const deltaTreinador =
+      partida.contextoMatchday?.impactoTreinador ?? p.confianca * 0.35;
     carreira.relacionamentos.treinador = limitar(
-      carreira.relacionamentos.treinador + p.confianca * 0.35,
+      carreira.relacionamentos.treinador + deltaTreinador,
     );
     j.moral = limitar(j.moral + p.moral);
     j.fadiga = limitar(j.fadiga + p.minutos * 0.3);

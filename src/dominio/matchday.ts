@@ -33,6 +33,8 @@ export interface ObjetivoPartida {
     | "desarmes"
     | "passes-chave"
     | "defesas"
+    | "chutes"
+    | "participar-gol"
     | "limpo";
   meta: number;
   cumprido?: boolean;
@@ -92,6 +94,7 @@ export type TipoDecisaoPartida =
   | "intervalo-ruim"
   | "entrada-banco"
   | "perdendo"
+  | "vencendo"
   | "fadiga";
 
 export interface DecisaoPartidaPendente {
@@ -103,10 +106,15 @@ export interface DecisaoPartidaPendente {
   opcoes: { id: string; rotulo: string }[];
 }
 
+/** Consequências efetivamente aplicadas (ou a aplicar) na carreira. */
 export interface ContextoPartida {
   instrucao: InstrucaoTreinador;
   objetivos: ObjetivoPartida[];
+  /** Delta real de relacionamento com o treinador. */
   impactoTreinador: number;
+  impactoConfianca: number;
+  impactoMoral: number;
+  impactoReputacao: number;
   impactoHierarquia: string | null;
   reacaoImprensa: string | null;
   reacaoTreinador: string | null;

@@ -5,7 +5,6 @@ import type {
   Jogador,
   Partida,
   Participacao,
-  Posicao,
 } from "@/dominio/entidades/modelos";
 import type {
   DecisaoPartidaPendente,
@@ -72,12 +71,22 @@ export interface EstadoMotorCausal {
   entradaBancoRegistrada: boolean;
   fadigaOferecida: boolean;
   perdendoOferecido: boolean;
+  vencendoOferecido: boolean;
+  /** Último minuto já processado (cronologia estrita). */
+  minutoSimulado: number;
   concluido: boolean;
   decisaoPendente: DecisaoPartidaPendente | null;
   seedEstadoInicial: number;
 }
 
 type Lado = "mandante" | "visitante";
+type EtapaFator =
+  | "progressao"
+  | "criacao"
+  | "chance"
+  | "conversao"
+  | "defesa"
+  | "cartao";
 
 interface MomentoPlanejado {
   minuto: number;
@@ -86,9 +95,9 @@ interface MomentoPlanejado {
 
 function fatorInstrucao(
   instrucao: InstrucaoTreinador,
-  etapa: "progressao" | "criacao" | "chance" | "conversao" | "defesa" | "cartao",
+  etapa: EtapaFator,
 ): number {
-  const tabela: Record<InstrucaoTreinador, Partial<Record<typeof etapa, number>>> = {
+  const tabela: Record<InstrucaoTreinador, Partial<Record<EtapaFator, number>>> = {
     profundidade: { progressao: 1.12, chance: 1.08, conversao: 1.05 },
     simples: { progressao: 0.94, criacao: 0.92, conversao: 0.96, cartao: 0.7 },
     finalizacoes: { chance: 1.15, conversao: 1.12, criacao: 0.95 },
@@ -100,16 +109,55 @@ function fatorInstrucao(
   return tabela[instrucao][etapa] ?? 1;
 }
 
+/**
+ * Modificadores do jogador só afetam o time dele:
+ * - ofensivos: quando o clube do usuário ataca;
+ * - defensivos/cartão: quando o clube do usuário defende.
+ */
 function fatorMod(
   mod: ModificadoresPartida,
-  etapa: "progressao" | "criacao" | "chance" | "conversao" | "defesa" | "cartao",
+  etapa: EtapaFator,
+  timeUsuarioAtaca: boolean,
+  timeUsuarioDefende: boolean,
 ): number {
+  const ofensiva = ["progressao", "criacao", "chance", "conversao"].includes(
+    etapa,
+  );
+  const defensiva = etapa === "defesa" || etapa === "cartao";
+  if (ofensiva && !timeUsuarioAtaca) return 1;
+  if (defensiva && !timeUsuarioDefende) return 1;
+  if (!ofensiva && !defensiva) return 1;
+
   let f = 1;
-  f += mod.intensidade * 0.08;
-  f += mod.protagonismo * (etapa === "chance" || etapa === "conversao" ? 0.12 : 0.04);
-  f += mod.risco * (etapa === "conversao" || etapa === "chance" ? 0.1 : etapa === "cartao" ? 0.2 : 0);
-  f += mod.agressividade * (etapa === "defesa" || etapa === "cartao" ? 0.15 : 0.05);
+  if (ofensiva) {
+    f += mod.intensidade * 0.08;
+    f += mod.protagonismo * (etapa === "chance" || etapa === "conversao" ? 0.14 : 0.05);
+    f += mod.risco * (etapa === "conversao" || etapa === "chance" ? 0.12 : 0.04);
+  }
+  if (defensiva) {
+    f += mod.agressividade * (etapa === "cartao" ? 0.22 : 0.12);
+    f += mod.intensidade * 0.05;
+  }
   return limitar(f, 0.55, 1.55);
+}
+
+function fatorInstrucaoUsuario(
+  instrucao: InstrucaoTreinador,
+  etapa: EtapaFator,
+  timeUsuarioAtaca: boolean,
+  timeUsuarioDefende: boolean,
+): number {
+  const ofensiva = ["progressao", "criacao", "chance", "conversao"].includes(
+    etapa,
+  );
+  const defensiva = etapa === "defesa" || etapa === "cartao";
+  if (ofensiva && !timeUsuarioAtaca) return 1;
+  if (defensiva && !timeUsuarioDefende) return 1;
+  return fatorInstrucao(instrucao, etapa);
+}
+
+function jogadorEmCampo(p: Participacao, minuto: number): boolean {
+  return p.minutos > 0 && minuto >= p.entrada && minuto <= p.saida;
 }
 
 function chanceParticipacao(
@@ -120,7 +168,7 @@ function chanceParticipacao(
   instrucao: InstrucaoTreinador,
   mod: ModificadoresPartida,
 ): number {
-  if (minuto <= p.entrada || minuto > p.saida || p.minutos <= 0) return 0;
+  if (!jogadorEmCampo(p, minuto)) return 0;
   const pos = jogador.posicao;
   let base =
     pos === "GOL"
@@ -152,10 +200,10 @@ function chanceParticipacao(
                   : 0.3;
 
   const a = jogador.atributos;
-  const forma = 0.85 + jogador.forma / 350;
-  const fadiga = 1 - jogador.fadiga / 280;
-  const conf = 0.9 + jogador.confianca / 500;
-  base *= forma * fadiga * conf;
+  base *=
+    (0.85 + jogador.forma / 350) *
+    (1 - jogador.fadiga / 280) *
+    (0.9 + jogador.confianca / 500);
   base *= 1 + mod.protagonismo * 0.25;
   base *= 1 + mod.intensidade * 0.1;
 
@@ -166,12 +214,8 @@ function chanceParticipacao(
   if (instrucao === "proteger" && ["ZAG", "VOL", "LD", "LE"].includes(pos))
     base *= 1.1;
 
-  // Posicionamento / atributos relevantes
-  if (ladoAtaque) {
-    base *= 0.7 + a.posicionamento / 200;
-  } else {
-    base *= 0.7 + (a.antecipacao + a.marcacao) / 400;
-  }
+  if (ladoAtaque) base *= 0.7 + a.posicionamento / 200;
+  else base *= 0.7 + (a.antecipacao + a.marcacao) / 400;
 
   return limitar(base, 0, 0.85);
 }
@@ -250,7 +294,6 @@ function resolverEscalacaoEParticipacao(
   const amarelos = 0;
   const vermelhos = 0;
   const minutos = saida - entrada;
-  const proporcao = minutos / 90;
   const participacao: Participacao = {
     escalacao,
     entrada,
@@ -259,7 +302,7 @@ function resolverEscalacaoEParticipacao(
     gols: 0,
     assistencias: 0,
     chutes: 0,
-    passes: Math.round(aleatorio.inteiro(18, 55) * proporcao),
+    passes: 0,
     passesChave: 0,
     desarmes: 0,
     amarelos,
@@ -293,66 +336,139 @@ function resolverEscalacaoEParticipacao(
   return { participacao, mandanteEfetivo, visitanteEfetivo };
 }
 
+function placarRelativo(estado: EstadoMotorCausal): -1 | 0 | 1 {
+  if (!estado.clubeJogadorId) return 0;
+  const golsPro =
+    estado.clubeJogadorId === estado.mandante.id
+      ? estado.golsMandante
+      : estado.golsVisitante;
+  const golsContra =
+    estado.clubeJogadorId === estado.mandante.id
+      ? estado.golsVisitante
+      : estado.golsMandante;
+  if (golsPro < golsContra) return -1;
+  if (golsPro > golsContra) return 1;
+  return 0;
+}
+
 function definirDecisao(
   tipo: TipoDecisaoPartida,
   minuto: number,
+  estado: EstadoMotorCausal,
 ): DecisaoPartidaPendente {
-  const defs: Record<
-    TipoDecisaoPartida,
-    Omit<DecisaoPartidaPendente, "id" | "minuto">
-  > = {
-    amarelo: {
-      tipo: "amarelo",
+  const placar = placarRelativo(estado);
+  if (tipo === "amarelo") {
+    return {
+      id: `dec-partida-amarelo-${minuto}`,
+      tipo,
+      minuto,
       titulo: "Cartão amarelo",
       texto: "Você recebeu um amarelo. Como segue o jogo?",
       opcoes: [
-        { id: "neutro", rotulo: "Reduzir intensidade" },
-        { id: "agressivo", rotulo: "Continuar agressivo" },
+        { id: "neutro", rotulo: "Reduzir agressividade" },
+        { id: "agressivo", rotulo: "Continuar disputando forte" },
       ],
-    },
-    "intervalo-ruim": {
-      tipo: "intervalo-ruim",
+    };
+  }
+  if (tipo === "intervalo-ruim") {
+    return {
+      id: `dec-partida-intervalo-${minuto}`,
+      tipo,
+      minuto,
       titulo: "Intervalo",
-      texto: "O primeiro tempo não foi bom. Qual postura no retorno?",
-      opcoes: [
-        { id: "neutro", rotulo: "Jogar simples" },
-        { id: "risco", rotulo: "Assumir mais riscos" },
-      ],
-    },
-    "entrada-banco": {
-      tipo: "entrada-banco",
+      texto:
+        placar < 0
+          ? "O time está atrás. Qual postura no retorno?"
+          : placar > 0
+            ? "Vocês lideram, mas o primeiro tempo foi irregular. Como volta?"
+            : "O primeiro tempo não foi bom. Qual postura no retorno?",
+      opcoes:
+        placar < 0
+          ? [
+              { id: "neutro", rotulo: "Seguir o plano" },
+              { id: "risco", rotulo: "Assumir mais riscos" },
+              { id: "ofensivo", rotulo: "Jogar mais ofensivamente" },
+            ]
+          : placar > 0
+            ? [
+                { id: "neutro", rotulo: "Manter intensidade" },
+                { id: "controlar", rotulo: "Controlar o ritmo" },
+              ]
+            : [
+                { id: "neutro", rotulo: "Jogar simples" },
+                { id: "risco", rotulo: "Assumir mais riscos" },
+              ],
+    };
+  }
+  if (tipo === "entrada-banco") {
+    return {
+      id: `dec-partida-entrada-${minuto}`,
+      tipo,
+      minuto,
       titulo: "Você entra em campo",
-      texto: "A comissão te coloca. Qual abordagem?",
-      opcoes: [
-        { id: "neutro", rotulo: "Equilibrar" },
-        { id: "atacar", rotulo: "Atacar" },
-        { id: "proteger", rotulo: "Proteger o resultado" },
-      ],
-    },
-    perdendo: {
-      tipo: "perdendo",
+      texto:
+        placar < 0
+          ? `O time perde. Como você entra?`
+          : placar > 0
+            ? "O time vence. Qual abordagem?"
+            : "Empate no placar. Qual abordagem?",
+      opcoes:
+        placar < 0
+          ? [
+              { id: "atacar", rotulo: "Atacar" },
+              { id: "protagonismo", rotulo: "Buscar protagonismo" },
+              { id: "neutro", rotulo: "Equilibrar" },
+            ]
+          : placar > 0
+            ? [
+                { id: "neutro", rotulo: "Controlar o jogo" },
+                { id: "proteger", rotulo: "Ajudar defensivamente" },
+              ]
+            : [
+                { id: "neutro", rotulo: "Equilibrado" },
+                { id: "atacar", rotulo: "Buscar a vitória" },
+              ],
+    };
+  }
+  if (tipo === "perdendo") {
+    return {
+      id: `dec-partida-perdendo-${minuto}`,
+      tipo,
+      minuto,
       titulo: "Placar desfavorável",
-      texto: "O time está atrás no placar. Você busca protagonismo?",
+      texto: "O time está atrás. Como você responde?",
       opcoes: [
         { id: "neutro", rotulo: "Seguir o plano" },
-        { id: "protagonismo", rotulo: "Buscar protagonismo" },
+        { id: "protagonismo", rotulo: "Assumir protagonismo" },
+        { id: "ofensivo", rotulo: "Jogar mais ofensivamente" },
       ],
-    },
-    fadiga: {
-      tipo: "fadiga",
-      titulo: "Fadiga alta",
-      texto: "As pernas pesam. Pedir para sair ou continuar?",
+    };
+  }
+  if (tipo === "vencendo") {
+    return {
+      id: `dec-partida-vencendo-${minuto}`,
+      tipo,
+      minuto,
+      titulo: "Resultado favorável",
+      texto: "O time está na frente. Como administra?",
       opcoes: [
-        { id: "neutro", rotulo: "Continuar" },
-        { id: "sair", rotulo: "Pedir substituição" },
+        { id: "neutro", rotulo: "Manter intensidade" },
+        { id: "controlar", rotulo: "Controlar o ritmo" },
+        { id: "proteger", rotulo: "Ajudar defensivamente" },
       ],
-    },
-  };
-  const d = defs[tipo];
+    };
+  }
   return {
-    id: `dec-partida-${tipo}-${minuto}`,
+    id: `dec-partida-fadiga-${minuto}`,
+    tipo: "fadiga",
     minuto,
-    ...d,
+    titulo: "Fadiga alta",
+    texto: "As pernas pesam. O que você faz?",
+    opcoes: [
+      { id: "neutro", rotulo: "Continuar" },
+      { id: "reduzir", rotulo: "Reduzir intensidade" },
+      { id: "sair", rotulo: "Pedir substituição" },
+    ],
   };
 }
 
@@ -367,34 +483,50 @@ export function aplicarOpcaoDecisaoPartida(
       m.agressividade += 0.35;
       m.risco += 0.2;
     } else {
-      m.agressividade -= 0.25;
+      m.agressividade -= 0.3;
       m.intensidade -= 0.1;
     }
   } else if (tipo === "intervalo-ruim") {
-    if (opcao === "risco") {
+    if (opcao === "risco" || opcao === "ofensivo") {
       m.risco += 0.4;
-      m.protagonismo += 0.2;
+      m.protagonismo += 0.25;
+      m.intensidade += 0.1;
+    } else if (opcao === "controlar") {
+      m.risco -= 0.2;
+      m.intensidade -= 0.1;
     } else {
-      m.risco -= 0.15;
-      m.intensidade -= 0.05;
+      m.risco -= 0.1;
     }
   } else if (tipo === "entrada-banco") {
-    if (opcao === "atacar") {
+    if (opcao === "atacar" || opcao === "protagonismo") {
       m.protagonismo += 0.45;
-      m.risco += 0.2;
+      m.risco += 0.25;
+      m.intensidade += 0.15;
     } else if (opcao === "proteger") {
-      m.protagonismo -= 0.1;
-      m.intensidade -= 0.15;
+      m.protagonismo -= 0.05;
+      m.intensidade -= 0.1;
+      m.agressividade += 0.1;
     }
   } else if (tipo === "perdendo") {
-    if (opcao === "protagonismo") {
+    if (opcao === "protagonismo" || opcao === "ofensivo") {
       m.protagonismo += 0.5;
-      m.risco += 0.25;
-      m.intensidade += 0.2;
+      m.risco += 0.3;
+      m.intensidade += 0.25;
+    }
+  } else if (tipo === "vencendo") {
+    if (opcao === "controlar") {
+      m.risco -= 0.25;
+      m.intensidade -= 0.15;
+    } else if (opcao === "proteger") {
+      m.intensidade -= 0.1;
+      m.agressividade += 0.05;
     }
   } else if (tipo === "fadiga") {
     if (opcao === "sair") m.pedirSubstituicao = true;
-    else m.intensidade += 0.1;
+    else if (opcao === "reduzir") {
+      m.intensidade -= 0.25;
+      m.risco -= 0.1;
+    } else m.intensidade += 0.08;
   }
   return m;
 }
@@ -419,7 +551,7 @@ function tentarOferecerDecisao(
   if (estado.decisaoPendente) return false;
 
   if (estado.interativo) {
-    estado.decisaoPendente = definirDecisao(tipo, minuto);
+    estado.decisaoPendente = definirDecisao(tipo, minuto, estado);
     return true;
   }
 
@@ -445,14 +577,15 @@ function processarMomento(
     momento.lado === "mandante" ? estado.visitanteEfetivo : estado.mandanteEfetivo;
   const clubeAtaque =
     momento.lado === "mandante" ? estado.mandante : estado.visitante;
+  const timeUsuarioAtaca =
+    !!estado.clubeJogadorId && estado.clubeJogadorId === ataque.id;
+  const timeUsuarioDefende =
+    !!estado.clubeJogadorId && estado.clubeJogadorId === defesa.id;
+  const p = estado.participacao;
   const usuarioNoAtaque =
-    !!estado.jogador &&
-    estado.clubeJogadorId === ataque.id &&
-    !!estado.participacao;
+    timeUsuarioAtaca && !!estado.jogador && !!p && jogadorEmCampo(p, momento.minuto);
   const usuarioNaDefesa =
-    !!estado.jogador &&
-    estado.clubeJogadorId === defesa.id &&
-    !!estado.participacao;
+    timeUsuarioDefende && !!estado.jogador && !!p && jogadorEmCampo(p, momento.minuto);
 
   const qSetor = estado.jogador
     ? qualidadeSetorialJogador(estado.jogador)
@@ -460,7 +593,16 @@ function processarMomento(
   const a = estado.jogador?.atributos;
   const instrucao = estado.instrucao;
   const mod = estado.modificadores;
-  const p = estado.participacao;
+
+  const fi = (etapa: EtapaFator) =>
+    fatorInstrucaoUsuario(instrucao, etapa, timeUsuarioAtaca, timeUsuarioDefende);
+  const fm = (etapa: EtapaFator) =>
+    fatorMod(mod, etapa, timeUsuarioAtaca, timeUsuarioDefende);
+
+  // Posses abstratas: passes causais quando o time do usuário está com a bola e o jogador em campo
+  if (usuarioNoAtaque && p && aleatorio.chance(0.55 + mod.intensidade * 0.08)) {
+    p.passes += aleatorio.inteiro(1, 2);
+  }
 
   const forcaProg =
     (ataque.forcaMeio - defesa.forcaMeio) * 0.008 +
@@ -468,8 +610,8 @@ function processarMomento(
   const pProgressao = limitar(
     0.58 +
       forcaProg +
-      (fatorInstrucao(instrucao, "progressao") - 1) * 0.25 +
-      (fatorMod(mod, "progressao") - 1) * 0.25 +
+      (fi("progressao") - 1) * 0.25 +
+      (fm("progressao") - 1) * 0.25 +
       (aleatorio.proximo() - 0.5) * 0.12,
     0.28,
     0.88,
@@ -477,7 +619,6 @@ function processarMomento(
 
   if (!aleatorio.chance(pProgressao)) return;
 
-  // Usuário ajuda na progressão?
   if (
     usuarioNoAtaque &&
     p &&
@@ -509,14 +650,13 @@ function processarMomento(
   const pCriacao = limitar(
     0.5 +
       (ataque.forcaMeio - 70) * 0.004 +
-      (fatorInstrucao(instrucao, "criacao") - 1) * 0.3 +
-      (fatorMod(mod, "criacao") - 1) * 0.25 +
+      (fi("criacao") - 1) * 0.3 +
+      (fm("criacao") - 1) * 0.25 +
       (aleatorio.proximo() - 0.5) * 0.1,
     0.22,
     0.85,
   );
   if (!aleatorio.chance(pCriacao)) {
-    // Defesa pode interceptar com o usuário
     if (
       usuarioNaDefesa &&
       p &&
@@ -536,9 +676,9 @@ function processarMomento(
         aleatorio.chance(
           limitar(
             0.35 +
-              (a.desarme + a.marcacao + a.antecipacao) / 360 *
-                fatorInstrucao(instrucao, "defesa") *
-                fatorMod(mod, "defesa"),
+              ((a.desarme + a.marcacao + a.antecipacao) / 360) *
+                fi("defesa") *
+                fm("defesa"),
             0.1,
             0.85,
           ),
@@ -577,6 +717,7 @@ function processarMomento(
         (0.5 + a.visao / 200),
     )
   ) {
+    p.passes += 1;
     p.passesChave++;
     assistenciaUsuario = aleatorio.chance(
       limitar(0.25 + (a.visao + a.passeCurto + a.decisao) / 450, 0.1, 0.7),
@@ -595,8 +736,8 @@ function processarMomento(
   const pChance = limitar(
     0.4 +
       (ataque.forcaAtaque - defesa.forcaDefesa) * 0.005 +
-      (fatorInstrucao(instrucao, "chance") - 1) * 0.3 +
-      (fatorMod(mod, "chance") - 1) * 0.25 +
+      (fi("chance") - 1) * 0.3 +
+      (fm("chance") - 1) * 0.25 +
       (aleatorio.proximo() - 0.5) * 0.1,
     0.18,
     0.8,
@@ -625,7 +766,6 @@ function processarMomento(
     p.chutes++;
   }
 
-  // Chance importante narrada
   if (finalizadorUsuario || aleatorio.chance(0.22)) {
     estado.eventos.push({
       minuto: momento.minuto,
@@ -638,12 +778,12 @@ function processarMomento(
     });
   }
 
-  // Goleiro/defesa do usuário
   if (usuarioNaDefesa && p && a && estado.jogador!.posicao === "GOL") {
     const defesaChance = limitar(
       0.35 +
-        (a.reflexos + a.defesaGoleiro + a.posicionamentoGoleiro) / 400 *
-          fatorMod(mod, "defesa"),
+        ((a.reflexos + a.defesaGoleiro + a.posicionamentoGoleiro) / 400) *
+          fm("defesa") *
+          fi("defesa"),
       0.15,
       0.8,
     );
@@ -667,8 +807,8 @@ function processarMomento(
       (finalizacao - 60) * 0.003 +
       (compostura - 50) * 0.0015 +
       (ataque.forcaAtaque - defesa.forcaDefesa) * 0.0035 +
-      (fatorInstrucao(instrucao, "conversao") - 1) * 0.18 +
-      (fatorMod(mod, "conversao") - 1) * 0.2 +
+      (fi("conversao") - 1) * 0.18 +
+      (fm("conversao") - 1) * 0.2 +
       (qSetor && finalizadorUsuario ? (qSetor.ataque - 60) * 0.002 : 0) +
       (aleatorio.proximo() - 0.5) * 0.1,
     0.05,
@@ -676,15 +816,14 @@ function processarMomento(
   );
 
   if (!aleatorio.chance(pGol)) {
-    // Falta/cartão possível do usuário na disputa
     if (
       usuarioNaDefesa &&
       p &&
       a &&
       aleatorio.chance(
         0.04 *
-          fatorInstrucao(instrucao, "cartao") *
-          fatorMod(mod, "cartao") *
+          fi("cartao") *
+          fm("cartao") *
           (0.7 + a.agressividade / 200) *
           (1.3 - estado.jogador!.personalidade.disciplina / 200),
       )
@@ -704,7 +843,7 @@ function processarMomento(
       } else if (
         estado.amareloRegistrado &&
         p.amarelos >= 1 &&
-        aleatorio.chance(0.12 * fatorMod(mod, "cartao"))
+        aleatorio.chance(0.12 * fm("cartao"))
       ) {
         p.vermelhos = 1;
         p.saida = momento.minuto;
@@ -721,7 +860,6 @@ function processarMomento(
     return;
   }
 
-  // GOL
   if (momento.lado === "mandante") estado.golsMandante++;
   else estado.golsVisitante++;
 
@@ -814,6 +952,8 @@ export function iniciarMotorCausal(
     entradaBancoRegistrada: false,
     fadigaOferecida: false,
     perdendoOferecido: false,
+    vencendoOferecido: false,
+    minutoSimulado: 0,
     concluido: false,
     decisaoPendente: null,
     seedEstadoInicial: aleatorio.estado,
@@ -821,7 +961,7 @@ export function iniciarMotorCausal(
 }
 
 /**
- * Avança a simulação até o fim, até uma decisão pendente, ou até `ateMinuto`.
+ * Avança a simulação minuto a minuto até `ateMinuto`, decisão pendente ou fim.
  */
 export function avancarMotorCausal(
   estado: EstadoMotorCausal,
@@ -830,33 +970,15 @@ export function avancarMotorCausal(
 ): EstadoMotorCausal {
   if (estado.concluido || estado.decisaoPendente) return estado;
 
-  const p = estado.participacao;
+  const alvo = Math.min(90, Math.max(estado.minutoSimulado, ateMinuto));
 
-  // Entrada do banco
-  if (
-    p &&
-    p.escalacao === "banco" &&
-    p.entrada < 90 &&
-    !estado.entradaBancoRegistrada &&
-    p.entrada <= ateMinuto
-  ) {
-    estado.entradaBancoRegistrada = true;
-    estado.eventos.push({
-      minuto: p.entrada,
-      tipo: "substituicao",
-      clubeId: estado.clubeJogadorId!,
-      jogador: true,
-      texto: `${estado.jogador!.nome} entra em campo`,
-    });
-    if (tentarOferecerDecisao(estado, "entrada-banco", p.entrada)) return estado;
-  }
+  while (estado.minutoSimulado < alvo) {
+    estado.minutoSimulado += 1;
+    const m = estado.minutoSimulado;
+    const p = estado.participacao;
 
-  while (estado.indiceMomento < estado.momentosPlanejados.length) {
-    const momento = estado.momentosPlanejados[estado.indiceMomento]!;
-    if (momento.minuto > ateMinuto) break;
-
-    // Intervalo
-    if (!estado.intervaloAvaliado && momento.minuto > 45) {
+    // Intervalo exatamente aos 45'
+    if (m === 45 && !estado.intervaloAvaliado) {
       estado.intervaloAvaliado = true;
       estado.eventos.push({
         minuto: 45,
@@ -866,62 +988,103 @@ export function avancarMotorCausal(
         texto: "Intervalo",
       });
       const notaParc =
-        (estado.participacao?.chutes ?? 0) +
-        (estado.participacao?.passesChave ?? 0) * 1.5 +
-        (estado.participacao?.gols ?? 0) * 3;
-      if (
-        estado.participacao &&
-        estado.participacao.minutos > 0 &&
-        estado.participacao.entrada < 45 &&
-        notaParc < 1.5
-      ) {
+        (p?.chutes ?? 0) +
+        (p?.passesChave ?? 0) * 1.5 +
+        (p?.gols ?? 0) * 3;
+      if (p && p.minutos > 0 && p.entrada < 45 && notaParc < 1.5) {
         if (tentarOferecerDecisao(estado, "intervalo-ruim", 45)) return estado;
       }
     }
 
-    processarMomento(estado, momento, aleatorio);
-    estado.indiceMomento++;
-    if (estado.decisaoPendente) return estado;
+    // Entrada do banco exatamente no minuto combinado (após eventos anteriores)
+    if (
+      p &&
+      p.escalacao === "banco" &&
+      p.entrada === m &&
+      p.entrada < 90 &&
+      !estado.entradaBancoRegistrada
+    ) {
+      estado.entradaBancoRegistrada = true;
+      estado.eventos.push({
+        minuto: p.entrada,
+        tipo: "substituicao",
+        clubeId: estado.clubeJogadorId!,
+        jogador: true,
+        texto: `${estado.jogador!.nome} entra em campo`,
+      });
+      if (tentarOferecerDecisao(estado, "entrada-banco", p.entrada)) return estado;
+    }
 
-    // Perdendo
+    // Momentos deste minuto
+    while (estado.indiceMomento < estado.momentosPlanejados.length) {
+      const momento = estado.momentosPlanejados[estado.indiceMomento]!;
+      if (momento.minuto > m) break;
+      if (momento.minuto < m) {
+        estado.indiceMomento++;
+        continue;
+      }
+      processarMomento(estado, momento, aleatorio);
+      estado.indiceMomento++;
+      if (estado.decisaoPendente) return estado;
+    }
+
+    // Decisões de placar (só com jogador em campo e contexto já simulado neste minuto)
     if (
       estado.jogador &&
       estado.clubeJogadorId &&
-      estado.participacao &&
-      estado.participacao.minutos > 0 &&
-      momento.minuto >= 55 &&
-      !estado.perdendoOferecido
+      p &&
+      jogadorEmCampo(p, m) &&
+      m >= 55
     ) {
-      const golsPro =
-        estado.clubeJogadorId === estado.mandante.id
-          ? estado.golsMandante
-          : estado.golsVisitante;
-      const golsContra =
-        estado.clubeJogadorId === estado.mandante.id
-          ? estado.golsVisitante
-          : estado.golsMandante;
-      if (golsPro < golsContra) {
+      const rel = placarRelativo(estado);
+      if (rel < 0 && !estado.perdendoOferecido) {
         estado.perdendoOferecido = true;
-        if (tentarOferecerDecisao(estado, "perdendo", momento.minuto))
-          return estado;
+        if (tentarOferecerDecisao(estado, "perdendo", m)) return estado;
+      }
+      if (rel > 0 && !estado.vencendoOferecido && m >= 60) {
+        estado.vencendoOferecido = true;
+        if (tentarOferecerDecisao(estado, "vencendo", m)) return estado;
       }
     }
 
-    // Fadiga
     if (
       estado.jogador &&
-      estado.participacao &&
+      p &&
       estado.jogador.fadiga > 70 &&
-      momento.minuto >= 60 &&
-      estado.participacao.entrada < momento.minuto &&
+      m >= 60 &&
+      jogadorEmCampo(p, m) &&
       !estado.fadigaOferecida
     ) {
       estado.fadigaOferecida = true;
-      if (tentarOferecerDecisao(estado, "fadiga", momento.minuto)) return estado;
+      if (tentarOferecerDecisao(estado, "fadiga", m)) return estado;
+    }
+
+    // Substituição pedida: encerra no minuto sorteado já gravado em saida
+    if (
+      p &&
+      estado.modificadores.pedirSubstituicao &&
+      p.saida === m &&
+      p.saida < 90 &&
+      !p.vermelhos &&
+      !estado.eventos.some(
+        (e) =>
+          e.tipo === "substituicao" &&
+          e.jogador &&
+          e.minuto === m &&
+          e.texto.includes("substituído"),
+      )
+    ) {
+      estado.eventos.push({
+        minuto: p.saida,
+        tipo: "substituicao",
+        clubeId: estado.clubeJogadorId!,
+        jogador: true,
+        texto: `${estado.jogador!.nome} pede para sair e é substituído`,
+      });
     }
   }
 
-  if (ateMinuto >= 90 && estado.indiceMomento >= estado.momentosPlanejados.length) {
+  if (alvo >= 90 && estado.indiceMomento >= estado.momentosPlanejados.length) {
     return finalizarMotorCausal(estado, aleatorio);
   }
   return estado;
@@ -931,6 +1094,7 @@ export function responderDecisaoMotor(
   estado: EstadoMotorCausal,
   opcaoId: string,
   aleatorio: GeradorAleatorio,
+  continuarAte = 90,
 ): EstadoMotorCausal {
   if (!estado.decisaoPendente) return estado;
   const tipo = estado.decisaoPendente.tipo;
@@ -942,29 +1106,24 @@ export function responderDecisaoMotor(
   );
   estado.decisaoPendente = null;
 
-  // Pedido de substituição: encurta minutos se ainda em campo
   if (estado.modificadores.pedirSubstituicao && estado.participacao) {
     const p = estado.participacao;
     if (p.saida > p.entrada + 5 && p.vermelhos === 0) {
       const novo = Math.min(
         p.saida,
-        Math.max(p.entrada + 5, aleatorio.inteiro(65, 82)),
+        Math.max(
+          estado.minutoSimulado + 1,
+          Math.max(p.entrada + 5, aleatorio.inteiro(65, 82)),
+        ),
       );
       if (novo < p.saida) {
         p.saida = novo;
         p.minutos = p.saida - p.entrada;
-        estado.eventos.push({
-          minuto: p.saida,
-          tipo: "substituicao",
-          clubeId: estado.clubeJogadorId!,
-          jogador: true,
-          texto: `${estado.jogador!.nome} pede para sair e é substituído`,
-        });
       }
     }
   }
 
-  return avancarMotorCausal(estado, aleatorio);
+  return avancarMotorCausal(estado, aleatorio, continuarAte);
 }
 
 export function finalizarMotorCausal(

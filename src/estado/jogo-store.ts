@@ -24,6 +24,8 @@ import {
   iniciarAvancoComMatchday,
   simularMatchdayInstantaneo,
   comecarPartidaMatchday,
+  avancarMatchdayAte,
+  pularMatchdayParaOFim,
   responderDecisaoMatchday,
   limparSessaoMatchday,
   obterCarreiraAposMatchday,
@@ -90,6 +92,8 @@ interface JogoStore {
   avancarComMatchday: () => "matchday" | "ok";
   matchdayInstantaneo: () => void;
   matchdayComecar: () => void;
+  matchdayAvancarAte: (minuto: number) => void;
+  matchdayPularFim: () => void;
   matchdayDecidir: (opcaoId: string) => void;
   matchdayFechar: () => void;
   proximaTemporada: () => void;
@@ -617,6 +621,9 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
               minutoAtual: 90,
               golsMandante: partida?.golsMandante ?? 0,
               golsVisitante: partida?.golsVisitante ?? 0,
+              pressaoMandante: 50,
+              pressaoVisitante: 50,
+              pausado: false,
             },
             alteracoesPendentes: true,
             erro: null,
@@ -635,6 +642,19 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
       matchdayComecar: () => {
         try {
           const ui = comecarPartidaMatchday();
+          set({ matchday: ui });
+        } catch (erro) {
+          set({
+            erro:
+              erro instanceof Error
+                ? erro.message
+                : "Falha ao iniciar a partida.",
+          });
+        }
+      },
+      matchdayAvancarAte: (minuto) => {
+        try {
+          const ui = avancarMatchdayAte(minuto);
           if (ui.fase === "pos") {
             const carreira = obterCarreiraAposMatchday();
             geracao++;
@@ -654,7 +674,33 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
             erro:
               erro instanceof Error
                 ? erro.message
-                : "Falha ao iniciar a partida.",
+                : "Falha ao avançar a partida.",
+          });
+        }
+      },
+      matchdayPularFim: () => {
+        try {
+          const ui = pularMatchdayParaOFim();
+          if (ui.fase === "pos") {
+            const carreira = obterCarreiraAposMatchday();
+            geracao++;
+            set({
+              carreira,
+              matchday: ui,
+              alteracoesPendentes: true,
+              erro: null,
+              statusPersistencia: get().salvando ? "salvando" : "pendente",
+            });
+            if (!retryTimer) void drenar();
+          } else {
+            set({ matchday: ui });
+          }
+        } catch (erro) {
+          set({
+            erro:
+              erro instanceof Error
+                ? erro.message
+                : "Falha ao pular a partida.",
           });
         }
       },

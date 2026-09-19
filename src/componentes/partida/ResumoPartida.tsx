@@ -105,15 +105,15 @@ export function ResumoPartida({
               <span>
                 Confiança{" "}
                 <b>
-                  {p.confianca >= 0 ? "+" : ""}
-                  {p.confianca}
+                  {(ctx?.impactoConfianca ?? p.confianca) >= 0 ? "+" : ""}
+                  {ctx?.impactoConfianca ?? p.confianca}
                 </b>
               </span>
               <span>
                 Moral{" "}
                 <b>
-                  {p.moral >= 0 ? "+" : ""}
-                  {p.moral}
+                  {(ctx?.impactoMoral ?? p.moral) >= 0 ? "+" : ""}
+                  {ctx?.impactoMoral ?? p.moral}
                 </b>
               </span>
               <span>

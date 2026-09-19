@@ -85,6 +85,8 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
       avancarComMatchday,
       matchdayInstantaneo,
       matchdayComecar,
+      matchdayAvancarAte,
+      matchdayPularFim,
       matchdayDecidir,
       matchdayFechar,
       proximaTemporada,
@@ -389,6 +391,8 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
           sessao={matchday}
           onInstantaneo={matchdayInstantaneo}
           onComecar={matchdayComecar}
+          onAvancarAte={matchdayAvancarAte}
+          onPularFim={matchdayPularFim}
           onDecidir={matchdayDecidir}
           onFechar={matchdayFechar}
         />

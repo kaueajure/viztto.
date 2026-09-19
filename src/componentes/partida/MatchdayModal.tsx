@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { useFocoModal } from "@/componentes/interface/useFocoModal";
 import type { EstadoCarreira } from "@/dominio/entidades/modelos";
 import type { SessaoMatchdayUI } from "@/aplicacao/casos-de-uso/sessao-matchday";
@@ -8,11 +9,15 @@ import { Escudo } from "@/componentes/clube/Escudo";
 import { ResumoPartida } from "./ResumoPartida";
 import { X } from "lucide-react";
 
+const BLOCO_MINUTOS = 4;
+
 export function MatchdayModal({
   carreira,
   sessao,
   onInstantaneo,
   onComecar,
+  onAvancarAte,
+  onPularFim,
   onDecidir,
   onFechar,
 }: {
@@ -20,10 +25,36 @@ export function MatchdayModal({
   sessao: SessaoMatchdayUI;
   onInstantaneo: () => void;
   onComecar: () => void;
+  onAvancarAte: (minuto: number) => void;
+  onPularFim: () => void;
   onDecidir: (opcaoId: string) => void;
   onFechar: () => void;
 }) {
   useFocoModal(true, onFechar);
+  const [velocidade, definirVelocidade] = useState<1 | 2>(1);
+  const pedindoAvanco = useRef(false);
+
+  useEffect(() => {
+    if (sessao.fase !== "ao-vivo") return;
+    if (sessao.pausado || sessao.decisao) return;
+    if (sessao.minutoAtual >= 90) return;
+
+    const ms = velocidade === 2 ? 350 : 700;
+    const id = window.setTimeout(() => {
+      if (pedindoAvanco.current) return;
+      pedindoAvanco.current = true;
+      onAvancarAte(Math.min(90, sessao.minutoAtual + BLOCO_MINUTOS));
+      pedindoAvanco.current = false;
+    }, ms);
+    return () => window.clearTimeout(id);
+  }, [
+    sessao.fase,
+    sessao.pausado,
+    sessao.decisao,
+    sessao.minutoAtual,
+    velocidade,
+    onAvancarAte,
+  ]);
 
   if (sessao.fase === "pos" && sessao.partida) {
     return (
@@ -41,6 +72,12 @@ export function MatchdayModal({
   const adversario = carreira.clubes.find((c) => c.id === b.adversarioId)!;
 
   if (sessao.fase === "ao-vivo") {
+    const eventos = sessao.eventosVisiveis;
+    const recentes = eventos.slice(-7);
+    const destaque = [...eventos]
+      .reverse()
+      .find((e) => e.tipo === "gol" || (e.jogador && e.tipo !== "fim"));
+
     return (
       <div className="sobreposicao">
         <section
@@ -50,7 +87,14 @@ export function MatchdayModal({
           className="resumo-partida matchday-modal"
         >
           <header>
-            <span className="sobretitulo">MATCHDAY · {sessao.minutoAtual}′</span>
+            <span className="sobretitulo">
+              MATCHDAY · {sessao.minutoAtual}′
+              {sessao.minutoAtual <= 45
+                ? " · 1º TEMPO"
+                : sessao.minutoAtual < 90
+                  ? " · 2º TEMPO"
+                  : ""}
+            </span>
             <button
               className="botao-icone"
               aria-label="Fechar"
@@ -77,15 +121,51 @@ export function MatchdayModal({
               <strong>{visitante.codigo}</strong>
             </div>
           </div>
+
+          <div className="matchday-pressao" aria-hidden>
+            <span>{mandante.codigo}</span>
+            <div className="matchday-pressao-barra">
+              <i style={{ width: `${sessao.pressaoMandante}%` }} />
+            </div>
+            <span>{visitante.codigo}</span>
+          </div>
+          <p className="rotulo matchday-pressao-rotulo">
+            Pressão aproximada · {sessao.pressaoMandante}% –{" "}
+            {sessao.pressaoVisitante}%
+          </p>
+
+          {destaque && (
+            <div
+              className={`matchday-destaque-vivo${destaque.tipo === "gol" ? " gol" : ""}${destaque.jogador ? " jogador" : ""}`}
+            >
+              <b>{destaque.minuto}′</b>
+              <span>{destaque.texto}</span>
+              {destaque.tipo === "gol" && <em>GOL</em>}
+            </div>
+          )}
+
           <div className="eventos-partida matchday-cronologia">
-            {sessao.eventosVisiveis.slice(-8).map((e, i) => (
-              <div key={`${e.minuto}-${i}`} className={e.jogador ? "destaque-evento" : ""}>
+            {recentes.map((e, i) => (
+              <div
+                key={`${e.minuto}-${e.tipo}-${i}`}
+                className={[
+                  e.jogador ? "destaque-evento" : "",
+                  e.tipo === "gol" ? "evento-gol" : "",
+                  e.tipo === "cartao" ? "evento-cartao" : "",
+                  e.tipo === "substituicao" ? "evento-sub" : "",
+                  e.tipo === "intervalo" ? "evento-intervalo" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
                 <b>{e.minuto}′</b>
                 <span>{e.texto}</span>
+                {e.tipo === "gol" && <span className="rotulo">GOL</span>}
               </div>
             ))}
           </div>
-          {sessao.decisao && (
+
+          {sessao.decisao ? (
             <div className="matchday-decisao">
               <h3>{sessao.decisao.titulo}</h3>
               <p>{sessao.decisao.texto}</p>
@@ -102,13 +182,32 @@ export function MatchdayModal({
                 ))}
               </div>
             </div>
+          ) : (
+            <div className="matchday-controles">
+              <button
+                type="button"
+                className={`botao${velocidade === 1 ? " principal" : ""}`}
+                onClick={() => definirVelocidade(1)}
+              >
+                1x
+              </button>
+              <button
+                type="button"
+                className={`botao${velocidade === 2 ? " principal" : ""}`}
+                onClick={() => definirVelocidade(2)}
+              >
+                2x
+              </button>
+              <button type="button" className="botao" onClick={onPularFim}>
+                Pular para o fim
+              </button>
+            </div>
           )}
         </section>
       </div>
     );
   }
 
-  // Pré-jogo
   return (
     <div className="sobreposicao">
       <section
@@ -136,9 +235,7 @@ export function MatchdayModal({
             <Escudo clube={mandante} tamanho={56} />
             <strong>{mandante.nome}</strong>
           </div>
-          <b>
-            VS
-          </b>
+          <b>VS</b>
           <div>
             <Escudo clube={visitante} tamanho={56} />
             <strong>{visitante.nome}</strong>
@@ -147,14 +244,16 @@ export function MatchdayModal({
         <div className="matchday-briefing">
           <p>
             <span className="rotulo">Adversário</span> {adversario.nome} · forma{" "}
-            {Math.round(b.formaAdversario)} · força {Math.round(b.forcaAdversario)}
+            {Math.round(b.formaAdversario)} · força{" "}
+            {Math.round(b.forcaAdversario)}
           </p>
           <p>
-            <span className="rotulo">Seu clube</span> forma {Math.round(b.formaClube)} ·
-            força {Math.round(b.forcaClube)}
+            <span className="rotulo">Seu clube</span> forma{" "}
+            {Math.round(b.formaClube)} · força {Math.round(b.forcaClube)}
           </p>
           <p>
-            <span className="rotulo">Posição</span> {b.posicao} · {b.textoSituacao}
+            <span className="rotulo">Posição</span> {b.posicao} ·{" "}
+            {b.textoSituacao}
           </p>
           <p>
             <span className="rotulo">Instrução</span>{" "}
@@ -164,7 +263,10 @@ export function MatchdayModal({
             <p>
               <span className="rotulo">Concorrência</span>{" "}
               {b.concorrentes
-                .map((c) => `${c.nome} (${c.overall})${c.disponivel ? "" : " · indisponível"}`)
+                .map(
+                  (c) =>
+                    `${c.nome} (${c.overall})${c.disponivel ? "" : " · indisponível"}`,
+                )
                 .join(" · ")}
             </p>
           )}

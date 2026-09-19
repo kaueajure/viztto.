@@ -5678,3 +5678,68 @@ main:has(.formulario) {
 .matchday-objetivos-resultado .falhou {
   opacity: 0.75;
 }
+
+.matchday-pressao {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+  margin-top: 4px;
+}
+.matchday-pressao-barra {
+  height: 6px;
+  background: color-mix(in oklab, var(--border) 80%, transparent);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.matchday-pressao-barra > i {
+  display: block;
+  height: 100%;
+  background: var(--accent, #2a7a4b);
+  border-radius: 99px;
+}
+.matchday-pressao-rotulo {
+  margin: 4px 0 10px;
+  text-align: center;
+}
+.matchday-destaque-vivo {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  font-size: 14px;
+}
+.matchday-destaque-vivo.gol {
+  border-color: color-mix(in oklab, #2a7a4b 50%, var(--border));
+  background: color-mix(in oklab, #2a7a4b 12%, transparent);
+}
+.matchday-destaque-vivo.jogador {
+  font-weight: 600;
+}
+.matchday-destaque-vivo em {
+  margin-left: auto;
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+.matchday-cronologia .evento-gol {
+  font-weight: 600;
+}
+.matchday-cronologia .evento-cartao span:last-of-type,
+.matchday-cronologia .evento-cartao {
+  color: color-mix(in oklab, #c9a227 80%, currentColor);
+}
+.matchday-cronologia .evento-intervalo {
+  opacity: 0.75;
+  font-style: italic;
+}
+.matchday-controles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}

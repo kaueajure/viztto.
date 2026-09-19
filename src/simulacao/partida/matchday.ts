@@ -4,6 +4,7 @@ import type {
   Jogador,
   Partida,
   Participacao,
+  StatusElenco,
 } from "@/dominio/entidades/modelos";
 import type {
   BriefingMatchday,
@@ -61,26 +62,53 @@ export function gerarObjetivosPartida(
   jogador: Jogador,
   escalacao: Escalacao,
   aleatorio: GeradorAleatorio,
+  contexto?: {
+    forcaAdversario: number;
+    forcaClube: number;
+    instrucao: InstrucaoTreinador;
+    status: StatusElenco;
+  },
 ): ObjetivoPartida[] {
   const objetivos: ObjetivoPartida[] = [];
+  const adversarioForte =
+    (contexto?.forcaAdversario ?? 70) > (contexto?.forcaClube ?? 70) + 4;
+  const instrucao = contexto?.instrucao;
+
   if (escalacao === "titular") {
     objetivos.push({
       id: "minutos",
-      descricao: "Jogar pelo menos 60 minutos",
+      descricao: adversarioForte
+        ? "Completar pelo menos 70 minutos"
+        : "Jogar pelo menos 60 minutos",
       criterio: "minutos",
-      meta: 60,
+      meta: adversarioForte ? 70 : 60,
     });
   } else if (escalacao === "banco") {
     objetivos.push({
       id: "entrar",
-      descricao: "Entrar em campo",
+      descricao: "Entrar e causar impacto (nota ≥ 6.5 se jogar)",
+      criterio: "nota",
+      meta: 6.5,
+    });
+    objetivos.push({
+      id: "min-banco",
+      descricao: "Conseguir minutos em campo",
       criterio: "minutos",
       meta: 1,
     });
+    if (["CA", "PD", "PE", "MEI"].includes(jogador.posicao)) {
+      objetivos.push({
+        id: "chance-banco",
+        descricao: "Participar de gol ou assistência",
+        criterio: "participar-gol",
+        meta: 1,
+      });
+    }
+    return objetivos.slice(0, 3);
   } else {
     objetivos.push({
       id: "manter-foco",
-      descricao: "Manter a cabeça no jogo (sem impacto negativo grave)",
+      descricao: "Manter a cabeça no jogo",
       criterio: "limpo",
       meta: 1,
     });
@@ -91,35 +119,52 @@ export function gerarObjetivosPartida(
   if (pos === "GOL") {
     objetivos.push({
       id: "defesas",
-      descricao: "Fazer ao menos 3 defesas",
+      descricao: adversarioForte
+        ? "Fazer ao menos 4 defesas"
+        : "Fazer ao menos 2 defesas",
       criterio: "defesas",
-      meta: 3,
+      meta: adversarioForte ? 4 : 2,
     });
   } else if (["CA", "PD", "PE"].includes(pos)) {
-    objetivos.push(
-      aleatorio.escolher([
-        {
-          id: "gol",
-          descricao: "Marcar um gol",
-          criterio: "gol" as const,
-          meta: 1,
-        },
-        {
-          id: "nota",
-          descricao: "Nota 7.0 ou mais",
-          criterio: "nota" as const,
-          meta: 7,
-        },
-      ]),
-    );
+    if (instrucao === "finalizacoes") {
+      objetivos.push({
+        id: "chutes",
+        descricao: "Conseguir 2+ finalizações",
+        criterio: "chutes",
+        meta: 2,
+      });
+    } else {
+      objetivos.push(
+        aleatorio.escolher([
+          {
+            id: "chutes",
+            descricao: "Conseguir 2+ finalizações",
+            criterio: "chutes" as const,
+            meta: 2,
+          },
+          {
+            id: "participar",
+            descricao: "Participar de um gol",
+            criterio: "participar-gol" as const,
+            meta: 1,
+          },
+          {
+            id: "nota",
+            descricao: "Nota 7.0 ou mais",
+            criterio: "nota" as const,
+            meta: 7,
+          },
+        ]),
+      );
+    }
   } else if (["MEI", "MC"].includes(pos)) {
     objetivos.push(
       aleatorio.escolher([
         {
           id: "chave",
-          descricao: "Dar 2 passes-chave",
+          descricao: instrucao === "criacao" ? "Dar 2 passes-chave" : "Dar 1 passe-chave",
           criterio: "passes-chave" as const,
-          meta: 2,
+          meta: instrucao === "criacao" ? 2 : 1,
         },
         {
           id: "assist",
@@ -127,20 +172,42 @@ export function gerarObjetivosPartida(
           criterio: "assistencia" as const,
           meta: 1,
         },
+        {
+          id: "nota-mei",
+          descricao: "Nota mínima 6.8",
+          criterio: "nota" as const,
+          meta: 6.8,
+        },
       ]),
     );
   } else {
-    objetivos.push({
-      id: "desarmes",
-      descricao: "Vencer 3 desarmes",
-      criterio: "desarmes",
-      meta: 3,
-    });
+    objetivos.push(
+      aleatorio.escolher([
+        {
+          id: "desarmes",
+          descricao: "Vencer 2 desarmes",
+          criterio: "desarmes" as const,
+          meta: 2,
+        },
+        {
+          id: "sem-cartao",
+          descricao: "Evitar cartão",
+          criterio: "sem-cartao" as const,
+          meta: 1,
+        },
+        {
+          id: "nota-def",
+          descricao: "Nota mínima 6.5",
+          criterio: "nota" as const,
+          meta: 6.5,
+        },
+      ]),
+    );
   }
 
-  if (jogador.amarelosAcumulados >= 2) {
+  if (jogador.amarelosAcumulados >= 2 || instrucao === "evitar-riscos") {
     objetivos.push({
-      id: "sem-cartao",
+      id: "sem-cartao-2",
       descricao: "Não receber cartão",
       criterio: "sem-cartao",
       meta: 1,
@@ -165,13 +232,15 @@ export function avaliarObjetivosPartida(
     let cumprido = false;
     if (!p) {
       cumprido = o.criterio === "limpo";
+    } else if (o.criterio === "nota" && p.minutos === 0 && o.id === "entrar") {
+      cumprido = false;
     } else {
       switch (o.criterio) {
         case "minutos":
           cumprido = p.minutos >= o.meta;
           break;
         case "nota":
-          cumprido = (p.nota ?? 0) >= o.meta;
+          cumprido = p.minutos > 0 && (p.nota ?? 0) >= o.meta;
           break;
         case "gol":
           cumprido = p.gols >= o.meta;
@@ -191,6 +260,12 @@ export function avaliarObjetivosPartida(
         case "defesas":
           cumprido = p.defesas >= o.meta;
           break;
+        case "chutes":
+          cumprido = p.chutes >= o.meta;
+          break;
+        case "participar-gol":
+          cumprido = p.gols + p.assistencias >= o.meta;
+          break;
         case "limpo":
           cumprido = true;
           break;
@@ -200,18 +275,31 @@ export function avaliarObjetivosPartida(
   });
 }
 
+/**
+ * Calcula consequências alinhadas ao que `aplicarDesempenho` efetivamente aplica.
+ */
 export function montarContextoPosJogo(
   briefing: BriefingMatchday,
   partida: Partida,
   carreira: EstadoCarreira,
-  treinadorAntes: number,
+  _treinadorAntes: number,
 ): ContextoPartida {
   const p = partida.participacao;
   const objetivos = avaliarObjetivosPartida(briefing.objetivos, p);
   const cumpridos = objetivos.filter((o) => o.cumprido).length;
+  const impactoConfianca = p?.confianca ?? 0;
+  const impactoMoral = p?.moral ?? (p ? (p.escalacao === "lesionado" ? -1 : -2) : 0);
+  const bonusObjetivos =
+    p && p.minutos > 0 ? (cumpridos - objetivos.length * 0.5) * 1.5 : 0;
+  // Mesma base de aplicarDesempenho (confianca * 0.35) + bônus de objetivos aplicado junto
   const impactoTreinador =
-    (p?.confianca ?? 0) * 0.35 +
-    (cumpridos - objetivos.length * 0.5) * 2;
+    Math.round((impactoConfianca * 0.35 + bonusObjetivos) * 10) / 10;
+  const impactoReputacao =
+    p && p.minutos > 0 && p.nota != null
+      ? Math.round(
+          (((p.nota - 6.5) * carreira.liga.reputacao) / 500) * 100,
+        ) / 100
+      : 0;
 
   let reacaoTreinador: string | null = null;
   let reacaoImprensa: string | null = null;
@@ -224,7 +312,7 @@ export function montarContextoPosJogo(
     } else if ((p.nota ?? 0) < 5.5) {
       reacaoTreinador = "A comissão cobrou mais intensidade e concentração.";
       reacaoImprensa = "Sua atuação gerou críticas na imprensa local.";
-    } else if (cumpridos === objetivos.length) {
+    } else if (cumpridos === objetivos.length && objetivos.length > 0) {
       reacaoTreinador = "Você cumpriu o combinado. A comissão anotou positivamente.";
     }
 
@@ -239,10 +327,9 @@ export function montarContextoPosJogo(
     reacaoTreinador = "A comissão manteve você fora da lista nesta rodada.";
   }
 
-  const deltaRel = carreira.relacionamentos.treinador - treinadorAntes;
-  if (!reacaoTreinador && Math.abs(deltaRel) >= 1) {
+  if (!reacaoTreinador && Math.abs(impactoTreinador) >= 1) {
     reacaoTreinador =
-      deltaRel > 0
+      impactoTreinador > 0
         ? "Sua relação com o treinador melhorou um pouco."
         : "Houve um desgaste leve com a comissão.";
   }
@@ -250,17 +337,16 @@ export function montarContextoPosJogo(
   return {
     instrucao: briefing.instrucao,
     objetivos,
-    impactoTreinador: Math.round(impactoTreinador * 10) / 10,
+    impactoTreinador,
+    impactoConfianca,
+    impactoMoral,
+    impactoReputacao,
     impactoHierarquia,
     reacaoImprensa,
     reacaoTreinador,
   };
 }
 
-/**
- * Monta o briefing a partir do estado já preparado da semana
- * (escalação definida, rodada incrementada).
- */
 export function montarBriefingMatchday(
   carreira: EstadoCarreira,
   partida: Partida,
@@ -284,6 +370,12 @@ export function montarBriefingMatchday(
     carreira.jogador,
     escalacao,
     aleatorio,
+    {
+      forcaAdversario: adversario.forcaGeral,
+      forcaClube: clube.forcaGeral,
+      instrucao,
+      status: carreira.jogador.status,
+    },
   );
 
   return {
@@ -321,7 +413,6 @@ export function montarBriefingMatchday(
   };
 }
 
-/** Estima escalação sem consumir o RNG da carreira (cópia). */
 export function estimarEscalacaoProxima(
   carreira: EstadoCarreira,
   escalacaoPreparada: Escalacao | null,
