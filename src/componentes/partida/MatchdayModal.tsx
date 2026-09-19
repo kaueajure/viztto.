@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useFocoModal } from "@/componentes/interface/useFocoModal";
+import { useAcaoOcupada } from "@/componentes/interface/useAcaoOcupada";
 import type { EstadoCarreira } from "@/dominio/entidades/modelos";
 import type { SessaoMatchdayUI } from "@/aplicacao/casos-de-uso/sessao-matchday";
 import { ROTULOS_INSTRUCAO } from "@/dominio/matchday";
@@ -32,6 +33,8 @@ export function MatchdayModal({
   const [velocidade, definirVelocidade] = useState<1 | 2>(1);
   const pedindoAvanco = useRef(false);
   const cronologiaRef = useRef<HTMLDivElement>(null);
+  const { ocupado, executar } = useAcaoOcupada();
+  const [rotuloBusy, setRotuloBusy] = useState("Processando…");
 
   useEffect(() => {
     if (sessao.fase !== "ao-vivo") return;
@@ -90,6 +93,7 @@ export function MatchdayModal({
           aria-modal="true"
           aria-labelledby="matchday-vivo-titulo"
           className="resumo-partida matchday-modal matchday-vivo"
+          aria-busy={ocupado}
         >
           <div className="matchday-vivo-topo">
             <header>
@@ -105,6 +109,7 @@ export function MatchdayModal({
                 className="botao-icone"
                 aria-label="Fechar"
                 onClick={onFechar}
+                disabled={ocupado}
               >
                 <X />
               </button>
@@ -185,10 +190,15 @@ export function MatchdayModal({
                     <button
                       key={o.id}
                       type="button"
-                      className="botao principal"
-                      onClick={() => onDecidir(o.id)}
+                      className={`botao principal${ocupado ? " ocupado" : ""}`}
+                      disabled={ocupado}
+                      aria-busy={ocupado}
+                      onClick={() => {
+                        setRotuloBusy("Aplicando…");
+                        void executar(() => onDecidir(o.id));
+                      }}
                     >
-                      {o.rotulo}
+                      {ocupado ? rotuloBusy : o.rotulo}
                     </button>
                   ))}
                 </div>
@@ -198,6 +208,7 @@ export function MatchdayModal({
                 <button
                   type="button"
                   className={`botao${velocidade === 1 ? " principal" : ""}`}
+                  disabled={ocupado}
                   onClick={() => definirVelocidade(1)}
                 >
                   1x
@@ -205,12 +216,22 @@ export function MatchdayModal({
                 <button
                   type="button"
                   className={`botao${velocidade === 2 ? " principal" : ""}`}
+                  disabled={ocupado}
                   onClick={() => definirVelocidade(2)}
                 >
                   2x
                 </button>
-                <button type="button" className="botao" onClick={onPularFim}>
-                  Pular para o fim
+                <button
+                  type="button"
+                  className={`botao${ocupado ? " ocupado" : ""}`}
+                  disabled={ocupado}
+                  aria-busy={ocupado}
+                  onClick={() => {
+                    setRotuloBusy("Finalizando…");
+                    void executar(() => onPularFim());
+                  }}
+                >
+                  {ocupado ? rotuloBusy : "Pular para o fim"}
                 </button>
               </div>
             )}
@@ -227,6 +248,7 @@ export function MatchdayModal({
         aria-modal="true"
         aria-labelledby="matchday-pre-titulo"
         className="resumo-partida matchday-modal"
+        aria-busy={ocupado}
       >
         <header>
           <span className="sobretitulo">MATCHDAY · RODADA {b.rodada}</span>
@@ -235,6 +257,7 @@ export function MatchdayModal({
             className="botao-icone"
             aria-label="Fechar"
             onClick={onFechar}
+            disabled={ocupado}
           >
             <X />
           </button>
@@ -292,8 +315,17 @@ export function MatchdayModal({
           </div>
         </div>
         <div className="matchday-acoes">
-          <button type="button" className="botao principal" onClick={onComecar}>
-            Começar partida
+          <button
+            type="button"
+            className={`botao principal${ocupado ? " ocupado" : ""}`}
+            disabled={ocupado}
+            aria-busy={ocupado}
+            onClick={() => {
+              setRotuloBusy("Iniciando partida…");
+              void executar(() => onComecar());
+            }}
+          >
+            {ocupado ? rotuloBusy : "Começar partida"}
           </button>
         </div>
       </section>

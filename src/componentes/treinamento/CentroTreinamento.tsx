@@ -42,6 +42,7 @@ function PainelAutoTreino({
   useEffect(() => {
     setSelecao(auto.exercicioIds);
     setAtivoLocal(auto.ativo);
+    setSalvoOk(false);
   }, [auto.ativo, auto.exercicioIds.join("|")]);
 
   const toggleExercicio = (id: string) => {
@@ -53,13 +54,25 @@ function PainelAutoTreino({
     });
   };
 
-  const aplicar = (ligar: boolean) => {
+  const [salvando, setSalvando] = useState(false);
+  const [salvoOk, setSalvoOk] = useState(false);
+
+  const aplicar = async (ligar: boolean) => {
+    if (salvando) return;
+    setSalvando(true);
+    setSalvoOk(false);
+    await new Promise<void>((r) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => r())),
+    );
     try {
       setErro(null);
       salvarAuto(ligar, selecao);
       setAtivoLocal(ligar);
+      setSalvoOk(true);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível salvar.");
+    } finally {
+      setSalvando(false);
     }
   };
 
@@ -117,11 +130,21 @@ function PainelAutoTreino({
           type="button"
           className="botao secundario"
           data-testid="salvar-treino-automatico"
-          onClick={() => aplicar(ativoLocal)}
+          disabled={salvando}
+          aria-busy={salvando}
+          onClick={() => void aplicar(ativoLocal)}
         >
-          Salvar seleção
+          {salvando ? "Salvando…" : "Salvar seleção"}
         </button>
       </div>
+      {salvoOk && !erro && (
+        <p className="texto-suave" role="status" data-testid="treino-auto-salvo">
+          Seleção salva
+          {selecao.length > 0
+            ? ` — ${selecao.length} exercício(s) nos slots da semana.`
+            : "."}
+        </p>
+      )}
       {erro && (
         <p className="aviso erro" role="alert">
           {erro}
@@ -253,29 +276,54 @@ export function CentroTreinamento({ carreira: c }: { carreira: EstadoCarreira })
           </p>
         )}
         <div className="treino-slots-lista">
-          {Array.from({ length: MAX_SESSOES_SEMANA }, (_, i) => {
-            const s = centro.semana.sessoes[i];
-            const ex = s
-              ? EXERCICIOS.find((e) => e.id === s.exercicioId)
-              : null;
-            return (
-              <div
-                key={i}
-                className={`treino-slot ${s ? "concluido" : ""}`}
-                data-testid={`slot-treino-${i}`}
-              >
-                {s && ex ? (
-                  <>
-                    <strong>{ex.nome}</strong>
-                    <span>Nota {s.nota}</span>
-                    <small>CONCLUÍDO</small>
-                  </>
-                ) : (
-                  <span className="texto-suave">Escolher exercício</span>
-                )}
-              </div>
+          {(() => {
+            const feitos = new Set(
+              centro.semana.sessoes.map((s) => s.exercicioId),
             );
-          })}
+            const filaPlanejada = (
+              centro.autoTreino?.exercicioIds ?? []
+            ).filter((id) => !feitos.has(id));
+            let planoIdx = 0;
+            return Array.from({ length: MAX_SESSOES_SEMANA }, (_, i) => {
+              const s = centro.semana.sessoes[i];
+              const ex = s
+                ? EXERCICIOS.find((e) => e.id === s.exercicioId)
+                : null;
+              const planejadoId = !s ? filaPlanejada[planoIdx++] : undefined;
+              const planejado = planejadoId
+                ? EXERCICIOS.find((e) => e.id === planejadoId)
+                : null;
+              return (
+                <div
+                  key={i}
+                  className={`treino-slot ${s ? "concluido" : ""} ${planejado ? "planejado" : ""}`}
+                  data-testid={`slot-treino-${i}`}
+                >
+                  {s && ex ? (
+                    <>
+                      <strong>{ex.nome}</strong>
+                      <span>Nota {s.nota}</span>
+                      <small>CONCLUÍDO</small>
+                    </>
+                  ) : planejado ? (
+                    <>
+                      <strong>{planejado.nome}</strong>
+                      <span className="texto-suave">
+                        {centro.autoTreino?.ativo
+                          ? "Automático na próxima semana"
+                          : "Na sua seleção"}
+                      </span>
+                      <small>PLANEJADO</small>
+                    </>
+                  ) : (
+                    <span className="texto-suave">
+                      Livre — jogue um exercício abaixo
+                    </span>
+                  )}
+                </div>
+              );
+            });
+          })()}
         </div>
       </section>
 

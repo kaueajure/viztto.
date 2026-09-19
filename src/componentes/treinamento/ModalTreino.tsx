@@ -43,6 +43,7 @@ export function ModalTreino({
   const [melhorScore, setMelhorScore] = useState(0);
   const [ultimoScore, setUltimoScore] = useState(0);
   const [replayKey, setReplayKey] = useState(0);
+  const [ocupado, setOcupado] = useState(false);
   const aplicado = useRef(false);
   const sessaoId = useRef(
     `${exercicio.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -73,8 +74,12 @@ export function ModalTreino({
     setFase("jogando");
   };
 
-  const confirmarSessao = (score: number) => {
-    if (aplicado.current) return;
+  const confirmarSessao = async (score: number) => {
+    if (aplicado.current || ocupado) return;
+    setOcupado(true);
+    await new Promise<void>((r) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => r())),
+    );
     aplicado.current = true;
     try {
       const res = onAplicar({
@@ -89,11 +94,17 @@ export function ModalTreino({
       setResultado(null);
       setFase("resultado");
       console.error(erro);
+    } finally {
+      setOcupado(false);
     }
   };
 
-  const confirmarSimular = () => {
-    if (aplicado.current) return;
+  const confirmarSimular = async () => {
+    if (aplicado.current || ocupado) return;
+    setOcupado(true);
+    await new Promise<void>((r) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => r())),
+    );
     aplicado.current = true;
     try {
       const res = onAplicar({
@@ -108,6 +119,8 @@ export function ModalTreino({
       setResultado(null);
       setFase("resultado");
       console.error(erro);
+    } finally {
+      setOcupado(false);
     }
   };
 
@@ -143,13 +156,20 @@ export function ModalTreino({
             <div className="treino-card-acoes">
               <button
                 type="button"
-                className="botao principal"
-                onClick={confirmarSimular}
+                className={`botao principal${ocupado ? " ocupado" : ""}`}
+                onClick={() => void confirmarSimular()}
+                disabled={ocupado}
+                aria-busy={ocupado}
                 data-testid="confirmar-simular"
               >
-                SIMULAR
+                {ocupado ? "Simulando…" : "SIMULAR"}
               </button>
-              <button type="button" className="botao secundario" onClick={onFechar}>
+              <button
+                type="button"
+                className="botao secundario"
+                onClick={onFechar}
+                disabled={ocupado}
+              >
                 Cancelar
               </button>
             </div>
@@ -207,11 +227,15 @@ export function ModalTreino({
               </button>
               <button
                 type="button"
-                className="botao principal"
-                onClick={() => confirmarSessao(scoreConfirmacao)}
+                className={`botao principal${ocupado ? " ocupado" : ""}`}
+                onClick={() => void confirmarSessao(scoreConfirmacao)}
+                disabled={ocupado}
+                aria-busy={ocupado}
                 data-testid="confirmar-treino"
               >
-                CONFIRMAR (NOTA {notaPreview})
+                {ocupado
+                  ? "Salvando…"
+                  : `CONFIRMAR (NOTA ${notaPreview})`}
               </button>
             </div>
           </div>

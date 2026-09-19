@@ -5963,9 +5963,276 @@ main:has(.formulario) {
   opacity: 0.75;
   font-style: italic;
 }
-.matchday-controles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 14px;
+.treino-slot.planejado {
+  border-color: color-mix(in oklab, var(--accent) 45%, var(--border));
+  background: color-mix(in oklab, var(--accent) 8%, var(--surface));
 }
+.treino-slot.planejado small {
+  color: var(--accent);
+}
+
+/* Feedback de ação ocupada (botões síncronos) */
+.botao.ocupado,
+.vz-cta-semana.ocupado,
+button.ocupado {
+  cursor: wait;
+  opacity: 0.92;
+  position: relative;
+}
+.botao.ocupado::after,
+.vz-cta-semana.ocupado::after {
+  content: "";
+  display: inline-block;
+  width: 0.55em;
+  height: 0.55em;
+  margin-left: 0.45em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: vz-spin 0.7s linear infinite;
+  vertical-align: -0.05em;
+}
+@keyframes vz-spin {
+  to { transform: rotate(360deg); }
+}
+.vz-banner-ocupado {
+  background: color-mix(in oklab, var(--accent) 14%, var(--surface));
+  border-color: color-mix(in oklab, var(--accent) 40%, var(--border));
+}
+.vz-shell-ocupado .conteudo-jogo {
+  pointer-events: none;
+  opacity: 0.92;
+}
+@media (prefers-reduced-motion: reduce) {
+  .botao.ocupado::after,
+  .vz-cta-semana.ocupado::after {
+    animation: none;
+    border-right-color: currentColor;
+    opacity: 0.5;
+  }
+}
+
+/* ===== Mobile-only UX (≤768) — não altera desktop ===== */
+@media (max-width: 768px) {
+  /* Espaço para a barra CTA em todas as seções */
+  .vz-shell .conteudo-jogo {
+    padding: 12px 12px calc(88px + env(safe-area-inset-bottom, 0px));
+  }
+  .vz-shell-home .conteudo-home {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Tap targets e tipografia compacta */
+  .vz-shell .botao-icone {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .vz-shell .barra-superior.vz-topo-acoes {
+    min-height: 52px;
+    padding: 8px 10px;
+    gap: 6px;
+  }
+  .vz-shell .vz-topo-direita {
+    gap: 6px;
+  }
+  .vz-shell .data-topo {
+    font-size: 11px;
+    max-width: 7.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .vz-shell .vz-page-head h1,
+  .vz-shell .conteudo-jogo > h1 {
+    font-size: 1.55rem;
+    line-height: 1.15;
+    margin-bottom: 6px;
+  }
+  .vz-shell .sobretitulo {
+    font-size: 11px;
+  }
+  .vz-shell .painel {
+    padding: 14px 12px;
+    margin-bottom: 12px;
+  }
+  .vz-shell .painel h2 {
+    font-size: 13px;
+    margin-bottom: 8px;
+  }
+  .vz-shell .texto-suave {
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  /* CTA mobile: labels claros */
+  .vz-cta-mobile-bar {
+    gap: 8px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+  .vz-cta-mobile-bar time {
+    display: none;
+  }
+  .vz-cta-mobile-bar .vz-cta-semana-grupo .vz-cta-semana {
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    min-height: 46px;
+  }
+
+  /* Classificação: só Pos · Clube · J · SG · PTS */
+  .vz-shell .tabela-liga:not(.compacta) th:nth-child(n + 4):nth-child(-n + 8),
+  .vz-shell .tabela-liga:not(.compacta) td:nth-child(n + 4):nth-child(-n + 8) {
+    display: none;
+  }
+  .vz-shell .tabela-liga:not(.compacta) th:nth-child(11),
+  .vz-shell .tabela-liga:not(.compacta) td:nth-child(11) {
+    display: none;
+  }
+  .vz-shell .tabela-liga {
+    font-size: 12px;
+  }
+  .vz-shell .tabela-liga th,
+  .vz-shell .tabela-liga td {
+    padding: 8px 6px;
+  }
+  .vz-shell .legenda-zonas {
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    font-size: 11px;
+  }
+
+  /* Calendário: linhas empilhadas e legíveis */
+  .vz-shell .linha-jogo {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    padding: 12px 10px;
+  }
+  .vz-shell .seletor-rodada {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .vz-shell .seletor-rodada .botao,
+  .vz-shell .seletor-rodada button {
+    min-height: 40px;
+    font-size: 12px;
+  }
+
+  /* Matchday: ocupa a tela */
+  .vz-shell .sobreposicao:has(.matchday-modal) {
+    padding: 0;
+    align-items: stretch;
+  }
+  .resumo-partida.matchday-modal {
+    width: 100%;
+    max-width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .matchday-modal .placar-final > b {
+    font-size: 42px;
+  }
+  .matchday-modal .placar-final strong {
+    font-size: 13px;
+    height: auto;
+    max-height: 2.6em;
+  }
+  .matchday-briefing {
+    font-size: 13px;
+    margin: 10px 0 16px;
+    gap: 6px;
+  }
+  .matchday-acoes .botao,
+  .matchday-opcoes .botao,
+  .matchday-controles .botao {
+    min-height: 48px;
+    width: 100%;
+  }
+  .matchday-controles {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .matchday-controles .botao:last-child {
+    grid-column: 1 / -1;
+  }
+  .matchday-vivo .matchday-cronologia {
+    min-height: 0;
+  }
+
+  /* Treino compacto */
+  .vz-shell .treino-grade {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .vz-shell .treino-card {
+    padding: 12px;
+  }
+  .vz-shell .treino-card-acoes .botao {
+    min-height: 44px;
+    flex: 1;
+  }
+  .vz-shell .treino-slots-lista {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .vz-shell .treino-auto-escolhas {
+    gap: 6px;
+  }
+  .vz-shell .treino-auto-chip {
+    min-height: 40px;
+    font-size: 12px;
+  }
+  .treino-modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: 100dvh;
+    border-radius: 0;
+    margin: 0;
+  }
+  .treino-modal-fundo {
+    padding: 0;
+    align-items: stretch;
+  }
+
+  /* Clube / elenco */
+  .vz-shell .tabela-elenco {
+    font-size: 12px;
+  }
+  .vz-shell .filtros {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .vz-shell .filtros button {
+    min-height: 40px;
+    padding: 8px 12px;
+  }
+
+  /* Drawer: itens maiores e claros */
+  .vz-shell .barra-lateral nav a {
+    min-height: 48px;
+    padding: 12px 16px;
+    font-size: 15px;
+    gap: 12px;
+  }
+  .vz-shell .barra-lateral .marca-lateral {
+    padding: 14px 16px;
+  }
+
+  /* Mercado / propostas */
+  .vz-shell .oferta-inicio {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .vz-shell .propostas-inicio {
+    padding: 14px;
+  }
+
+  /* Dialogos fullscreen-ish */
+  .vz-shell .dialogo {
+    width: calc(100% - 24px);
+    max-width: 100%;
+    max-height: calc(100dvh - 24px);
+    overflow: auto;
+  }
+}
+

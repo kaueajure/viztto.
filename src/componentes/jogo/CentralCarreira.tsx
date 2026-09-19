@@ -1,5 +1,6 @@
 "use client";
 import { useFocoModal } from "@/componentes/interface/useFocoModal";
+import { useAcaoOcupada } from "@/componentes/interface/useAcaoOcupada";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -57,10 +58,8 @@ const SIDEBAR = [
 
 function rotuloTemporada(
   c: NonNullable<ReturnType<typeof useJogoStore.getState>["carreira"]>,
-  ocupado: boolean,
 ): string | null {
   if (c.aposentado) return "Aposentado";
-  if (ocupado) return "Simulando…";
   if (c.temporada.encerrada) return "Próxima temporada";
   return null;
 }
@@ -96,7 +95,10 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
       "excluir" | "reiniciar" | "aposentar" | null
     >(null),
     [resumo, definirResumo] = useState(false),
-    [ocupado, definirOcupado] = useState(false);
+    [acaoCta, definirAcaoCta] = useState<"simular" | "acompanhar" | null>(
+      null,
+    );
+  const { ocupado, executar } = useAcaoOcupada();
   useFocoModal(
     configuracoes,
     () => {
@@ -142,34 +144,55 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
   );
   const naoLidas = c.noticias.filter((n) => !n.lida).length;
 
-  async function comTemporadaOu(acao: () => void) {
-    if (ocupado) return;
-    definirOcupado(true);
-    await new Promise<void>((resolver) =>
-      requestAnimationFrame(() => resolver()),
-    );
-    if (useJogoStore.getState().carreira?.temporada.encerrada)
-      proximaTemporada();
-    else {
-      acao();
-      definirResumo(false);
+  async function comTemporadaOu(
+    modo: "simular" | "acompanhar",
+    acao: () => void,
+  ) {
+    definirAcaoCta(modo);
+    try {
+      await executar(() => {
+        if (useJogoStore.getState().carreira?.temporada.encerrada)
+          proximaTemporada();
+        else {
+          acao();
+          definirResumo(false);
+        }
+      });
+    } finally {
+      definirAcaoCta(null);
     }
-    definirOcupado(false);
   }
 
   async function simularTempo() {
-    await comTemporadaOu(() => simularSemana());
+    await comTemporadaOu("simular", () => simularSemana());
   }
 
   async function acompanharTempo() {
-    await comTemporadaOu(() => acompanharSemana());
+    await comTemporadaOu("acompanhar", () => acompanharSemana());
   }
 
-  const rotuloUnico = rotuloTemporada(c, ocupado);
+  const rotuloUnico = rotuloTemporada(c);
   const ctaDesabilitado = ocupado || !!c.aposentado;
+  const rotuloBotaoUnico = ocupado
+    ? acaoCta === "acompanhar"
+      ? "Abrindo…"
+      : "Simulando…"
+    : rotuloUnico;
+  const rotuloSimular = acaoCta === "simular" ? "Simulando…" : "Simular semana";
+  const rotuloSimularMobile =
+    acaoCta === "simular" ? "Simulando…" : "Simular";
+  const rotuloAcompanhar =
+    acaoCta === "acompanhar" ? "Abrindo…" : "Acompanhar";
+  const msgOcupado =
+    acaoCta === "acompanhar"
+      ? "Abrindo o Matchday…"
+      : "Simulando a semana… aguarde.";
 
   return (
-    <div className={`estrutura-jogo vz-shell${secao === "" ? " vz-shell-home" : ""}`}>
+    <div
+      className={`estrutura-jogo vz-shell${secao === "" ? " vz-shell-home" : ""}${ocupado ? " vz-shell-ocupado" : ""}`}
+      aria-busy={ocupado}
+    >
       <aside className={`barra-lateral ${menu ? "aberta" : ""}`}>
         <div className="marca-lateral">
           <Link href="/carreira" className="marca vz-logo">
@@ -288,34 +311,37 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
             {rotuloUnico ? (
               <button
                 type="button"
-                className="vz-cta-semana vz-cta-desktop"
+                className={`vz-cta-semana vz-cta-desktop${ocupado ? " ocupado" : ""}`}
                 data-testid="advance-week"
                 onClick={simularTempo}
                 disabled={ctaDesabilitado}
+                aria-busy={ocupado}
               >
-                {rotuloUnico}
-                {!c.aposentado && <ArrowRight size={16} />}
+                {rotuloBotaoUnico}
+                {!c.aposentado && !ocupado && <ArrowRight size={16} />}
               </button>
             ) : (
               <div className="vz-cta-semana-grupo vz-cta-desktop">
                 <button
                   type="button"
-                  className="vz-cta-semana secundario"
+                  className={`vz-cta-semana secundario${ocupado ? " ocupado" : ""}`}
                   data-testid="simulate-week"
                   onClick={simularTempo}
                   disabled={ctaDesabilitado}
+                  aria-busy={ocupado}
                 >
-                  Simular semana
+                  {rotuloSimular}
                 </button>
                 <button
                   type="button"
-                  className="vz-cta-semana"
+                  className={`vz-cta-semana${ocupado ? " ocupado" : ""}`}
                   data-testid="advance-week"
                   onClick={acompanharTempo}
                   disabled={ctaDesabilitado}
+                  aria-busy={ocupado}
                 >
-                  Acompanhar
-                  <ArrowRight size={16} />
+                  {rotuloAcompanhar}
+                  {!ocupado && <ArrowRight size={16} />}
                 </button>
               </div>
             )}
@@ -323,6 +349,11 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
         </header>
         <div className="vz-shell-floats" aria-live="polite">
           <EstadoPersistencia />
+          {ocupado && (
+            <p className="aviso vz-banner-float vz-banner-ocupado" role="status">
+              {msgOcupado}
+            </p>
+          )}
           {erro && (
             <p className="aviso erro vz-banner-float" role="alert">
               {erro}
@@ -370,34 +401,37 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
           {rotuloUnico ? (
             <button
               type="button"
-              className="vz-cta-semana vz-cta-mobile"
+              className={`vz-cta-semana vz-cta-mobile${ocupado ? " ocupado" : ""}`}
               data-testid="advance-week-mobile"
               onClick={simularTempo}
               disabled={ctaDesabilitado}
+              aria-busy={ocupado}
             >
-              {rotuloUnico}
-              {!c.aposentado && <ArrowRight size={16} />}
+              {rotuloBotaoUnico}
+              {!c.aposentado && !ocupado && <ArrowRight size={16} />}
             </button>
           ) : (
             <div className="vz-cta-semana-grupo">
               <button
                 type="button"
-                className="vz-cta-semana secundario vz-cta-mobile"
+                className={`vz-cta-semana secundario vz-cta-mobile${ocupado ? " ocupado" : ""}`}
                 data-testid="simulate-week-mobile"
                 onClick={simularTempo}
                 disabled={ctaDesabilitado}
+                aria-busy={ocupado}
               >
-                Simular
+                {rotuloSimularMobile}
               </button>
               <button
                 type="button"
-                className="vz-cta-semana vz-cta-mobile"
+                className={`vz-cta-semana vz-cta-mobile${ocupado ? " ocupado" : ""}`}
                 data-testid="advance-week-mobile"
                 onClick={acompanharTempo}
                 disabled={ctaDesabilitado}
+                aria-busy={ocupado}
               >
-                Acompanhar
-                <ArrowRight size={16} />
+                {rotuloAcompanhar}
+                {!ocupado && <ArrowRight size={16} />}
               </button>
             </div>
           )}
@@ -469,6 +503,7 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
                   <button
                     className="botao perigo"
                     disabled={operando}
+                    aria-busy={operando}
                     onClick={async () => {
                       if (confirmacao === "excluir") {
                         if (!(await excluir())) return;
@@ -482,12 +517,15 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
                       definirConfirmacao(null);
                     }}
                   >
-                    Confirmar{" "}
-                    {confirmacao === "excluir"
-                      ? "exclusão"
-                      : confirmacao === "reiniciar"
-                        ? "reinício"
-                        : "aposentadoria"}
+                    {operando
+                      ? "Processando…"
+                      : `Confirmar ${
+                          confirmacao === "excluir"
+                            ? "exclusão"
+                            : confirmacao === "reiniciar"
+                              ? "reinício"
+                              : "aposentadoria"
+                        }`}
                   </button>
                 </div>
               </>
