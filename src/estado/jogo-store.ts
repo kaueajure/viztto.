@@ -134,7 +134,8 @@ interface JogoStore {
 const BACKOFF_MS = [1000, 2000, 4000, 8000, 15000, 30000] as const;
 const FALHAS_ANTES_BANNER = 3;
 
-function classificarFalha(erro: unknown): {
+/** Classifica erros de persistência/criação para UI e política de retry. */
+export function classificarFalha(erro: unknown): {
   retentavel: boolean;
   conflito: boolean;
   codigo: string;
@@ -165,9 +166,30 @@ function classificarFalha(erro: unknown): {
       mensagem: mensagemAmigavelPersistencia(codigo, erro.message),
     };
   }
+  // Zod 4: ZodError não estende Error — detectar por issues/name antes do fallback.
+  const comoObjeto = erro as { name?: string; message?: string; issues?: unknown } | null;
+  const ehZod =
+    !!comoObjeto &&
+    (comoObjeto.name === "ZodError" ||
+      (Array.isArray(comoObjeto.issues) && typeof comoObjeto.message === "string"));
+  if (ehZod) {
+    return {
+      retentavel: false,
+      conflito: false,
+      codigo: CODIGOS_ERRO_SAVE.SAVE_INVALID,
+      mensagem: mensagemAmigavelPersistencia(
+        CODIGOS_ERRO_SAVE.SAVE_INVALID,
+        comoObjeto!.message ?? "",
+      ),
+    };
+  }
   if (erro instanceof Error) {
     const texto = erro.message;
-    if (/Campo inesperado|Save inválido|incompleto|validar|Zod|Payload/i.test(texto))
+    if (
+      /Campo inesperado|Save inválido|incompleto|validar|Zod|Payload|Estrutura de save|Data inválida|Texto excessivo|Vínculos do save|Universo incompleto|Referência|IDs duplicados|Jogador gerado|Partida de outra liga|Temporada inválida/i.test(
+        texto,
+      )
+    )
       return {
         retentavel: false,
         conflito: false,
@@ -194,6 +216,16 @@ function classificarFalha(erro: unknown): {
           texto,
         ),
       };
+    // Erros de domínio/cliente (ex.: TypeError na criação) não são falha de rede.
+    return {
+      retentavel: false,
+      conflito: false,
+      codigo: CODIGOS_ERRO_SAVE.SAVE_INVALID,
+      mensagem: mensagemAmigavelPersistencia(
+        CODIGOS_ERRO_SAVE.SAVE_INVALID,
+        texto,
+      ),
+    };
   }
   return {
     retentavel: true,

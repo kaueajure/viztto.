@@ -278,12 +278,21 @@ export function hidratarElencoClube(
     (a, b) => (b.valorMercado ?? 0) - (a.valorMercado ?? 0),
   );
   return ordenados.map((jogador, indice) => {
-    if ("overall" in jogador && typeof jogador.overall === "number" && "potencial" in jogador) {
+    const mundo = jogador as JogadorMundo;
+    const jaCompleto =
+      typeof mundo.overall === "number" &&
+      typeof mundo.potencial === "number" &&
+      typeof mundo.posicaoPrincipal === "string" &&
+      Array.isArray(mundo.posicoesSecundarias) &&
+      typeof mundo.forma === "number";
+    // JogadorMundo já hidratado: preserva forma/moral/status. Snapshot só com
+    // overall/potencial (ratings) ainda passa por criarJogadorMundo.
+    if (jaCompleto) {
       return {
-        ...jogador,
+        ...mundo,
         clubeId: clube.id,
-        idade: jogador.idade ?? 24,
-      } as JogadorMundo;
+        idade: mundo.idade ?? 24,
+      };
     }
     return criarJogadorMundo(jogador as DadosImportadosJogador, {
       clubeId: clube.id,

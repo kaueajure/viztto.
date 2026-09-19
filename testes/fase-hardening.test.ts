@@ -473,6 +473,10 @@ describe("Hardening — substituições e hydrate", () => {
     expect(out[0]!.overall).toBe(79);
     expect(out[0]!.potencial).toBe(84);
     expect(out[0]!.atributos?.finalizacao).toBe(85);
+    expect(out[0]!.posicaoPrincipal).toBe("CA");
+    expect(Array.isArray(out[0]!.posicoesSecundarias)).toBe(true);
+    expect(typeof out[0]!.forma).toBe("number");
+    expect(typeof out[0]!.moral).toBe("number");
     const criado = criarJogadorMundo(bruto as never, {
       clubeId: "c",
       reputacaoClube: 80,

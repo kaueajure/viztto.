@@ -59,7 +59,7 @@ export function pesoCompatibilidade(
   if (candidato.posicaoPrincipal === slot) return 1;
   if (slot === "SA" && ["CA", "MEI", "PD", "PE"].includes(candidato.posicaoPrincipal))
     return 0.85;
-  if (candidato.posicoesSecundarias.includes(slot as Posicao)) return 0.9;
+  if ((candidato.posicoesSecundarias ?? []).includes(slot as Posicao)) return 0.9;
 
   const compativeis = slotsCompativeis(candidato.posicaoBruta);
   if (compativeis.includes(slot)) return 0.75;
