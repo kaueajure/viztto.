@@ -59,6 +59,11 @@ import {
   podeAposentar,
 } from "@/simulacao/elenco/evolucao-mundo";
 import { avancarLigasExternas } from "@/simulacao/mundo/avancar-ligas";
+import {
+  clonarCarreiraParaAvanco,
+  materializarClubesExternos,
+  materializarTemporadasExternas,
+} from "@/simulacao/carreira/clonar-avanco";
 import { gerarDecisoesSemana } from "@/simulacao/decisoes/decisoes";
 import {
   estaSemClube,
@@ -152,7 +157,7 @@ export function prepararSemana(estado: EstadoCarreira): ContextoSemana {
   }
 
   const hierarquiaAntes = avaliarHierarquia(estado);
-  let carreira = structuredClone(estado);
+  let carreira = clonarCarreiraParaAvanco(estado);
   const aleatorio = new GeradorAleatorio(carreira.estadoAleatorio);
   let j = carreira.jogador;
   if (!carreira.relacionamentos)
@@ -505,6 +510,9 @@ export function finalizarSemana(ctx: ContextoSemana): EstadoCarreira {
     );
   }
 
+  // Ligas externas eram compartilhadas no clone seletivo — materializa antes de mutar.
+  materializarClubesExternos(carreira);
+  materializarTemporadasExternas(carreira);
   avancarLigasExternas(carreira, aleatorio);
 
   const ids = carreira.clubes

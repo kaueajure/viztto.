@@ -38,6 +38,7 @@ import {
   papelPrometidoPara,
   proximaAberturaJanela,
   reputacaoCompativel,
+  avaliarNecessidadeElenco,
   resolverJanela,
 } from "./necessidade";
 
@@ -223,11 +224,20 @@ function processarMercadoNpc(
   const compradores = [...carreira.clubes].sort(
     () => aleatorio.proximo() - 0.5,
   );
+  const ligaPorClubeId = new Map<string, ReturnType<typeof ligaDoClube>>();
+  for (const c of carreira.clubes) {
+    ligaPorClubeId.set(
+      c.id,
+      carreira.ligas.find((l) => l.id === c.ligaId) ?? carreira.liga,
+    );
+  }
+  const clubePorId = new Map(carreira.clubes.map((c) => [c.id, c]));
   let feitos = 0;
   for (const comprador of compradores) {
     if (feitos >= 3) break;
     if (!aleatorio.chance(0.22)) continue;
-    const ligaComp = ligaDoClube(carreira, comprador.id);
+    const ligaComp = ligaPorClubeId.get(comprador.id) ?? carreira.liga;
+    const necessidades = avaliarNecessidadeElenco(comprador);
     let melhor: {
       jogador: JogadorMundo;
       vendedorId: string;
@@ -235,7 +245,7 @@ function processarMercadoNpc(
     } | null = null;
     for (const vendedor of carreira.clubes) {
       if (vendedor.id === comprador.id) continue;
-      const ligaVend = ligaDoClube(carreira, vendedor.id);
+      const ligaVend = ligaPorClubeId.get(vendedor.id) ?? carreira.liga;
       for (const j of vendedor.elenco) {
         if (j.lesionado) continue;
         if (!reputacaoCompativel(j.overall, j.potencial, j.idade, comprador))
@@ -245,6 +255,7 @@ function processarMercadoNpc(
           j,
           ligaVend.reputacao,
           ligaComp.reputacao,
+          necessidades,
         );
         if (score < 18) continue;
         if (!clubePodePagar(comprador, j.valorMercado)) continue;
@@ -278,7 +289,7 @@ function processarMercadoNpc(
         carreira,
         "transferencia-mundo",
         `${reg.nomeJogador} troca de clube`,
-        `${carreira.clubes.find((c) => c.id === reg.deClubeId)?.nome} → ${carreira.clubes.find((c) => c.id === reg.paraClubeId)?.nome}.`,
+        `${clubePorId.get(reg.deClubeId)?.nome} → ${clubePorId.get(reg.paraClubeId)?.nome}.`,
         "Imprensa",
         false,
       );

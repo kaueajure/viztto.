@@ -252,6 +252,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let falhasConsecutivas = 0;
   let envioPendente: { payload: ReturnType<typeof serializarCarreira>; revision: number; geracao: number } | null = null;
+  let drenarAposPaint: ReturnType<typeof setTimeout> | null = null;
 
   return create<JogoStore>((set, get) => {
     const limparRetry = () => {
@@ -260,6 +261,19 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
         retryTimer = null;
       }
     };
+    /** Serialização/POST após o paint — não bloqueia a resposta visual do avanço. */
+    const agendarDrenarAposPaint = () => {
+      if (retryTimer || drenarAposPaint || ativo) return;
+      drenarAposPaint = setTimeout(() => {
+        drenarAposPaint = null;
+        void drenar();
+      }, 0);
+    };
+    const limparDrenarAposPaint = () => {
+      if (!drenarAposPaint) return;
+      clearTimeout(drenarAposPaint);
+      drenarAposPaint = null;
+    };
     const agendarRetry = () => {
       if (retryTimer || get().conflito || !get().alteracoesPendentes) return;
       if (geracaoSerializacaoInvalida === geracao) return;
@@ -267,6 +281,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
       const base = BACKOFF_MS[Math.max(0, indice)] ?? BACKOFF_MS[0];
       const jitter = Math.floor(base * 0.15 * Math.random());
       set({ statusPersistencia: "retentando" });
+      limparDrenarAposPaint();
       retryTimer = setTimeout(() => {
         retryTimer = null;
         void drenar();
@@ -295,6 +310,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
       if (info.retentavel && !info.conflito) agendarRetry();
     };
     const drenar = (): Promise<void> => {
+      limparDrenarAposPaint();
       if (ativo) return ativo;
       if (get().operando || get().conflito || !get().alteracoesPendentes)
         return Promise.resolve();
@@ -394,7 +410,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
               ? get().statusPersistencia
               : "pendente",
         });
-        if (!retryTimer) void drenar();
+        if (!retryTimer) agendarDrenarAposPaint();
       } catch (erro) {
         set({
           erro:
@@ -540,9 +556,11 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
       },
       excluir: async () => {
         if (get().operando) return false;
-        set({ operando: true });
-        await ativo;
         limparRetry();
+        // Flush autosave agendado após paint antes de apagar o save.
+        await drenar();
+        if (get().conflito) return false;
+        set({ operando: true });
         try {
           await api.excluir(get().revision ?? 0);
           geracao++;
@@ -624,7 +642,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
                 matchday: null,
                 statusPersistencia: get().salvando ? "salvando" : "pendente",
               });
-              if (!retryTimer) void drenar();
+              agendarDrenarAposPaint();
             }
             return;
           }
@@ -638,7 +656,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
             erro: null,
             statusPersistencia: get().salvando ? "salvando" : "pendente",
           });
-          if (!retryTimer) void drenar();
+          agendarDrenarAposPaint();
         } catch (erro) {
           limparSessaoMatchday();
           set({
@@ -668,7 +686,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
                   ? "salvando"
                   : "pendente",
               });
-              if (!retryTimer) void drenar();
+              agendarDrenarAposPaint();
             }
             return "ok";
           }
@@ -712,7 +730,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
             erro: null,
             statusPersistencia: get().salvando ? "salvando" : "pendente",
           });
-          if (!retryTimer) void drenar();
+          agendarDrenarAposPaint();
         } catch (erro) {
           set({
             erro:
@@ -748,7 +766,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
               erro: null,
               statusPersistencia: get().salvando ? "salvando" : "pendente",
             });
-            if (!retryTimer) void drenar();
+            agendarDrenarAposPaint();
           } else {
             set({ matchday: ui });
           }
@@ -774,7 +792,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
               erro: null,
               statusPersistencia: get().salvando ? "salvando" : "pendente",
             });
-            if (!retryTimer) void drenar();
+            agendarDrenarAposPaint();
           } else {
             set({ matchday: ui });
           }
@@ -800,7 +818,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
               erro: null,
               statusPersistencia: get().salvando ? "salvando" : "pendente",
             });
-            if (!retryTimer) void drenar();
+            agendarDrenarAposPaint();
           } else {
             set({ matchday: ui });
           }
@@ -837,7 +855,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
             erro: null,
             statusPersistencia: get().salvando ? "salvando" : "pendente",
           });
-          if (!retryTimer) void drenar();
+          agendarDrenarAposPaint();
         } catch (erro) {
           limparSessaoMatchday();
           set({

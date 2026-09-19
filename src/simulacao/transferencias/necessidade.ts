@@ -31,45 +31,69 @@ const POSICOES_FOCO: Posicao[] = [
 ];
 
 export function avaliarNecessidadeElenco(clube: Clube): NecessidadePosicao[] {
+  type Acc = {
+    quantidade: number;
+    desfalquesLongos: number;
+    somaIdade: number;
+    overalls: number[];
+    temIdade31: boolean;
+  };
+  const porPos = new Map<Posicao, Acc>();
+  for (const posicao of POSICOES_FOCO) {
+    porPos.set(posicao, {
+      quantidade: 0,
+      desfalquesLongos: 0,
+      somaIdade: 0,
+      overalls: [],
+      temIdade31: false,
+    });
+  }
+  for (const j of clube.elenco) {
+    const candidatas = new Set<Posicao>([
+      j.posicaoPrincipal,
+      ...j.posicoesSecundarias,
+    ]);
+    for (const posicao of candidatas) {
+      const acc = porPos.get(posicao);
+      if (!acc) continue;
+      acc.quantidade++;
+      acc.somaIdade += j.idade;
+      if (j.idade >= 31) acc.temIdade31 = true;
+      const disponivel = !j.lesionado || (j.lesao?.diasRecuperacao ?? 0) < 60;
+      if (!disponivel) acc.desfalquesLongos++;
+      else acc.overalls.push(j.overall);
+    }
+  }
   return POSICOES_FOCO.map((posicao) => {
-    const grupo = clube.elenco.filter(
-      (j) =>
-        j.posicaoPrincipal === posicao ||
-        j.posicoesSecundarias.includes(posicao),
-    );
-    const disponiveis = grupo.filter(
-      (j) => !j.lesionado || (j.lesao?.diasRecuperacao ?? 0) < 60,
-    );
-    const desfalquesLongos = grupo.length - disponiveis.length;
-    const overalls = disponiveis.map((j) => j.overall).sort((a, b) => b - a);
-    const melhorOverall = overalls[0] ?? 0;
+    const acc = porPos.get(posicao)!;
+    acc.overalls.sort((a, b) => b - a);
+    const melhorOverall = acc.overalls[0] ?? 0;
     const mediaOverall =
-      overalls.length > 0
-        ? overalls.reduce((a, b) => a + b, 0) / overalls.length
+      acc.overalls.length > 0
+        ? acc.overalls.reduce((a, b) => a + b, 0) / acc.overalls.length
         : 0;
     const idadeMedia =
-      grupo.length > 0
-        ? grupo.reduce((a, b) => a + b.idade, 0) / grupo.length
-        : 30;
+      acc.quantidade > 0 ? acc.somaIdade / acc.quantidade : 30;
     const gap = clube.forcaGeral - melhorOverall;
+    const disponiveis = acc.overalls.length;
     let nivel: NecessidadePosicao["nivel"] = "baixa";
-    if (disponiveis.length === 0 || gap >= 12) nivel = "critica";
+    if (disponiveis === 0 || gap >= 12) nivel = "critica";
     else if (
       gap >= 7 ||
-      (grupo.length <= 1 && melhorOverall < clube.forcaGeral - 3)
+      (acc.quantidade <= 1 && melhorOverall < clube.forcaGeral - 3)
     )
       nivel = "alta";
     else if (
       gap >= 3 ||
       idadeMedia >= 31 ||
-      desfalquesLongos > 0 ||
-      (grupo.length < 3 && grupo.some((j) => j.idade >= 31))
+      acc.desfalquesLongos > 0 ||
+      (acc.quantidade < 3 && acc.temIdade31)
     )
       nivel = "media";
     return {
       posicao,
-      desfalquesLongos,
-      quantidade: grupo.length,
+      desfalquesLongos: acc.desfalquesLongos,
+      quantidade: acc.quantidade,
       melhorOverall,
       mediaOverall,
       idadeMedia,
@@ -92,8 +116,9 @@ export function interesseEmJogador(
   >,
   ligaOrigemReputacao: number,
   ligaDestinoReputacao: number,
+  necessidadesCache?: NecessidadePosicao[],
 ): number {
-  const necessidades = avaliarNecessidadeElenco(clube);
+  const necessidades = necessidadesCache ?? avaliarNecessidadeElenco(clube);
   const nec = necessidades.find((n) => n.posicao === jogador.posicaoPrincipal);
   const pesoNec =
     nec?.nivel === "critica"

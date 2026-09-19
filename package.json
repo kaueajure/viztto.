@@ -13,6 +13,7 @@
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit",
     "formatar": "prettier --write \"src/**/*.{ts,tsx,css}\" \"testes/**/*.ts\"",
+    "benchmark:semana": "tsx --conditions=react-server scripts/perfil-semana.ts",
     "benchmark:save": "tsx --conditions=react-server scripts/benchmark-save.ts",
     "benchmark:desenvolvimento": "tsx --conditions=react-server scripts/simular-desenvolvimento.ts",
     "benchmark:ratings": "tsx --conditions=react-server scripts/benchmark-ratings.ts",

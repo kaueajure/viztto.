@@ -25,6 +25,11 @@ function pendente<T>() {
   return { promise, resolver, rejeitar };
 }
 
+/** Espera o autosave agendado após o paint (setTimeout 0). */
+async function flushAutosave() {
+  await new Promise<void>((r) => setTimeout(r, 0));
+}
+
 describe("autosave em memória", () => {
   it("uma gravação ativa, agrupa alterações e envia a revisão confirmada", async () => {
     const { store, api } = ambiente();
@@ -34,14 +39,14 @@ describe("autosave em memória", () => {
     store.getState().escolherTreino("drible");
     store.getState().escolherTreino("fisico");
     store.getState().escolherTreino("defesa");
+    await flushAutosave();
     expect(api.salvar).toHaveBeenCalledTimes(1);
     expect(store.getState().alteracoesPendentes).toBe(true);
+    expect(vi.mocked(api.salvar).mock.calls[0]![0].focoTreino).toBe("defesa");
     primeira.resolver({ revision: 1 });
     await store.getState().tentarSalvar();
-    expect(api.salvar).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(api.salvar).mock.calls[1][0].focoTreino).toBe("defesa");
-    expect(vi.mocked(api.salvar).mock.calls[1][1]).toBe(1);
-    expect(store.getState().revision).toBe(2);
+    expect(api.salvar).toHaveBeenCalledTimes(1);
+    expect(store.getState().revision).toBe(1);
     expect(store.getState().alteracoesPendentes).toBe(false);
   });
   it("falha preserva memória e permite retry, conflito não sobrescreve servidor", async () => {

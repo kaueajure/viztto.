@@ -1,4 +1,4 @@
-import type { EstadoCarreira, Liga } from "@/dominio/entidades/modelos";
+import type { EstadoCarreira, Liga, Partida } from "@/dominio/entidades/modelos";
 import { GeradorAleatorio } from "@/utilitarios/aleatorio";
 import { limitar } from "@/utilitarios/formatacao";
 import { simularPartida } from "@/simulacao/partida/motor-partida";
@@ -27,23 +27,29 @@ export function avancarLigasExternas(
 
     const rodada = ++temporada.rodadaAtual;
     const mapa = new Map(clubesLiga.map((c) => [c.id, c]));
+    const partidaPorClube = new Map<string, Partida>();
+
     for (const chave of ["partidas", "partidasBase"] as const) {
-      temporada[chave] = temporada[chave].map((partida) => {
-        if (partida.rodada !== rodada) return partida;
-        return simularPartida(
+      const lista = temporada[chave];
+      for (let i = 0; i < lista.length; i++) {
+        const partida = lista[i]!;
+        if (partida.rodada !== rodada) continue;
+        const resultado = simularPartida(
           partida,
           mapa.get(partida.mandanteId)!,
           mapa.get(partida.visitanteId)!,
           aleatorio,
         );
-      });
+        lista[i] = resultado;
+        if (chave === "partidas") {
+          partidaPorClube.set(resultado.mandanteId, resultado);
+          partidaPorClube.set(resultado.visitanteId, resultado);
+        }
+      }
     }
 
     for (const c of clubesLiga) {
-      const partida = temporada.partidas.find(
-        (p) =>
-          p.rodada === rodada && [p.mandanteId, p.visitanteId].includes(c.id),
-      );
+      const partida = partidaPorClube.get(c.id);
       if (partida?.golsMandante != null) {
         const saldo =
           c.id === partida.mandanteId

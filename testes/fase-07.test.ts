@@ -142,11 +142,12 @@ describe("Fase 07: autosave robusto", () => {
     store.getState().escolherTreino("drible");
     store.getState().escolherTreino("fisico");
     store.getState().escolherTreino("defesa");
+    await new Promise<void>((r) => setTimeout(r, 0));
     expect(api.salvar).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(api.salvar).mock.calls[0]![0].focoTreino).toBe("defesa");
     primeira.resolver({ revision: 1 });
     await store.getState().tentarSalvar();
-    expect(api.salvar).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(api.salvar).mock.calls[1]![0].focoTreino).toBe("defesa");
+    expect(api.salvar).toHaveBeenCalledTimes(1);
     expect(store.getState().alteracoesPendentes).toBe(false);
   });
 
