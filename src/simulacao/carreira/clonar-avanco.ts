@@ -50,15 +50,15 @@ export function clonarClube(c: Clube): Clube {
 /**
  * Clona o estado para avanço semanal sem copiar elenco de ligas externas nem
  * calendários externos (compartilhados até materializar em finalizarSemana).
+ *
+ * Preserva a ordem original de `estado.clubes` (crítica para mercado NPC / RNG
+ * quando o jogador muda de liga).
  */
 export function clonarCarreiraParaAvanco(estado: EstadoCarreira): EstadoCarreira {
   const ligaId = estado.liga.id;
-  const principais: Clube[] = [];
-  const externos: Clube[] = [];
-  for (const c of estado.clubes) {
-    if (c.ligaId === ligaId) principais.push(clonarClube(c));
-    else externos.push(c);
-  }
+  const clubes = estado.clubes.map((c) =>
+    c.ligaId === ligaId ? clonarClube(c) : c,
+  );
 
   const {
     clubes: _c,
@@ -67,7 +67,7 @@ export function clonarCarreiraParaAvanco(estado: EstadoCarreira): EstadoCarreira
   } = estado;
 
   const carreira = structuredClone(resto) as EstadoCarreira;
-  carreira.clubes = [...principais, ...externos];
+  carreira.clubes = clubes;
   // Compartilhado até materializarClubesExternos / materializarTemporadasExternas.
   carreira.temporadasExternas = estado.temporadasExternas;
   return carreira;

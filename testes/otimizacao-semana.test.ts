@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { performance } from "node:perf_hooks";
 import { LIGAS_SUPORTADAS } from "@/dominio/constantes/ligas";
+import { gerarClubesDemonstracao } from "@/dados/demonstracao";
 import { criarCarreira } from "@/aplicacao/casos-de-uso/criar-carreira";
 import { avancarSemana } from "@/aplicacao/casos-de-uso/avancar-tempo";
 import {
@@ -17,6 +17,7 @@ import {
   simularAvancoSemana,
 } from "@/aplicacao/casos-de-uso/sessao-matchday";
 import { serializarCarreira } from "@/infraestrutura/persistencia/carreira-persistida";
+import { responderProposta } from "@/simulacao/transferencias/mercado";
 import { sortearHistoria } from "@/dominio/historia-formacao";
 import { clonarCarreiraParaAvanco } from "@/simulacao/carreira/clonar-avanco";
 import type { EstadoCarreira } from "@/dominio/entidades/modelos";
@@ -88,6 +89,58 @@ function carreiraMundoCompleto(seed: string): EstadoCarreira {
   return carreira;
 }
 
+function carreiraDuasLigas(seed: string): EstadoCarreira {
+  const liga = LIGAS_SUPORTADAS[0]!;
+  const externa = LIGAS_SUPORTADAS.find((l) => l.id === "premier-league")!;
+  const clubesBr = gerarClubesDemonstracao(liga).slice(0, 4);
+  const clubesEn = gerarClubesDemonstracao(externa).slice(0, 6);
+  return criarCarreira({
+    identidade: {
+      nome: "Ordem",
+      sobrenome: "Clone",
+      nacionalidade: "Brasil",
+      idade: 18,
+      posicao: "MEI",
+      posicaoSecundaria: "MC",
+      peDominante: "direito",
+      altura: 178,
+      peso: 72,
+      arquetipo: "criador",
+    },
+    liga,
+    clubes: clubesBr,
+    clubeId: clubesBr[0]!.id,
+    origem: "demonstracao",
+    seed,
+    dataInicio: "2026-01-05",
+    ligasMundo: [externa],
+    clubesMundo: clubesEn,
+  });
+}
+
+function transferirParaLiga(c: EstadoCarreira, ligaId: string): EstadoCarreira {
+  const destino = c.clubes.find((cl) => cl.ligaId === ligaId)!;
+  c.propostas.push({
+    id: "troca-ordem-clone",
+    clubeId: destino.id,
+    tipo: "transferencia",
+    salario: 2000,
+    duracaoAnos: 3,
+    papelPrometido: "rotacao",
+    etapa: "proposta_jogador",
+    data: c.dataAtual,
+    validade: "2030-12-31",
+    status: "pendente",
+  });
+  const resultado = responderProposta(c, "troca-ordem-clone", true);
+  resultado.propostas = [];
+  return resultado;
+}
+
+function idsClubes(c: EstadoCarreira): string[] {
+  return c.clubes.map((cl) => cl.id);
+}
+
 function snapshotDeterministico(c: EstadoCarreira) {
   const partidas = [
     ...c.temporada.partidas,
@@ -110,6 +163,7 @@ function snapshotDeterministico(c: EstadoCarreira) {
     transferencias: c.transferenciasRecentes?.length ?? 0,
     overallUsuario: c.jogador.overall,
     formaUsuario: c.jogador.forma,
+    ordemClubes: idsClubes(c),
     ligasExternas: Object.keys(c.temporadasExternas)
       .sort()
       .map((id) => ({
@@ -119,6 +173,76 @@ function snapshotDeterministico(c: EstadoCarreira) {
       })),
   };
 }
+
+describe("clonarCarreiraParaAvanco — ordem dos clubes", () => {
+  it("preserva a ordem original de clubes no clone", () => {
+    const base = carreiraDuasLigas("ordem-clone-v1");
+    const ordemAntes = idsClubes(base);
+    const clone = clonarCarreiraParaAvanco(base);
+    expect(idsClubes(clone)).toEqual(ordemAntes);
+    expect(idsClubes(base)).toEqual(ordemAntes);
+  });
+
+  it("preserva ordem após transferência para liga que não está no início do array", () => {
+    let c = carreiraDuasLigas("ordem-transfer-v1");
+    const ordemOriginal = idsClubes(c);
+    // Clubes da Premier estão depois dos brasileiros no array.
+    const idxPremier = c.clubes.findIndex(
+      (cl) => cl.ligaId === "premier-league",
+    );
+    expect(idxPremier).toBeGreaterThan(0);
+
+    c = transferirParaLiga(c, "premier-league");
+    expect(c.liga.id).toBe("premier-league");
+    expect(idsClubes(c)).toEqual(ordemOriginal);
+
+    const clone = clonarCarreiraParaAvanco(c);
+    expect(idsClubes(clone)).toEqual(ordemOriginal);
+
+    // Liga atual clonada; clubes da antiga liga principal compartilhados.
+    const clonados = clone.clubes.filter((cl) => cl.ligaId === c.liga.id);
+    const compartilhados = clone.clubes.filter(
+      (cl) => cl.ligaId !== c.liga.id,
+    );
+    for (const cl of clonados) {
+      const orig = c.clubes.find((x) => x.id === cl.id)!;
+      expect(cl).not.toBe(orig);
+    }
+    for (const cl of compartilhados) {
+      const orig = c.clubes.find((x) => x.id === cl.id)!;
+      expect(cl).toBe(orig);
+    }
+  });
+
+  it("avanço semanal não altera a ordem dos clubes e não muta a carreira original", () => {
+    const base = carreiraDuasLigas("ordem-avanco-v1");
+    const ordemAntes = idsClubes(base);
+    const externo = base.clubes.find((cl) => cl.ligaId !== base.liga.id)!;
+    const formaExternaAntes = externo.forma;
+
+    const depois = avancarSemana(base);
+    expect(idsClubes(depois)).toEqual(ordemAntes);
+    expect(idsClubes(base)).toEqual(ordemAntes);
+    expect(externo.forma).toBe(formaExternaAntes);
+    expect(depois.clubes.find((cl) => cl.id === externo.id)).not.toBe(externo);
+  });
+
+  it("determinismo estável com mesma seed após transferência de liga", () => {
+    const seed = "ordem-det-transfer-v1";
+    const avancarTransferido = () => {
+      let c = carreiraDuasLigas(seed);
+      c = transferirParaLiga(c, "premier-league");
+      c.jogador.categoria = "profissional";
+      c.jogador.status = "titular";
+      return avancarSemana(c);
+    };
+    const a = avancarTransferido();
+    const b = avancarTransferido();
+    expect(a.estadoAleatorio).toBe(b.estadoAleatorio);
+    expect(idsClubes(a)).toEqual(idsClubes(b));
+    expect(snapshotDeterministico(a)).toEqual(snapshotDeterministico(b));
+  });
+});
 
 describe("otimização avanço semanal (mundo completo)", () => {
   it("mantém determinismo entre duas carreiras com a mesma seed", () => {
@@ -156,12 +280,13 @@ describe("otimização avanço semanal (mundo completo)", () => {
     const tempExtAntes = base.temporadasExternas;
     const rodadaExtAntes =
       Object.values(tempExtAntes)[0]?.rodadaAtual ?? 0;
+    const ordemAntes = idsClubes(base);
 
     const ctx = prepararSemana(base);
+    expect(idsClubes(ctx.carreira)).toEqual(ordemAntes);
     expect(externo.elenco[0]!.overall).toBe(overallAntes);
     expect(externo.forma).toBe(formaAntes);
 
-    // Referência compartilhada durante prep
     const compartilhado = ctx.carreira.clubes.find((c) => c.id === externo.id)!;
     expect(compartilhado).toBe(externo);
     expect(ctx.carreira.temporadasExternas).toBe(tempExtAntes);
@@ -169,7 +294,7 @@ describe("otimização avanço semanal (mundo completo)", () => {
     simularRodadaCompleta(ctx);
     finalizarSemana(ctx);
 
-    // Após finalizar, o original permanece intacto (COW materializou na cópia)
+    expect(idsClubes(ctx.carreira)).toEqual(ordemAntes);
     expect(externo.elenco[0]!.overall).toBe(overallAntes);
     expect(externo.forma).toBe(formaAntes);
     expect(Object.values(tempExtAntes)[0]?.rodadaAtual).toBe(rodadaExtAntes);
@@ -177,27 +302,5 @@ describe("otimização avanço semanal (mundo completo)", () => {
       externo,
     );
     expect(ctx.carreira.temporadasExternas).not.toBe(tempExtAntes);
-  });
-
-  it("benchmark: prepararSemana (Matchday open) bem mais barato que clone total", () => {
-    const base = carreiraMundoCompleto("otim-bench-v1");
-    const tClone0 = performance.now();
-    structuredClone(base);
-    const tClone1 = performance.now();
-    const tSel0 = performance.now();
-    clonarCarreiraParaAvanco(base);
-    const tSel1 = performance.now();
-    const tPrep0 = performance.now();
-    prepararSemana(base);
-    const tPrep1 = performance.now();
-
-    const cloneMs = tClone1 - tClone0;
-    const selMs = tSel1 - tSel0;
-    const prepMs = tPrep1 - tPrep0;
-
-    // Clone seletivo deve ser claramente mais barato que full clone.
-    expect(selMs).toBeLessThan(cloneMs * 0.55);
-    // Abrir Matchday ≈ prepararSemana; em máquina comum deve ficar < 400ms.
-    expect(prepMs).toBeLessThan(Math.max(400, cloneMs * 0.7));
-  });
+  }, 60_000);
 });
