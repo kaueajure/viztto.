@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { EstadoCarreira } from "@/dominio/entidades/modelos";
 import {
   coletarAcoesAtencao,
@@ -28,6 +28,17 @@ export function FaixaAtencao({ carreira: c }: { carreira: EstadoCarreira }) {
   const [painel, definirPainel] = useState<Painel>(null);
   const tituloId = useId();
   useFocoModal(!!painel, () => definirPainel(null), painel ?? "fechado");
+
+  const decisoesPendentes = (c.decisoes ?? []).filter((d) => !d.resolvida).length;
+  const propostasPendentes = c.propostas.filter(
+    (p) => p.status === "pendente" && p.validade >= c.dataAtual,
+  ).length;
+
+  // Após responder a última decisão/proposta, fecha o overlay vazio.
+  useEffect(() => {
+    if (painel === "decisoes" && decisoesPendentes === 0) definirPainel(null);
+    if (painel === "propostas" && propostasPendentes === 0) definirPainel(null);
+  }, [painel, decisoesPendentes, propostasPendentes]);
 
   if (!principal) return null;
 
@@ -128,7 +139,7 @@ export function FaixaAtencao({ carreira: c }: { carreira: EstadoCarreira }) {
         </div>
       )}
 
-      {(painel === "decisoes" || painel === "propostas") && (
+      {painel === "decisoes" && decisoesPendentes > 0 && (
         <div className="sobreposicao">
           <section
             role="dialog"
@@ -137,9 +148,7 @@ export function FaixaAtencao({ carreira: c }: { carreira: EstadoCarreira }) {
             className="dialogo vz-dialogo-acoes"
           >
             <div className="linha-titulo">
-              <h2 id={`${tituloId}-sub`}>
-                {painel === "decisoes" ? "Decisões" : "Propostas"}
-              </h2>
+              <h2 id={`${tituloId}-sub`}>Decisões</h2>
               <button
                 className="botao-icone"
                 aria-label="Fechar"
@@ -148,11 +157,39 @@ export function FaixaAtencao({ carreira: c }: { carreira: EstadoCarreira }) {
                 <X />
               </button>
             </div>
-            {painel === "decisoes" ? (
-              <DecisoesInicio carreira={c} />
-            ) : (
-              <PropostasInicio carreira={c} />
+            <DecisoesInicio carreira={c} />
+            {acoes.length > 1 && (
+              <button
+                type="button"
+                className="botao-texto espaco"
+                onClick={() => definirPainel("central")}
+              >
+                ← Voltar à central
+              </button>
             )}
+          </section>
+        </div>
+      )}
+
+      {painel === "propostas" && propostasPendentes > 0 && (
+        <div className="sobreposicao">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`${tituloId}-prop`}
+            className="dialogo vz-dialogo-acoes"
+          >
+            <div className="linha-titulo">
+              <h2 id={`${tituloId}-prop`}>Propostas</h2>
+              <button
+                className="botao-icone"
+                aria-label="Fechar"
+                onClick={() => definirPainel(null)}
+              >
+                <X />
+              </button>
+            </div>
+            <PropostasInicio carreira={c} />
             {acoes.length > 1 && (
               <button
                 type="button"

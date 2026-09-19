@@ -30,7 +30,7 @@ export function ResumoPartida({
         aria-labelledby="resumo-titulo"
         className="resumo-partida"
       >
-        <div className="resumo-partida-corpo">
+        <div className="resumo-partida-topo">
           <header>
             <span className="sobretitulo">
               APITO FINAL / RODADA {partida.rodada}
@@ -157,6 +157,9 @@ export function ResumoPartida({
               {ctx.reacaoImprensa && <p>{ctx.reacaoImprensa}</p>}
             </div>
           )}
+        </div>
+
+        <div className="resumo-partida-corpo">
           {acoes.length > 0 && (
             <div className="eventos-partida">
               <span className="rotulo">Principais ações</span>
@@ -178,6 +181,7 @@ export function ResumoPartida({
             ))}
           </div>
         </div>
+
         <footer className="resumo-partida-rodape">
           <button className="botao principal largura-total" onClick={fechar}>
             Voltar à carreira

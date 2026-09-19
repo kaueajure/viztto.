@@ -1741,6 +1741,9 @@ details[open] summary {
   flex-direction: column;
   gap: 0;
 }
+.resumo-partida-topo {
+  flex: 0 0 auto;
+}
 .resumo-partida-corpo {
   flex: 1 1 auto;
   min-height: 0;
@@ -2764,8 +2767,30 @@ details[open] summary {
   height: min(820px, 90svh);
 }
 .resumo-partida.matchday-modal {
-  /* pré / ao-vivo: conteúdo interno faz o scroll quando necessário */
   overflow: auto;
+}
+.resumo-partida.matchday-vivo {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow: hidden;
+}
+.matchday-vivo-topo {
+  flex: 0 0 auto;
+}
+.matchday-vivo .matchday-cronologia {
+  flex: 1 1 auto;
+  min-height: 120px;
+  max-height: none;
+  overflow: auto;
+  margin: 8px 0 0;
+}
+.matchday-vivo-rodape {
+  flex: 0 0 auto;
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
 }
 .placar-final {
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -5735,6 +5760,11 @@ main:has(.formulario) {
 .matchday-cronologia {
   max-height: 220px;
   overflow: auto;
+}
+.matchday-vivo .matchday-decisao {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 .matchday-decisao {
   margin-top: 16px;

@@ -612,8 +612,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
         const atual = get().carreira;
         if (!atual) return;
         try {
-          // Sem partida do usuário: avança a semana. Com partida: simula na hora
-          // e mostra o resumo (sem modal de escolha).
+          // Simular: avança a semana sem abrir modal de partida/resumo.
           const r = iniciarAvancoComMatchday(atual);
           if (r.tipo === "semana") {
             if (r.carreira !== atual) {
@@ -629,36 +628,21 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
             }
             return;
           }
-          set({ matchday: r.ui, erro: null });
           const carreira = simularMatchdayInstantaneo();
-          const partida =
-            [
-              ...carreira.temporada.partidas,
-              ...carreira.temporada.partidasBase,
-            ].find((p) => p.id === carreira.ultimaPartidaId) ?? null;
+          limparSessaoMatchday();
           geracao++;
           set({
             carreira,
-            matchday: {
-              ...r.ui,
-              fase: "pos",
-              partida,
-              eventosVisiveis: partida?.eventos ?? [],
-              decisao: null,
-              minutoAtual: 90,
-              golsMandante: partida?.golsMandante ?? 0,
-              golsVisitante: partida?.golsVisitante ?? 0,
-              pressaoMandante: 50,
-              pressaoVisitante: 50,
-              pausado: false,
-            },
+            matchday: null,
             alteracoesPendentes: true,
             erro: null,
             statusPersistencia: get().salvando ? "salvando" : "pendente",
           });
           if (!retryTimer) void drenar();
         } catch (erro) {
+          limparSessaoMatchday();
           set({
+            matchday: null,
             erro:
               erro instanceof Error
                 ? erro.message

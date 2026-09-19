@@ -31,6 +31,7 @@ export function MatchdayModal({
   useFocoModal(true, onFechar);
   const [velocidade, definirVelocidade] = useState<1 | 2>(1);
   const pedindoAvanco = useRef(false);
+  const cronologiaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (sessao.fase !== "ao-vivo") return;
@@ -54,6 +55,12 @@ export function MatchdayModal({
     onAvancarAte,
   ]);
 
+  useEffect(() => {
+    const el = cronologiaRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [sessao.eventosVisiveis.length, sessao.minutoAtual]);
+
   if (sessao.fase === "pos" && sessao.partida) {
     return (
       <ResumoPartida
@@ -71,7 +78,7 @@ export function MatchdayModal({
 
   if (sessao.fase === "ao-vivo") {
     const eventos = sessao.eventosVisiveis;
-    const recentes = eventos.slice(-7);
+    const recentes = eventos.slice(-12);
     const destaque = [...eventos]
       .reverse()
       .find((e) => e.tipo === "gol" || (e.jogador && e.tipo !== "fim"));
@@ -82,67 +89,72 @@ export function MatchdayModal({
           role="dialog"
           aria-modal="true"
           aria-labelledby="matchday-vivo-titulo"
-          className="resumo-partida matchday-modal"
+          className="resumo-partida matchday-modal matchday-vivo"
         >
-          <header>
-            <span className="sobretitulo">
-              MATCHDAY · {sessao.minutoAtual}′
-              {sessao.minutoAtual <= 45
-                ? " · 1º TEMPO"
-                : sessao.minutoAtual < 90
-                  ? " · 2º TEMPO"
-                  : ""}
-            </span>
-            <button
-              className="botao-icone"
-              aria-label="Fechar"
-              onClick={onFechar}
-            >
-              <X />
-            </button>
-          </header>
-          <p className="rotulo" id="matchday-vivo-titulo">
-            {b.competicao} · {b.estadio}
-          </p>
-          <div className="placar-final">
-            <div>
-              <Escudo clube={mandante} tamanho={48} />
-              <strong>{mandante.codigo}</strong>
+          <div className="matchday-vivo-topo">
+            <header>
+              <span className="sobretitulo">
+                MATCHDAY · {sessao.minutoAtual}′
+                {sessao.minutoAtual <= 45
+                  ? " · 1º TEMPO"
+                  : sessao.minutoAtual < 90
+                    ? " · 2º TEMPO"
+                    : ""}
+              </span>
+              <button
+                className="botao-icone"
+                aria-label="Fechar"
+                onClick={onFechar}
+              >
+                <X />
+              </button>
+            </header>
+            <p className="rotulo" id="matchday-vivo-titulo">
+              {b.competicao} · {b.estadio}
+            </p>
+            <div className="placar-final">
+              <div>
+                <Escudo clube={mandante} tamanho={48} />
+                <strong>{mandante.codigo}</strong>
+              </div>
+              <b>
+                {sessao.golsMandante}
+                <span>:</span>
+                {sessao.golsVisitante}
+              </b>
+              <div>
+                <Escudo clube={visitante} tamanho={48} />
+                <strong>{visitante.codigo}</strong>
+              </div>
             </div>
-            <b>
-              {sessao.golsMandante}
-              <span>:</span>
-              {sessao.golsVisitante}
-            </b>
-            <div>
-              <Escudo clube={visitante} tamanho={48} />
-              <strong>{visitante.codigo}</strong>
+
+            <div className="matchday-pressao" aria-hidden>
+              <span>{mandante.codigo}</span>
+              <div className="matchday-pressao-barra">
+                <i style={{ width: `${sessao.pressaoMandante}%` }} />
+              </div>
+              <span>{visitante.codigo}</span>
             </div>
+            <p className="rotulo matchday-pressao-rotulo">
+              Pressão aproximada · {sessao.pressaoMandante}% –{" "}
+              {sessao.pressaoVisitante}%
+            </p>
+
+            {destaque && (
+              <div
+                className={`matchday-destaque-vivo${destaque.tipo === "gol" ? " gol" : ""}${destaque.jogador ? " jogador" : ""}`}
+              >
+                <b>{destaque.minuto}′</b>
+                <span>{destaque.texto}</span>
+                {destaque.tipo === "gol" && <em>GOL</em>}
+              </div>
+            )}
           </div>
 
-          <div className="matchday-pressao" aria-hidden>
-            <span>{mandante.codigo}</span>
-            <div className="matchday-pressao-barra">
-              <i style={{ width: `${sessao.pressaoMandante}%` }} />
-            </div>
-            <span>{visitante.codigo}</span>
-          </div>
-          <p className="rotulo matchday-pressao-rotulo">
-            Pressão aproximada · {sessao.pressaoMandante}% –{" "}
-            {sessao.pressaoVisitante}%
-          </p>
-
-          {destaque && (
-            <div
-              className={`matchday-destaque-vivo${destaque.tipo === "gol" ? " gol" : ""}${destaque.jogador ? " jogador" : ""}`}
-            >
-              <b>{destaque.minuto}′</b>
-              <span>{destaque.texto}</span>
-              {destaque.tipo === "gol" && <em>GOL</em>}
-            </div>
-          )}
-
-          <div className="eventos-partida matchday-cronologia">
+          <div
+            ref={cronologiaRef}
+            className="eventos-partida matchday-cronologia"
+          >
             {recentes.map((e, i) => (
               <div
                 key={`${e.minuto}-${e.tipo}-${i}`}
@@ -163,44 +175,46 @@ export function MatchdayModal({
             ))}
           </div>
 
-          {sessao.decisao ? (
-            <div className="matchday-decisao">
-              <h3>{sessao.decisao.titulo}</h3>
-              <p>{sessao.decisao.texto}</p>
-              <div className="matchday-opcoes">
-                {sessao.decisao.opcoes.map((o) => (
-                  <button
-                    key={o.id}
-                    type="button"
-                    className="botao principal"
-                    onClick={() => onDecidir(o.id)}
-                  >
-                    {o.rotulo}
-                  </button>
-                ))}
+          <div className="matchday-vivo-rodape">
+            {sessao.decisao ? (
+              <div className="matchday-decisao">
+                <h3>{sessao.decisao.titulo}</h3>
+                <p>{sessao.decisao.texto}</p>
+                <div className="matchday-opcoes">
+                  {sessao.decisao.opcoes.map((o) => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      className="botao principal"
+                      onClick={() => onDecidir(o.id)}
+                    >
+                      {o.rotulo}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className="matchday-controles">
-              <button
-                type="button"
-                className={`botao${velocidade === 1 ? " principal" : ""}`}
-                onClick={() => definirVelocidade(1)}
-              >
-                1x
-              </button>
-              <button
-                type="button"
-                className={`botao${velocidade === 2 ? " principal" : ""}`}
-                onClick={() => definirVelocidade(2)}
-              >
-                2x
-              </button>
-              <button type="button" className="botao" onClick={onPularFim}>
-                Pular para o fim
-              </button>
-            </div>
-          )}
+            ) : (
+              <div className="matchday-controles">
+                <button
+                  type="button"
+                  className={`botao${velocidade === 1 ? " principal" : ""}`}
+                  onClick={() => definirVelocidade(1)}
+                >
+                  1x
+                </button>
+                <button
+                  type="button"
+                  className={`botao${velocidade === 2 ? " principal" : ""}`}
+                  onClick={() => definirVelocidade(2)}
+                >
+                  2x
+                </button>
+                <button type="button" className="botao" onClick={onPularFim}>
+                  Pular para o fim
+                </button>
+              </div>
+            )}
+          </div>
         </section>
       </div>
     );
