@@ -247,6 +247,9 @@ export function CalendarioCompeticao({
                 linhas={tabela}
                 clubes={clubesLiga}
                 clubeAtualId={ehMinhaLiga ? c.clubeAtualId : null}
+                ligaId={ligaSel.id}
+                temporadaEncerrada={!!temporada?.encerrada}
+                ligasNoUniverso={c.ligas.map((l) => l.id)}
               />
             </section>
           )}

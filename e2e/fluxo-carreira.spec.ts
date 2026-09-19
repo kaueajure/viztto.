@@ -125,9 +125,21 @@ test("Navegação principal — URLs e headings", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await abrirHomeComFixture(page, "fixture-save-sem-rail.json");
 
-  const rotas: [string, RegExp][] = [
+  // Navegação principal só na sidebar — sem navbar superior de seções.
+  await expect(page.locator(".vz-top-nav")).toHaveCount(0);
+  const navLateral = page.getByRole("navigation", {
+    name: "Navegação da carreira",
+  });
+  await expect(navLateral).toBeVisible();
+  await expect(navLateral.getByRole("link", { name: "Clube" })).toBeVisible();
+  await expect(
+    navLateral.getByRole("link", { name: "Mundo do Futebol" }),
+  ).toBeVisible();
+
+  const rotas: [string, RegExp | null][] = [
     ["/carreira/jogador", /Ana|Teste/i],
     ["/carreira/calendario", /Calendário/i],
+    ["/carreira/clube", null],
     ["/carreira/noticias", /Mensagens/i],
     ["/carreira/mercado", /Mercado/i],
     ["/carreira/contrato", /Contrato/i],
@@ -140,9 +152,16 @@ test("Navegação principal — URLs e headings", async ({ page }) => {
   for (const [url, heading] of rotas) {
     await page.goto(url);
     await expect(page).toHaveURL(new RegExp(url.replace("/", "\\/")));
-    await expect(page.getByRole("heading", { name: heading }).first()).toBeVisible({
-      timeout: 15_000,
-    });
+    if (heading) {
+      await expect(
+        page.getByRole("heading", { name: heading }).first(),
+      ).toBeVisible({ timeout: 15_000 });
+    } else {
+      await expect(page.getByText("CLUBE").first()).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(page.getByRole("heading").first()).toBeVisible();
+    }
   }
 });
 

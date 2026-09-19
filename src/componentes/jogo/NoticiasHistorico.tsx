@@ -193,6 +193,9 @@ export function NoticiasHistorico({
                   linhas={t.classificacao}
                   clubes={c.clubes}
                   clubeAtualId={clubeNaTemporada}
+                  ligaId={ligaIdTemp}
+                  temporadaEncerrada
+                  ligasNoUniverso={c.ligas.map((l) => l.id)}
                 />
                 {temBase && (
                   <>
@@ -201,6 +204,9 @@ export function NoticiasHistorico({
                       linhas={t.classificacaoBase}
                       clubes={c.clubes}
                       clubeAtualId={clubeNaTemporada}
+                      ligaId={ligaIdTemp}
+                      temporadaEncerrada
+                      ligasNoUniverso={c.ligas.map((l) => l.id)}
                     />
                   </>
                 )}

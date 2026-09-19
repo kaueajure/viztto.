@@ -7,7 +7,9 @@ import {
   avancarLigasExternas,
   criarTemporadasExternas,
 } from "@/simulacao/mundo/avancar-ligas";
+import { aplicarPromocaoRebaixamentoMundo } from "@/simulacao/mundo/promocao-rebaixamento";
 import { GeradorAleatorio } from "@/utilitarios/aleatorio";
+
 export function finalizarTemporada(estado: EstadoCarreira): EstadoCarreira {
   if (estado.temporada.encerrada) return estado;
   if (estado.temporada.rodadaAtual < estado.temporada.totalRodadas)
@@ -46,6 +48,7 @@ export function finalizarTemporada(estado: EstadoCarreira): EstadoCarreira {
   }
   return carreira;
 }
+
 export function iniciarProximaTemporada(
   estado: EstadoCarreira,
 ): EstadoCarreira {
@@ -74,7 +77,8 @@ export function iniciarProximaTemporada(
   carreira.jogador.condicionamento = 95;
   carreira.jogador.amarelosAcumulados = 0;
   carreira.jogador.notasRecentes = [];
-  // Ligas maiores podem ainda ter rodadas quando a liga do usuário termina.
+
+  // 1) Drena ligas externas até todas encerrarem (histórico já arquivado nelas).
   const aleatorio = new GeradorAleatorio(carreira.estadoAleatorio);
   const rodadasRestantes = Math.max(
     0,
@@ -84,7 +88,12 @@ export function iniciarProximaTemporada(
   );
   for (let i = 0; i < rodadasRestantes; i++)
     avancarLigasExternas(carreira, aleatorio);
+
+  // 2) Movimentação atômica entre divisões (só pares com ambas encerradas).
+  aplicarPromocaoRebaixamentoMundo(carreira, aleatorio);
   carreira.estadoAleatorio = aleatorio.estado;
+
+  // 3) Recria calendários com os clubes já nas divisões novas.
   carreira.temporada = criarTemporada(
     carreira.clubes.filter((c) => c.ligaId === carreira.liga.id),
     ano,

@@ -114,6 +114,8 @@ export const esquemaNpcDinamico = z
 export const esquemaClubeDinamico = z
   .object({
     id,
+    /** Divisão atual; ausente em saves legados → usa ligaId do catálogo. */
+    ligaId: id.optional(),
     formacaoPreferida: z.enum(FORMACOES),
     goleiroTitularId: id.nullable(),
     titularesIds: z.array(id).max(11),
@@ -130,6 +132,13 @@ export const esquemaClubeDinamico = z
     elenco: z.array(esquemaNpcDinamico).max(500),
   })
   .strict();
+
+function ligaIdEfetivoClube(
+  delta: { id: string; ligaId?: string },
+  clubesBase: Map<string, { ligaId: string }>,
+): string | undefined {
+  return delta.ligaId ?? clubesBase.get(delta.id)?.ligaId;
+}
 
 const transferencias = esquemaCarreira.shape.transferenciasRecentes
   .unwrap()
@@ -296,7 +305,8 @@ export function validarReferenciasCarreiraPersistida(
   const jogadoresVistos = new Set<string>();
   for (const delta of p.clubesDinamicos) {
     const base = clubesBase.get(delta.id);
-    if (!base || !p.ligasIds.includes(base.ligaId))
+    const ligaEfetiva = ligaIdEfetivoClube(delta, clubesBase);
+    if (!base || !ligaEfetiva || !p.ligasIds.includes(ligaEfetiva))
       throw new ErroCompatibilidadeSave();
     if (idsClubes.has(delta.id)) throw new Error("IDs duplicados no save.");
     idsClubes.add(delta.id);
@@ -321,19 +331,23 @@ export function validarReferenciasCarreiraPersistida(
   validarVinculosContratoPersistido(p);
   const ligaAtual = ligasPorId.get(p.ligaId);
   if (!ligaAtual) throw new Error("Liga atual inválida.");
+  const deltasPorId = new Map(p.clubesDinamicos.map((d) => [d.id, d]));
+  const ligaDoClube = (clubeId: string) => {
+    const d = deltasPorId.get(clubeId);
+    return d ? ligaIdEfetivoClube(d, clubesBase) : clubesBase.get(clubeId)?.ligaId;
+  };
   if (p.clubeAtualId !== null) {
-    const clubeAtual = clubesBase.get(p.clubeAtualId);
-    if (clubeAtual?.ligaId !== p.ligaId)
+    if (ligaDoClube(p.clubeAtualId) !== p.ligaId)
       throw new Error("Liga atual inválida.");
   } else {
     const refId = p.ultimoClubeId;
-    const ref = refId ? clubesBase.get(refId) : undefined;
-    if (ref && ref.ligaId !== p.ligaId && !p.ligasIds.includes(ref.ligaId))
+    const refLiga = refId ? ligaDoClube(refId) : undefined;
+    if (refLiga && refLiga !== p.ligaId && !p.ligasIds.includes(refLiga))
       throw new Error("Liga atual inválida.");
   }
   for (const ligaId of p.ligasIds) {
     const qtd = p.clubesDinamicos.filter(
-      (c) => clubesBase.get(c.id)?.ligaId === ligaId,
+      (c) => ligaIdEfetivoClube(c, clubesBase) === ligaId,
     ).length;
     if (qtd < 2 || (ligaId !== p.ligaId && !p.temporadasExternas[ligaId]))
       throw new Error("Universo incompleto.");
@@ -342,7 +356,7 @@ export function validarReferenciasCarreiraPersistida(
     if (!p.ligasIds.includes(ligaId)) throw new Error("Temporada inválida.");
     for (const jogo of [...temporada.partidas,...temporada.partidasBase]) {
       exigirClube(jogo.mandanteId); exigirClube(jogo.visitanteId);
-      if ([jogo.mandanteId,jogo.visitanteId].some(id => clubesBase.get(id)?.ligaId !== ligaId)) throw new Error("Partida de outra liga.");
+      if ([jogo.mandanteId,jogo.visitanteId].some(id => ligaDoClube(id) !== ligaId)) throw new Error("Partida de outra liga.");
     }
     for (const linha of [...temporada.classificacao,...temporada.classificacaoBase]) exigirClube(linha.clubeId);
   }
@@ -407,6 +421,7 @@ export function serializarCarreira(
       })),
     clubesDinamicos: clubes.map((cl) => ({
       id: cl.id,
+      ligaId: cl.ligaId,
       formacaoPreferida: cl.formacaoPreferida,
       goleiroTitularId: cl.goleiroTitularId,
       titularesIds: cl.titularesIds,
@@ -481,7 +496,8 @@ export function hidratarCarreira(
     throw new Error("IDs gerados duplicados.");
   const clubes = p.clubesDinamicos.map((delta) => {
     const base = clubesBase.get(delta.id);
-    if (!base || !p.ligasIds.includes(base.ligaId))
+    const ligaEfetiva = delta.ligaId ?? base?.ligaId;
+    if (!base || !ligaEfetiva || !p.ligasIds.includes(ligaEfetiva))
       throw new ErroCompatibilidadeSave();
     const elenco = delta.elenco.map((j) => {
       const cadastro = j.id.startsWith("gerado-")
@@ -495,7 +511,13 @@ export function hidratarCarreira(
       // caem no catálogo só nesta hidratação; o próximo serialize congela.
       return { ...cadastro, ...j };
     });
-    return { ...base, ...delta, elenco, tamanhoElenco: elenco.length };
+    return {
+      ...base,
+      ...delta,
+      ligaId: ligaEfetiva,
+      elenco,
+      tamanhoElenco: elenco.length,
+    };
   });
   const idsClubes = new Set(clubes.map((c) => c.id));
   if ([...gerados.keys()].some((id) => !vistos.has(id)))

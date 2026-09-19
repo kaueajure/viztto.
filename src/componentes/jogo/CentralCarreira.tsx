@@ -20,6 +20,8 @@ import {
   Activity,
   ChartColumn,
   ArrowRight,
+  Shield,
+  Globe2,
 } from "lucide-react";
 import { EstadoPersistencia } from "./EstadoPersistencia";
 import { badgeMercado } from "./AtencaoCarreira";
@@ -43,20 +45,14 @@ const SIDEBAR = [
   ["jogador", "Perfil", UserRound],
   ["desempenho", "Desempenho", Activity],
   ["calendario", "Calendário", CalendarDays],
-  ["noticias", "Mensagens", Newspaper],
+  ["clube", "Clube", Shield],
+  ["treinamento", "Treinamento", Dumbbell],
   ["mercado", "Transferências", ArrowLeftRight],
+  ["competicao", "Mundo do Futebol", Globe2],
+  ["noticias", "Mensagens", Newspaper],
   ["contrato", "Contrato", FileText],
   ["objetivos", "Objetivos", Target],
   ["historico", "Estatísticas", ChartColumn],
-  ["treinamento", "Treinamento", Dumbbell],
-] as const;
-
-const TOP_NAV = [
-  ["", "Início"],
-  ["jogador", "Minha Carreira"],
-  ["clube", "Clube"],
-  ["mercado", "Transferências"],
-  ["competicao", "Mundo do Futebol"],
 ] as const;
 
 function rotuloTemporada(
@@ -145,23 +141,6 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
     (p) => p.id === c.ultimaPartidaId,
   );
   const naoLidas = c.noticias.filter((n) => !n.lida).length;
-  const topSecao =
-    secao === "" || secao === "noticias"
-      ? ""
-      : secao === "jogador" ||
-          secao === "desempenho" ||
-          secao === "historico" ||
-          secao === "treinamento" ||
-          secao === "objetivos" ||
-          secao === "contrato"
-        ? "jogador"
-        : secao === "clube"
-          ? "clube"
-          : secao === "mercado"
-            ? "mercado"
-            : secao === "competicao" || secao === "calendario"
-              ? "competicao"
-              : "";
 
   async function comTemporadaOu(acao: () => void) {
     if (ocupado) return;
@@ -269,7 +248,7 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
         />
       )}
       <div className="area-jogo">
-        <header className="barra-superior">
+        <header className="barra-superior vz-topo-acoes">
           <button
             className="botao-icone abrir-menu"
             aria-label="Abrir menu"
@@ -277,18 +256,6 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
           >
             <Menu />
           </button>
-          <nav className="vz-top-nav" aria-label="Seções principais">
-            {TOP_NAV.map(([rota, nome]) => (
-              <Link
-                key={rota + nome}
-                href={`/carreira${rota ? `/${rota}` : ""}`}
-                className={topSecao === rota ? "ativo" : ""}
-                aria-current={topSecao === rota ? "page" : undefined}
-              >
-                {nome}
-              </Link>
-            ))}
-          </nav>
           <div className="vz-topo-direita">
             <Link
               href="/carreira/noticias"
