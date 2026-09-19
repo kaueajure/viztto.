@@ -71,18 +71,20 @@ test.describe("Home — breakpoints e viewports", () => {
 
       if (vp.cta === "mobile") {
         await expect(page.locator(".vz-cta-desktop")).toBeHidden();
+        await expect(page.locator(".vz-cta-mobile-bar")).toBeVisible();
         await expectFullyVisibleInViewport(
-          page
-            .getByTestId("advance-week-mobile")
-            .or(page.locator(".vz-cta-mobile")),
+          page.getByTestId("simulate-week-mobile"),
+        );
+        await expectFullyVisibleInViewport(
+          page.getByTestId("advance-week-mobile"),
         );
       } else {
         await expect(page.locator(".vz-cta-mobile-bar")).toBeHidden();
         await expectFullyVisibleInViewport(
-          page
-            .getByTestId("advance-week")
-            .or(page.locator(".vz-cta-desktop"))
-            .first(),
+          page.getByTestId("simulate-week"),
+        );
+        await expectFullyVisibleInViewport(
+          page.getByTestId("advance-week"),
         );
       }
 
