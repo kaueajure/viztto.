@@ -22,9 +22,12 @@ describe("fase-12 UX v2 — arquitetura Home", () => {
     expect(inicio).toMatch(/vz-home-grid/);
   });
 
-  it("CTA avançar semana fica no topbar do shell", () => {
+  it("CTA da semana fica no topbar com Simular e Acompanhar", () => {
     expect(central).toMatch(/vz-cta-semana/);
-    expect(central).toMatch(/Avançar semana/);
+    expect(central).toMatch(/Simular semana/);
+    expect(central).toMatch(/Acompanhar/);
+    expect(central).toMatch(/simulate-week/);
+    expect(central).toMatch(/advance-week/);
   });
 
   it("sidebar chama Treinamento, não Personalização", () => {

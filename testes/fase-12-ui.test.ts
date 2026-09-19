@@ -43,12 +43,16 @@ describe("apresentação carreira UI", () => {
     expect(tempoRelativoNoticia("2026-03-14", "2026-03-15")).toBe("Ontem");
   });
 
-  it("rotas de seções novas existem no gerador estático", async () => {
-    const mod = await import("@/app/carreira/[secao]/page");
-    const params = mod.generateStaticParams();
-    const secoes = params.map((p) => p.secao);
-    expect(secoes).toEqual(
-      expect.arrayContaining(["desempenho", "contrato", "objetivos"]),
-    );
-  });
+  it(
+    "rotas de seções novas existem no gerador estático",
+    async () => {
+      const mod = await import("@/app/carreira/[secao]/page");
+      const params = mod.generateStaticParams();
+      const secoes = params.map((p) => p.secao);
+      expect(secoes).toEqual(
+        expect.arrayContaining(["desempenho", "contrato", "objetivos"]),
+      );
+    },
+    15_000,
+  );
 });

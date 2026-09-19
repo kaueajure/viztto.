@@ -101,6 +101,10 @@ export function iniciarAvancoComMatchday(
   if (estado.temporada.encerrada) {
     return { tipo: "semana", carreira: estado };
   }
+  // Retomar sessão em andamento — evita reroll de RNG ao reabrir.
+  if (sessao) {
+    return { tipo: "matchday", ui: sessao.ui };
+  }
   const ctx = prepararSemana(estado);
   if (!ctx.briefing || !ctx.partidaUsuarioId) {
     simularRodadaCompleta(ctx);
@@ -124,6 +128,57 @@ export function iniciarAvancoComMatchday(
     },
   };
   return { tipo: "matchday", ui: sessao.ui };
+}
+
+/** Simula a semana (partida do usuário instantânea, se houver). */
+export function simularAvancoSemana(estado: EstadoCarreira): EstadoCarreira {
+  if (estado.temporada.encerrada) return estado;
+  if (sessao) {
+    // Sessão aberta: conclui sem regenerar.
+    if (sessao.ui.fase === "pos") {
+      const carreira = sessao.ctx.carreira;
+      limparSessaoMatchday();
+      return carreira;
+    }
+    if (sessao.motor && sessao.ui.fase === "ao-vivo") {
+      concluirMotorNoPos();
+      const carreira = sessao.ctx.carreira;
+      limparSessaoMatchday();
+      return carreira;
+    }
+    const carreira = simularMatchdayInstantaneo();
+    limparSessaoMatchday();
+    return carreira;
+  }
+  const ctx = prepararSemana(estado);
+  simularRodadaCompleta(ctx);
+  return finalizarSemana(ctx);
+}
+
+/**
+ * Fecha o Matchday sem permitir abandonar o resultado.
+ * Pré/ao-vivo: conclui a partida e grava a carreira antes de limpar a sessão.
+ */
+export function fecharMatchdayResolvendo(): {
+  carreira: EstadoCarreira;
+  partida: Partida | null;
+} {
+  if (!sessao) throw new Error("Matchday não iniciado.");
+  if (sessao.ui.fase === "pos") {
+    const carreira = sessao.ctx.carreira;
+    const partida = sessao.ui.partida;
+    limparSessaoMatchday();
+    return { carreira, partida };
+  }
+  if (sessao.motor && sessao.ui.fase === "ao-vivo") {
+    concluirMotorNoPos();
+  } else {
+    simularMatchdayInstantaneo();
+  }
+  const carreira = sessao.ctx.carreira;
+  const partida = sessao.ui.partida;
+  limparSessaoMatchday();
+  return { carreira, partida };
 }
 
 export function simularMatchdayInstantaneo(): EstadoCarreira {
@@ -247,7 +302,5 @@ export function obterCarreiraAposMatchday(): EstadoCarreira {
 }
 
 export function fecharMatchday(): EstadoCarreira {
-  const carreira = obterCarreiraAposMatchday();
-  limparSessaoMatchday();
-  return carreira;
+  return fecharMatchdayResolvendo().carreira;
 }

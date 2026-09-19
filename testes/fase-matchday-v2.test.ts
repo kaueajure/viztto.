@@ -286,3 +286,114 @@ describe("estatísticas e impactos", () => {
     expect(Math.abs(delta - (partida.contextoMatchday!.impactoTreinador))).toBeLessThan(0.15);
   });
 });
+
+describe("instrução só em campo + anti-reroll", () => {
+  it("instrução individual no banco não altera placar vs sem instrução agressiva", () => {
+    const base = nova("instrucao-banco");
+    base.jogador.categoria = "profissional";
+    base.jogador.status = "reserva";
+
+    const rodada = (instrucao: "finalizacoes" | "simples") => {
+      const ctx = prepararSemana(structuredClone(base));
+      if (!ctx.partidaUsuarioId || !ctx.clube) return null;
+      ctx.escalacaoPreparada = "banco";
+      if (ctx.briefing) {
+        ctx.briefing.escalacao = "banco";
+        ctx.briefing.instrucao = instrucao;
+      }
+      const { motor } = iniciarMatchdayInterativo(ctx);
+      // Força entrada tardia: só entra aos 80' — quase toda a partida no banco
+      if (motor.participacao) {
+        motor.participacao.entrada = 80;
+        motor.participacao.saida = 90;
+        motor.participacao.minutos = 10;
+        motor.participacao.escalacao = "banco";
+      }
+      motor.instrucao = instrucao;
+      let m = avancarMotorCausal(motor, ctx.aleatorio, 75);
+      while (m.decisaoPendente) {
+        m = responderDecisaoMotor(m, "neutro", ctx.aleatorio, m.minutoSimulado);
+      }
+      return {
+        golsM: m.golsMandante,
+        golsV: m.golsVisitante,
+        eventosAntes: m.eventos.filter((e) => e.minuto < 80).length,
+      };
+    };
+
+    const agressivo = rodada("finalizacoes");
+    const simples = rodada("simples");
+    if (!agressivo || !simples) return;
+    // Até o minuto 75 o jogador está no banco: instrução não deve mudar o placar.
+    expect(agressivo.golsM).toBe(simples.golsM);
+    expect(agressivo.golsV).toBe(simples.golsV);
+  });
+
+  it("fechar Matchday em pré conclui a semana e reabrir não regenera sessão", async () => {
+    const {
+      iniciarAvancoComMatchday,
+      limparSessaoMatchday,
+      fecharMatchdayResolvendo,
+      temSessaoMatchday,
+      obterSessaoMatchdayUI,
+    } = await import("@/aplicacao/casos-de-uso/sessao-matchday");
+
+    limparSessaoMatchday();
+    const c = nova("anti-reroll");
+    c.jogador.categoria = "profissional";
+    c.jogador.status = "titular";
+
+    const aberto = iniciarAvancoComMatchday(c);
+    if (aberto.tipo !== "matchday") return;
+    expect(temSessaoMatchday()).toBe(true);
+    const briefingId = aberto.ui.briefing.partidaId;
+
+    // Reabrir sem fechar retoma a mesma sessão
+    const deNovo = iniciarAvancoComMatchday(c);
+    expect(deNovo.tipo).toBe("matchday");
+    if (deNovo.tipo === "matchday") {
+      expect(deNovo.ui.briefing.partidaId).toBe(briefingId);
+      expect(obterSessaoMatchdayUI()?.fase).toBe("pre");
+    }
+
+    const { carreira } = fecharMatchdayResolvendo();
+    expect(temSessaoMatchday()).toBe(false);
+    expect(carreira.dataAtual).not.toBe(c.dataAtual);
+    // Após resolver, nova abertura parte do estado avançado (não reroll da mesma rodada)
+    const depois = iniciarAvancoComMatchday(carreira);
+    if (depois.tipo === "matchday") {
+      expect(depois.ui.briefing.partidaId).not.toBe(briefingId);
+    }
+    limparSessaoMatchday();
+  });
+
+  it("não oferece decisão de placar com jogador ainda no banco", () => {
+    const c = nova("decisao-banco");
+    c.jogador.categoria = "profissional";
+    c.jogador.status = "reserva";
+    const ctx = prepararSemana(c);
+    if (!ctx.partidaUsuarioId) return;
+    ctx.escalacaoPreparada = "banco";
+    if (ctx.briefing) ctx.briefing.escalacao = "banco";
+    const { motor } = iniciarMatchdayInterativo(ctx);
+    if (!motor.participacao || motor.participacao.entrada <= 55) return;
+    const entrada = motor.participacao.entrada;
+    let m = avancarMotorCausal(motor, ctx.aleatorio, entrada - 1);
+    while (m.decisaoPendente && m.decisaoPendente.tipo !== "entrada-banco") {
+      // Decisões de campo (perdendo/vencendo/fadiga) não devem surgir no banco
+      expect(["perdendo", "vencendo", "fadiga", "amarelo"]).not.toContain(
+        m.decisaoPendente.tipo,
+      );
+      m = responderDecisaoMotor(m, "neutro", ctx.aleatorio, m.minutoSimulado);
+    }
+    expect(
+      m.decisoesAplicadas.every(
+        (d) => !["perdendo", "vencendo", "fadiga", "amarelo"].includes(d.tipo),
+      ),
+    ).toBe(true);
+    const tiposCampo = m.decisoesAplicadas.filter((d) =>
+      ["perdendo", "vencendo", "fadiga", "amarelo"].includes(d.tipo),
+    );
+    expect(tiposCampo).toHaveLength(0);
+  });
+});

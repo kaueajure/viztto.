@@ -59,15 +59,14 @@ const TOP_NAV = [
   ["competicao", "Mundo do Futebol"],
 ] as const;
 
-function rotuloAvancarSemana(
+function rotuloTemporada(
   c: NonNullable<ReturnType<typeof useJogoStore.getState>["carreira"]>,
   ocupado: boolean,
-): string {
+): string | null {
   if (c.aposentado) return "Aposentado";
   if (ocupado) return "Simulando…";
   if (c.temporada.encerrada) return "Próxima temporada";
-  if (c.jogador.lesao) return "Avançar semana";
-  return "Avançar semana";
+  return null;
 }
 
 export function CentralCarreira({ secao = "" }: { secao?: string }) {
@@ -82,8 +81,8 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
       erro,
       saveIncompativel,
       matchday,
-      avancarComMatchday,
-      matchdayInstantaneo,
+      simularSemana,
+      acompanharSemana,
       matchdayComecar,
       matchdayAvancarAte,
       matchdayPularFim,
@@ -164,7 +163,7 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
               ? "competicao"
               : "";
 
-  async function avancarTempo() {
+  async function comTemporadaOu(acao: () => void) {
     if (ocupado) return;
     definirOcupado(true);
     await new Promise<void>((resolver) =>
@@ -173,11 +172,22 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
     if (useJogoStore.getState().carreira?.temporada.encerrada)
       proximaTemporada();
     else {
-      avancarComMatchday();
+      acao();
       definirResumo(false);
     }
     definirOcupado(false);
   }
+
+  async function simularTempo() {
+    await comTemporadaOu(() => simularSemana());
+  }
+
+  async function acompanharTempo() {
+    await comTemporadaOu(() => acompanharSemana());
+  }
+
+  const rotuloUnico = rotuloTemporada(c, ocupado);
+  const ctaDesabilitado = ocupado || !!c.aposentado;
 
   return (
     <div className={`estrutura-jogo vz-shell${secao === "" ? " vz-shell-home" : ""}`}>
@@ -308,16 +318,40 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
                 Demo
               </span>
             )}
-            <button
-              type="button"
-              className="vz-cta-semana vz-cta-desktop"
-              data-testid="advance-week"
-              onClick={avancarTempo}
-              disabled={ocupado || !!c.aposentado}
-            >
-              {rotuloAvancarSemana(c, ocupado)}
-              {!c.aposentado && <ArrowRight size={16} />}
-            </button>
+            {rotuloUnico ? (
+              <button
+                type="button"
+                className="vz-cta-semana vz-cta-desktop"
+                data-testid="advance-week"
+                onClick={simularTempo}
+                disabled={ctaDesabilitado}
+              >
+                {rotuloUnico}
+                {!c.aposentado && <ArrowRight size={16} />}
+              </button>
+            ) : (
+              <div className="vz-cta-semana-grupo vz-cta-desktop">
+                <button
+                  type="button"
+                  className="vz-cta-semana secundario"
+                  data-testid="simulate-week"
+                  onClick={simularTempo}
+                  disabled={ctaDesabilitado}
+                >
+                  Simular semana
+                </button>
+                <button
+                  type="button"
+                  className="vz-cta-semana"
+                  data-testid="advance-week"
+                  onClick={acompanharTempo}
+                  disabled={ctaDesabilitado}
+                >
+                  Acompanhar
+                  <ArrowRight size={16} />
+                </button>
+              </div>
+            )}
           </div>
         </header>
         <div className="vz-shell-floats" aria-live="polite">
@@ -366,16 +400,40 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
         </main>
         <div className="vz-cta-mobile-bar">
           <time dateTime={c.dataAtual}>{dataCarreiraTopo(c.dataAtual)}</time>
-          <button
-            type="button"
-            className="vz-cta-semana vz-cta-mobile"
-            data-testid="advance-week-mobile"
-            onClick={avancarTempo}
-            disabled={ocupado || !!c.aposentado}
-          >
-            {rotuloAvancarSemana(c, ocupado)}
-            {!c.aposentado && <ArrowRight size={16} />}
-          </button>
+          {rotuloUnico ? (
+            <button
+              type="button"
+              className="vz-cta-semana vz-cta-mobile"
+              data-testid="advance-week-mobile"
+              onClick={simularTempo}
+              disabled={ctaDesabilitado}
+            >
+              {rotuloUnico}
+              {!c.aposentado && <ArrowRight size={16} />}
+            </button>
+          ) : (
+            <div className="vz-cta-semana-grupo">
+              <button
+                type="button"
+                className="vz-cta-semana secundario vz-cta-mobile"
+                data-testid="simulate-week-mobile"
+                onClick={simularTempo}
+                disabled={ctaDesabilitado}
+              >
+                Simular
+              </button>
+              <button
+                type="button"
+                className="vz-cta-semana vz-cta-mobile"
+                data-testid="advance-week-mobile"
+                onClick={acompanharTempo}
+                disabled={ctaDesabilitado}
+              >
+                Acompanhar
+                <ArrowRight size={16} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
       {resumo && ultima && (
@@ -389,7 +447,6 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
         <MatchdayModal
           carreira={c}
           sessao={matchday}
-          onInstantaneo={matchdayInstantaneo}
           onComecar={matchdayComecar}
           onAvancarAte={matchdayAvancarAte}
           onPularFim={matchdayPularFim}

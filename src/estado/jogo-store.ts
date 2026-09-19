@@ -28,6 +28,7 @@ import {
   pularMatchdayParaOFim,
   responderDecisaoMatchday,
   limparSessaoMatchday,
+  fecharMatchdayResolvendo,
   obterCarreiraAposMatchday,
   type SessaoMatchdayUI,
 } from "@/aplicacao/casos-de-uso/sessao-matchday";
@@ -88,8 +89,12 @@ interface JogoStore {
   reiniciar: () => Promise<boolean>;
   /** Avanço direto (testes / compatibilidade). */
   avancar: () => void;
-  /** Abre Matchday se houver partida do usuário; senão avança a semana. */
+  /** Abre Matchday para acompanhar (ou retoma sessão). Sem partida do usuário, avança a semana. */
   avancarComMatchday: () => "matchday" | "ok";
+  /** Simula a semana inteira (partida instantânea se houver). */
+  simularSemana: () => void;
+  /** Abre o Matchday para acompanhar a partida. */
+  acompanharSemana: () => "matchday" | "ok";
   matchdayInstantaneo: () => void;
   matchdayComecar: () => void;
   matchdayAvancarAte: (minuto: number) => void;
@@ -600,6 +605,68 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
         set({ matchday: null });
       },
       avancarComMatchday: () => {
+        return get().acompanharSemana();
+      },
+      simularSemana: () => {
+        if (get().operando || get().conflito) return;
+        const atual = get().carreira;
+        if (!atual) return;
+        try {
+          // Sem partida do usuário: avança a semana. Com partida: simula na hora
+          // e mostra o resumo (sem modal de escolha).
+          const r = iniciarAvancoComMatchday(atual);
+          if (r.tipo === "semana") {
+            if (r.carreira !== atual) {
+              geracao++;
+              set({
+                carreira: r.carreira,
+                alteracoesPendentes: true,
+                erro: null,
+                matchday: null,
+                statusPersistencia: get().salvando ? "salvando" : "pendente",
+              });
+              if (!retryTimer) void drenar();
+            }
+            return;
+          }
+          set({ matchday: r.ui, erro: null });
+          const carreira = simularMatchdayInstantaneo();
+          const partida =
+            [
+              ...carreira.temporada.partidas,
+              ...carreira.temporada.partidasBase,
+            ].find((p) => p.id === carreira.ultimaPartidaId) ?? null;
+          geracao++;
+          set({
+            carreira,
+            matchday: {
+              ...r.ui,
+              fase: "pos",
+              partida,
+              eventosVisiveis: partida?.eventos ?? [],
+              decisao: null,
+              minutoAtual: 90,
+              golsMandante: partida?.golsMandante ?? 0,
+              golsVisitante: partida?.golsVisitante ?? 0,
+              pressaoMandante: 50,
+              pressaoVisitante: 50,
+              pausado: false,
+            },
+            alteracoesPendentes: true,
+            erro: null,
+            statusPersistencia: get().salvando ? "salvando" : "pendente",
+          });
+          if (!retryTimer) void drenar();
+        } catch (erro) {
+          set({
+            erro:
+              erro instanceof Error
+                ? erro.message
+                : "Não foi possível simular a semana.",
+          });
+        }
+      },
+      acompanharSemana: () => {
         if (get().operando || get().conflito) return "ok";
         const atual = get().carreira;
         if (!atual) return "ok";
@@ -763,8 +830,40 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
         }
       },
       matchdayFechar: () => {
-        limparSessaoMatchday();
-        set({ matchday: null });
+        const md = get().matchday;
+        if (!md) {
+          limparSessaoMatchday();
+          set({ matchday: null });
+          return;
+        }
+        // Pós-jogo: só fecha a UI.
+        if (md.fase === "pos") {
+          limparSessaoMatchday();
+          set({ matchday: null });
+          return;
+        }
+        // Pré / ao-vivo: conclui a partida para impedir reroll de RNG.
+        try {
+          const { carreira } = fecharMatchdayResolvendo();
+          geracao++;
+          set({
+            carreira,
+            matchday: null,
+            alteracoesPendentes: true,
+            erro: null,
+            statusPersistencia: get().salvando ? "salvando" : "pendente",
+          });
+          if (!retryTimer) void drenar();
+        } catch (erro) {
+          limparSessaoMatchday();
+          set({
+            matchday: null,
+            erro:
+              erro instanceof Error
+                ? erro.message
+                : "Não foi possível concluir a partida.",
+          });
+        }
       },
       proximaTemporada: () => aplicar(iniciarProximaTemporada),
       escolherObjetivo: t => aplicar(c => escolherObjetivo(c,t)),

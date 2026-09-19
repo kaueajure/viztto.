@@ -14,7 +14,6 @@ const BLOCO_MINUTOS = 4;
 export function MatchdayModal({
   carreira,
   sessao,
-  onInstantaneo,
   onComecar,
   onAvancarAte,
   onPularFim,
@@ -23,7 +22,6 @@ export function MatchdayModal({
 }: {
   carreira: EstadoCarreira;
   sessao: SessaoMatchdayUI;
-  onInstantaneo: () => void;
   onComecar: () => void;
   onAvancarAte: (minuto: number) => void;
   onPularFim: () => void;
@@ -281,10 +279,7 @@ export function MatchdayModal({
         </div>
         <div className="matchday-acoes">
           <button type="button" className="botao principal" onClick={onComecar}>
-            Acompanhar partida
-          </button>
-          <button type="button" className="botao" onClick={onInstantaneo}>
-            Simular instantaneamente
+            Começar partida
           </button>
         </div>
       </section>

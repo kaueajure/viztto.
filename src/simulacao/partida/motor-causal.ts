@@ -586,6 +586,8 @@ function processarMomento(
     timeUsuarioAtaca && !!estado.jogador && !!p && jogadorEmCampo(p, momento.minuto);
   const usuarioNaDefesa =
     timeUsuarioDefende && !!estado.jogador && !!p && jogadorEmCampo(p, momento.minuto);
+  // Instrução individual e mods de decisão só valem com o jogador em campo.
+  const emCampo = usuarioNoAtaque || usuarioNaDefesa;
 
   const qSetor = estado.jogador
     ? qualidadeSetorialJogador(estado.jogador)
@@ -595,9 +597,13 @@ function processarMomento(
   const mod = estado.modificadores;
 
   const fi = (etapa: EtapaFator) =>
-    fatorInstrucaoUsuario(instrucao, etapa, timeUsuarioAtaca, timeUsuarioDefende);
+    emCampo
+      ? fatorInstrucaoUsuario(instrucao, etapa, timeUsuarioAtaca, timeUsuarioDefende)
+      : 1;
   const fm = (etapa: EtapaFator) =>
-    fatorMod(mod, etapa, timeUsuarioAtaca, timeUsuarioDefende);
+    emCampo
+      ? fatorMod(mod, etapa, timeUsuarioAtaca, timeUsuarioDefende)
+      : 1;
 
   // Posses abstratas: passes causais quando o time do usuário está com a bola e o jogador em campo
   if (usuarioNoAtaque && p && aleatorio.chance(0.55 + mod.intensidade * 0.08)) {
@@ -991,7 +997,7 @@ export function avancarMotorCausal(
         (p?.chutes ?? 0) +
         (p?.passesChave ?? 0) * 1.5 +
         (p?.gols ?? 0) * 3;
-      if (p && p.minutos > 0 && p.entrada < 45 && notaParc < 1.5) {
+      if (p && p.minutos > 0 && p.entrada < 45 && jogadorEmCampo(p, 45) && notaParc < 1.5) {
         if (tentarOferecerDecisao(estado, "intervalo-ruim", 45)) return estado;
       }
     }
