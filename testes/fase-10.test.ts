@@ -281,4 +281,36 @@ describe('Fase 10 — fim de contrato / agente livre', () => {
     expect(c.ultimoClubeId).toBe(id);
     expect(categoriaPartidaDaSemana(c)).not.toBeUndefined();
   });
+
+  it('agente livre: buscar gera interesse e avança até proposta em poucas semanas', () => {
+    const { carreira: base } = exemploCarreira();
+    forcarFimContrato(base);
+    let c = avancarSemana(base);
+    expect(estaSemClube(c)).toBe(true);
+    c.jogador.reputacao = Math.max(c.jogador.reputacao, 45);
+    c.jogador.overall = Math.max(c.jogador.overall, 72);
+    c = conversarAgente(c, 'buscar');
+    expect(c.mercado.interesses.some((i) => i.status !== 'encerrado')).toBe(
+      true,
+    );
+    for (let i = 0; i < 12; i++) {
+      avancarInteresses(c, new GeradorAleatorio(1000 + i));
+      c.dataAtual = somarDias(c.dataAtual, 7);
+      if (
+        c.propostas.some(
+          (p) =>
+            p.status === 'pendente' &&
+            (p.tipo === 'transferencia' || p.tipo === 'emprestimo'),
+        )
+      )
+        break;
+    }
+    expect(
+      c.propostas.some(
+        (p) =>
+          p.status === 'pendente' &&
+          (p.tipo === 'transferencia' || p.tipo === 'emprestimo'),
+      ) || c.mercado.interesses.some((i) => i.status === 'negociando'),
+    ).toBe(true);
+  });
 });

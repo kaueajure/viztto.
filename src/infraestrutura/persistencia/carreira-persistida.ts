@@ -354,9 +354,17 @@ export function validarReferenciasCarreiraPersistida(
   }
   for (const [ligaId, temporada] of [[p.ligaId,p.temporada],...Object.entries(p.temporadasExternas)] as const) {
     if (!p.ligasIds.includes(ligaId)) throw new Error("Temporada inválida.");
-    for (const jogo of [...temporada.partidas,...temporada.partidasBase]) {
+    for (const jogo of [...temporada.partidas, ...temporada.partidasBase]) {
       exigirClube(jogo.mandanteId); exigirClube(jogo.visitanteId);
-      if ([jogo.mandanteId,jogo.visitanteId].some(id => ligaDoClube(id) !== ligaId)) throw new Error("Partida de outra liga.");
+      const playoff =
+        jogo.fase === "playoff" || String(jogo.id).startsWith("playoff-");
+      if (
+        !playoff &&
+        [jogo.mandanteId, jogo.visitanteId].some(
+          (id) => ligaDoClube(id) !== ligaId,
+        )
+      )
+        throw new Error("Partida de outra liga.");
     }
     for (const linha of [...temporada.classificacao,...temporada.classificacaoBase]) exigirClube(linha.clubeId);
   }
@@ -562,7 +570,10 @@ export function hidratarCarreira(
     for (const jogo of [...temporada.partidas, ...temporada.partidasBase]) {
       exigirClube(jogo.mandanteId);
       exigirClube(jogo.visitanteId);
+      const playoff =
+        jogo.fase === "playoff" || String(jogo.id).startsWith("playoff-");
       if (
+        !playoff &&
         [jogo.mandanteId, jogo.visitanteId].some(
           (id) => clubes.find((c) => c.id === id)?.ligaId !== ligaId,
         )

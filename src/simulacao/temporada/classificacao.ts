@@ -23,6 +23,8 @@ export function calcularClassificacao(
     ]),
   );
   for (const partida of partidas) {
+    if (partida.fase === "playoff" || partida.id.startsWith("playoff-"))
+      continue;
     if (partida.golsMandante === null || partida.golsVisitante === null)
       continue;
     const mandante = linhas.get(partida.mandanteId),

@@ -384,9 +384,12 @@ export function montarBriefingMatchday(
     data: partida.data,
     categoria: partida.categoria,
     competicao:
-      partida.categoria === "base"
-        ? `${carreira.liga.nome} · Sub-20`
-        : carreira.liga.nome,
+      partida.rotuloCompeticao ??
+      (partida.fase === "playoff"
+        ? `Playoff · ${carreira.liga.nome}`
+        : partida.categoria === "base"
+          ? `${carreira.liga.nome} · Sub-20`
+          : carreira.liga.nome),
     estadio: mandante.estadio,
     mandanteId: partida.mandanteId,
     visitanteId: partida.visitanteId,

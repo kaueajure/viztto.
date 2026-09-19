@@ -371,7 +371,15 @@ export function avaliarAlvo(c: EstadoCarreira, clube: Clube) {
     (nec.nivel === "alta" && quasePronto) ||
     (diasContrato(c) <= 180 && pronto) ||
     excepcional ||
-    (livre && (pronto || quasePronto || promessa));
+    // Agente livre: disponibilidade + encaixe mínimo contam como evidência
+    // (sem minutos novos a carreira ficava presa em “observando” para sempre).
+    (livre &&
+      (pronto ||
+        quasePronto ||
+        promessa ||
+        semanasLivre >= 1 ||
+        j.reputacao >= 28 ||
+        j.overall >= clube.forcaGeral - 18));
   // Encaixe: acima do clube = melhoria (interesse alto); abaixo depende de potencial.
   const encaixeOverall = upgradeForte
     ? 30
@@ -483,22 +491,42 @@ function observar(
   origem: InteresseClube["origem"],
 ) {
   const a = avaliarAlvo(c, clube);
+  const livre = estaSemClube(c);
   // Jogadores já conhecidos chegam com relatórios anteriores; não há bloqueio por mês.
   const conhecido =
     a.viavel && a.evidencia && a.score >= 80 && c.jogador.reputacao >= 75;
+  // Agente livre + contato do agente: sobe mais rápido para proposta real.
+  const impulsoAgenteLivre =
+    livre && origem === "agente" && a.viavel
+      ? a.evidencia
+        ? 50
+        : 35
+      : 0;
+  const nivelInicial = conhecido
+    ? 65
+    : impulsoAgenteLivre;
+  const statusInicial = !a.viavel
+    ? "encerrado"
+    : conhecido || nivelInicial >= 65
+      ? "sondagem"
+      : nivelInicial >= 20
+        ? "interessado"
+        : "observando";
   const i: InteresseClube = {
     clubeId: clube.id,
     jogadorId: "usuario",
-    nivelInteresse: conhecido ? 65 : 0,
+    nivelInteresse: nivelInicial,
     motivo: a.motivo,
     semanasObservando: 0,
-    status: !a.viavel ? "encerrado" : conhecido ? "sondagem" : "observando",
+    status: statusInicial,
     ultimaAtualizacao: c.dataAtual,
     origem,
     resposta: a.resposta,
     papel: a.papel,
     reabrirEm: !a.viavel ? somarDias(c.dataAtual, 35) : undefined,
-    ...(conhecido ? { novidadeEm: c.dataAtual } : {}),
+    ...(conhecido || impulsoAgenteLivre > 0
+      ? { novidadeEm: c.dataAtual }
+      : {}),
   };
   c.mercado.interesses.push(i);
   registrarNegociacao(
@@ -508,6 +536,11 @@ function observar(
       ? `Seu agente entrou em contato. ${a.resposta}`
       : `O clube ${conhecido ? "retomou relatórios anteriores e fez uma sondagem" : "começou a observar você"}: ${a.motivo === "lesao" ? "busca reposição por lesão" : a.motivo}.`,
   );
+  // Contato do agente com livre: tenta fechar proposta já neste tick.
+  if (livre && origem === "agente" && i.status === "sondagem" && a.viavel) {
+    i.status = "negociando";
+    negociarClubes(c, clube, i, a);
+  }
   return i;
 }
 export type AcaoAgente =
@@ -972,16 +1005,17 @@ export function avancarInteresses(
   c.mercado ??= criarMercado();
   if (c.aposentado || c.jogador.categoria === "base" || temAcordoAtivo(c))
     return;
+  const livre = estaSemClube(c);
   const peso = pesoFrequenciaPropostas(c.dataAtual);
   const boostPublico = c.mercado.pedidoPublico ? 1.55 : 1;
   const boostListado =
     c.mercado.statusPedidoSaida === "aceito" || c.mercado.pediuSaida ? 1.2 : 1;
-  const boostLivre = estaSemClube(c) ? 1.75 : 1;
+  const boostLivre = livre ? 1.75 : 1;
   const boostObjetivo =
     c.acompanhamento.objetivoPessoal &&
     !c.acompanhamento.objetivoPessoal.concluido &&
     (c.acompanhamento.objetivoPessoal.tipo === "transferencia" ||
-      (estaSemClube(c) &&
+      (livre &&
         c.acompanhamento.objetivoPessoal.tipo === "emprestimo"))
       ? 1.35
       : 1;
@@ -993,7 +1027,7 @@ export function avancarInteresses(
     18,
     LIMIAR_ELEGIBILIDADE -
       (c.mercado.pedidoPublico ? 8 : 0) -
-      (estaSemClube(c) ? 6 : 0) -
+      (livre ? 6 : 0) -
       (boostObjetivo > 1 ? 4 : 0),
   );
 
@@ -1097,17 +1131,32 @@ export function avancarInteresses(
       );
       continue;
     }
-    const ganho = !a.evidencia
-      ? 1
-      : a.nota < 6.2
-        ? -8
-        : Math.max(
-            2,
-            Math.min(
-              14,
-              a.score / 5 + (c.mercado.pedidoPublico && a.viavel ? 2 : 0),
-            ),
-          );
+    const ganho = livre
+      ? Math.max(
+          5,
+          !a.evidencia
+            ? 5
+            : a.nota < 5.5
+              ? 3
+              : Math.max(
+                  6,
+                  Math.min(
+                    16,
+                    a.score / 4 + (c.mercado.pedidoPublico ? 2 : 0),
+                  ),
+                ),
+        )
+      : !a.evidencia
+        ? 1
+        : a.nota < 6.2
+          ? -8
+          : Math.max(
+              2,
+              Math.min(
+                14,
+                a.score / 5 + (c.mercado.pedidoPublico && a.viavel ? 2 : 0),
+              ),
+            );
     i.nivelInteresse = limitar(i.nivelInteresse + ganho);
     if (i.nivelInteresse < 20 && i.status !== "observando") {
       i.status = "observando";
@@ -1129,7 +1178,7 @@ export function avancarInteresses(
     } else if (
       i.status === "sondagem" &&
       i.nivelInteresse >= 65 &&
-      a.evidencia
+      (a.evidencia || livre)
     ) {
       if (
         c.propostas.filter(
@@ -1153,6 +1202,8 @@ export function avancarInteresses(
             ? "Interesse sério: o clube quer negociar agora e agendar a mudança para a próxima janela."
             : "Interesse sério: o clube decidiu abrir a negociação de contratação.",
         );
+        // Agente livre: abre a proposta no mesmo tick (não espera +1 semana).
+        if (livre) negociarClubes(c, clube, i, a);
       }
     } else if (i.status === "interessado" && i.nivelInteresse >= 45) {
       const anterior = i.status;

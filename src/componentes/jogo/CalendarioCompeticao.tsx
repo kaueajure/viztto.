@@ -105,7 +105,13 @@ export function CalendarioCompeticao({
         </header>
         <section className="painel">
           <div className="linha-titulo">
-            <h2>Jogos da liga</h2>
+            <h2>
+              {c.temporada.partidas.some(
+                (p) => p.fase === "playoff" || p.id.startsWith("playoff-"),
+              )
+                ? "Jogos · liga e playoffs"
+                : "Jogos da liga"}
+            </h2>
             <div className="seletor-rodada">
               <button
                 type="button"
@@ -349,7 +355,15 @@ function ListaJogos({
               <Escudo clube={v} tamanho={28} />
               <span>{v.codigo}</span>
             </div>
-            <span className="rotulo">{meu ? "SEU JOGO" : ""}</span>
+            <span className="rotulo">
+              {p.rotuloCompeticao
+                ? p.rotuloCompeticao
+                : p.fase === "playoff"
+                  ? "PLAYOFF"
+                  : meu
+                    ? "SEU JOGO"
+                    : ""}
+            </span>
           </li>
         );
       })}

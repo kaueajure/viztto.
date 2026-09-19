@@ -365,6 +365,66 @@ describe("persistência após movimento", () => {
   });
 });
 
+describe("agente livre + próxima temporada", () => {
+  it("não quebra com clubeAtualId null (t.nome)", () => {
+    let c = carreiraPar("bundesliga", "bundesliga-2", "livre-null", 8, 8);
+    c.clubeAtualId = null;
+    c.agenteLivreDesde = c.dataAtual;
+    const ids1 = idsDaLiga(c, "bundesliga");
+    const ids2 = idsDaLiga(c, "bundesliga-2");
+    forcarClassificacao(c.temporada, ids1);
+    forcarClassificacao(c.temporadasExternas["bundesliga-2"]!, ids2);
+    c.temporadasExternas["bundesliga-2"]!.encerrada = true;
+    c.temporadasExternas["bundesliga-2"]!.rodadaAtual =
+      c.temporadasExternas["bundesliga-2"]!.totalRodadas;
+    c = finalizarTemporada(c);
+    expect(() => iniciarProximaTemporada(c)).not.toThrow();
+    const prox = iniciarProximaTemporada(c);
+    expect(prox.clubeAtualId).toBeNull();
+    expect(prox.temporada.encerrada).toBe(false);
+  });
+});
+
+describe("playoffs no calendário", () => {
+  it("agenda partidas de playoff quando o clube do jogador está em 4º", async () => {
+    const { processarPlayoffsCalendario } = await import(
+      "@/simulacao/mundo/playoffs-calendario"
+    );
+    let c = carreiraPar("premier-league", "championship", "po-cal-1", 8, 8);
+    // Jogador na Championship em 4º
+    const idsCh = idsDaLiga(c, "championship");
+    const idsPL = idsDaLiga(c, "premier-league");
+    c.clubeAtualId = idsCh[3]!;
+    const tempCh = c.temporadasExternas.championship!;
+    c.temporadasExternas[c.liga.id] = c.temporada;
+    c.temporada = tempCh;
+    delete c.temporadasExternas.championship;
+    c.liga = c.ligas.find((l) => l.id === "championship")!;
+
+    forcarClassificacao(c.temporada, idsCh);
+    forcarClassificacao(c.temporadasExternas["premier-league"]!, idsPL);
+    c.temporadasExternas["premier-league"]!.encerrada = true;
+    c.temporada.rodadaAtual = c.temporada.totalRodadas;
+
+    const ok = processarPlayoffsCalendario(
+      c,
+      new GeradorAleatorio(c.estadoAleatorio),
+    );
+    expect(ok).toBe(true);
+    const playoffs = c.temporada.partidas.filter(
+      (p) => p.fase === "playoff" || p.id.startsWith("playoff-"),
+    );
+    expect(playoffs.length).toBeGreaterThan(0);
+    expect(
+      playoffs.some((p) =>
+        [p.mandanteId, p.visitanteId].includes(c.clubeAtualId!),
+      ),
+    ).toBe(true);
+    expect(c.temporada.encerrada).toBe(false);
+    expect(c.temporada.totalRodadas).toBeGreaterThan(c.temporada.rodadaAtual);
+  });
+});
+
 describe("múltiplas temporadas", () => {
   it("5 temporadas sem duplicar/perder clubes", () => {
     let c = carreiraPar("brasileirao", "brasileirao-b", "multi-5", 8, 8);

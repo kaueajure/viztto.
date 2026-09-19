@@ -374,6 +374,10 @@ export interface Partida {
   participacao: Participacao | null;
   /** Metadados do Matchday (opcional; saves antigos sem o campo). */
   contextoMatchday?: ContextoPartida | null;
+  /** "playoff" = mata-mata pós-temporada (não conta na tabela). */
+  fase?: "liga" | "playoff";
+  /** Rótulo exibido no calendário/Matchday (ex.: Playoff · Championship). */
+  rotuloCompeticao?: string;
 }
 export interface LinhaClassificacao {
   clubeId: string;

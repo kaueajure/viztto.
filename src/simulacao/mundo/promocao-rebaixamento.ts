@@ -8,12 +8,13 @@ import {
   REGRAS_MOVIMENTO_PARES,
   type RegrasMovimentoPar,
 } from "@/dominio/constantes/regras-movimento";
-import { GeradorAleatorio } from "@/utilitarios/aleatorio";
-import { registrarEvento } from "@/simulacao/eventos/eventos";
 import {
   resolverPlayoffAcesso,
   resolverPlayoffInterdivisional,
 } from "@/simulacao/mundo/playoff-divisao";
+import { lerVencedorPlayoffAcesso } from "@/simulacao/mundo/playoffs-calendario";
+import { GeradorAleatorio } from "@/utilitarios/aleatorio";
+import { registrarEvento } from "@/simulacao/eventos/eventos";
 
 function temporadaDaLiga(
   carreira: EstadoCarreira,
@@ -129,12 +130,20 @@ export function aplicarMovimentoPar(
   // --- Playoff de acesso (inferior) ---
   let promovidoPlayoff: string | null = null;
   if (regras.playoffAcesso) {
-    promovidoPlayoff = resolverPlayoffAcesso(
-      classInf,
+    promovidoPlayoff = lerVencedorPlayoffAcesso(
+      tempInf,
       regras.playoffAcesso,
       aleatorio,
-      data,
+      regras.id,
     );
+    if (!promovidoPlayoff) {
+      promovidoPlayoff = resolverPlayoffAcesso(
+        classInf,
+        regras.playoffAcesso,
+        aleatorio,
+        data,
+      );
+    }
   }
 
   // --- Playoff interdivisional (16º × 3º ou × vencedor playoff) ---
@@ -224,9 +233,11 @@ export function aplicarMovimentoPar(
     );
   }
 
-  if (superiorSalvoPlayoff === usuarioId) {
-    const clube = carreira.clubes.find((c) => c.id === superiorSalvoPlayoff)!;
-    eventoMovimento(carreira, clube, "playoff-permanece", ligaSup, true);
+  if (usuarioId != null && superiorSalvoPlayoff === usuarioId) {
+    const clube = carreira.clubes.find((c) => c.id === superiorSalvoPlayoff);
+    if (clube) {
+      eventoMovimento(carreira, clube, "playoff-permanece", ligaSup, true);
+    }
   }
 
   // Ajuste de reputação leve

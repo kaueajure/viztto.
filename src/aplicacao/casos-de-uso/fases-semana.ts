@@ -47,6 +47,7 @@ import {
 } from "@/simulacao/eventos/eventos";
 import { calcularClassificacao } from "@/simulacao/temporada/classificacao";
 import { finalizarTemporada } from "@/aplicacao/casos-de-uso/temporada";
+import { processarPlayoffsCalendario } from "@/simulacao/mundo/playoffs-calendario";
 import {
   escalarElencoCompleto,
   aplicarEscalacaoAoClube,
@@ -612,10 +613,16 @@ export function finalizarSemana(ctx: ContextoSemana): EstadoCarreira {
 
   registrarResumoSemanal(carreira, estadoOriginal, motivoParticipacao);
   carreira.estadoAleatorio = aleatorio.estado;
-  let resultado =
-    rodada >= carreira.temporada.totalRodadas
-      ? finalizarTemporada(carreira)
-      : carreira;
+  let resultado = carreira;
+  if (rodada >= carreira.temporada.totalRodadas) {
+    // Playoffs de acesso (ex.: 3º–6º) entram no calendário antes do encerramento.
+    if (processarPlayoffsCalendario(carreira, aleatorio)) {
+      carreira.estadoAleatorio = aleatorio.estado;
+      resultado = carreira;
+    } else {
+      resultado = finalizarTemporada(carreira);
+    }
+  }
   resultado = efetivarPreContratos(resultado);
   if (
     !estaSemClube(resultado) &&

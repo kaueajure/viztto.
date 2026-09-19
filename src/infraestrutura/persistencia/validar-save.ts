@@ -126,6 +126,8 @@ const partidas = z.array(
       })
       .nullable()
       .optional(),
+    fase: z.enum(["liga", "playoff"]).optional(),
+    rotuloCompeticao: texto.optional(),
   }),
 );
 const esquemaTemporada = z.object({
