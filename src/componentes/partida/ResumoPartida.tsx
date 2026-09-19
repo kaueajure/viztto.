@@ -1,8 +1,10 @@
 "use client";
 import { useFocoModal } from "@/componentes/interface/useFocoModal";
 import type { EstadoCarreira, Partida } from "@/dominio/entidades/modelos";
+import { ROTULOS_INSTRUCAO } from "@/dominio/matchday";
 import { Escudo } from "@/componentes/clube/Escudo";
 import { X } from "lucide-react";
+
 export function ResumoPartida({
   partida,
   carreira,
@@ -16,6 +18,10 @@ export function ResumoPartida({
   const mandante = carreira.clubes.find((c) => c.id === partida.mandanteId)!,
     visitante = carreira.clubes.find((c) => c.id === partida.visitanteId)!,
     p = partida.participacao;
+  const ctx = partida.contextoMatchday;
+  const acoes =
+    partida.eventos.filter((e) => e.jogador && e.tipo !== "fim").slice(0, 6);
+
   return (
     <div className="sobreposicao">
       <section
@@ -113,8 +119,50 @@ export function ResumoPartida({
               <span>
                 Desenvolvimento <b>+{p.desenvolvimento}</b>
               </span>
+              {ctx && (
+                <span>
+                  Treinador{" "}
+                  <b>
+                    {ctx.impactoTreinador >= 0 ? "+" : ""}
+                    {ctx.impactoTreinador}
+                  </b>
+                </span>
+              )}
             </div>
           </>
+        )}
+        {ctx && (
+          <div className="matchday-pos-contexto">
+            {ctx.instrucao && (
+              <p>
+                <span className="rotulo">Instrução</span>{" "}
+                {ROTULOS_INSTRUCAO[ctx.instrucao]}
+              </p>
+            )}
+            {ctx.objetivos.length > 0 && (
+              <ul className="matchday-objetivos-resultado">
+                {ctx.objetivos.map((o) => (
+                  <li key={o.id} className={o.cumprido ? "cumprido" : "falhou"}>
+                    {o.cumprido ? "✓" : "✗"} {o.descricao}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {ctx.impactoHierarquia && <p>{ctx.impactoHierarquia}</p>}
+            {ctx.reacaoTreinador && <p>{ctx.reacaoTreinador}</p>}
+            {ctx.reacaoImprensa && <p>{ctx.reacaoImprensa}</p>}
+          </div>
+        )}
+        {acoes.length > 0 && (
+          <div className="eventos-partida">
+            <span className="rotulo">Principais ações</span>
+            {acoes.map((e, i) => (
+              <div key={i} className="destaque-evento">
+                <b>{e.minuto}′</b>
+                <span>{e.texto}</span>
+              </div>
+            ))}
+          </div>
         )}
         <div className="eventos-partida">
           {partida.eventos.map((e, i) => (

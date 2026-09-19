@@ -20,6 +20,15 @@ import {
   type EntradaCarreira,
 } from "@/aplicacao/casos-de-uso/criar-carreira";
 import { avancarSemana } from "@/aplicacao/casos-de-uso/avancar-tempo";
+import {
+  iniciarAvancoComMatchday,
+  simularMatchdayInstantaneo,
+  comecarPartidaMatchday,
+  responderDecisaoMatchday,
+  limparSessaoMatchday,
+  obterCarreiraAposMatchday,
+  type SessaoMatchdayUI,
+} from "@/aplicacao/casos-de-uso/sessao-matchday";
 import { iniciarProximaTemporada } from "@/aplicacao/casos-de-uso/temporada";
 import { responderProposta, aposentarJogador } from "@/simulacao/transferencias/mercado";
 import { responderDecisao } from "@/simulacao/decisoes/decisoes";
@@ -68,12 +77,21 @@ interface JogoStore {
   erro: string | null;
   erroPersistencia: string | null;
   codigoErroPersistencia: string | null;
+  /** Sessão efêmera de Matchday (não persistida). */
+  matchday: SessaoMatchdayUI | null;
   carregar: (descartar?: boolean) => Promise<boolean>;
   tentarSalvar: () => Promise<void>;
   iniciar: (entrada: EntradaCarreira, substituir?: boolean) => Promise<boolean>;
   excluir: () => Promise<boolean>;
   reiniciar: () => Promise<boolean>;
+  /** Avanço direto (testes / compatibilidade). */
   avancar: () => void;
+  /** Abre Matchday se houver partida do usuário; senão avança a semana. */
+  avancarComMatchday: () => "matchday" | "ok";
+  matchdayInstantaneo: () => void;
+  matchdayComecar: () => void;
+  matchdayDecidir: (opcaoId: string) => void;
+  matchdayFechar: () => void;
   proximaTemporada: () => void;
   escolherObjetivo: (tipo: ObjetivoPessoalTipo) => void;
   solicitarContrato: (pedido: PedidoContrato) => void;
@@ -360,6 +378,7 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
       erro: null,
       erroPersistencia: null,
       codigoErroPersistencia: null,
+      matchday: null,
       carregar: (descartar = false) => {
         if (carregamento) return carregamento;
         if (get().operando || (get().alteracoesPendentes && !descartar))
@@ -539,7 +558,136 @@ export function criarJogoStore(api: ClienteCarreira = apiCarreira) {
           true,
         );
       },
-      avancar: () => aplicar(avancarSemana),
+      avancar: () => {
+        limparSessaoMatchday();
+        aplicar(avancarSemana);
+        set({ matchday: null });
+      },
+      avancarComMatchday: () => {
+        if (get().operando || get().conflito) return "ok";
+        const atual = get().carreira;
+        if (!atual) return "ok";
+        try {
+          const r = iniciarAvancoComMatchday(atual);
+          if (r.tipo === "semana") {
+            if (r.carreira !== atual) {
+              geracao++;
+              set({
+                carreira: r.carreira,
+                alteracoesPendentes: true,
+                erro: null,
+                matchday: null,
+                statusPersistencia: get().salvando
+                  ? "salvando"
+                  : "pendente",
+              });
+              if (!retryTimer) void drenar();
+            }
+            return "ok";
+          }
+          set({ matchday: r.ui, erro: null });
+          return "matchday";
+        } catch (erro) {
+          set({
+            erro:
+              erro instanceof Error
+                ? erro.message
+                : "Não foi possível avançar a semana.",
+          });
+          return "ok";
+        }
+      },
+      matchdayInstantaneo: () => {
+        try {
+          const carreira = simularMatchdayInstantaneo();
+          const partida =
+            [
+              ...carreira.temporada.partidas,
+              ...carreira.temporada.partidasBase,
+            ].find((p) => p.id === carreira.ultimaPartidaId) ?? null;
+          geracao++;
+          set({
+            carreira,
+            matchday: {
+              ...(get().matchday as SessaoMatchdayUI),
+              fase: "pos",
+              partida,
+              eventosVisiveis: partida?.eventos ?? [],
+              decisao: null,
+              minutoAtual: 90,
+              golsMandante: partida?.golsMandante ?? 0,
+              golsVisitante: partida?.golsVisitante ?? 0,
+            },
+            alteracoesPendentes: true,
+            erro: null,
+            statusPersistencia: get().salvando ? "salvando" : "pendente",
+          });
+          if (!retryTimer) void drenar();
+        } catch (erro) {
+          set({
+            erro:
+              erro instanceof Error
+                ? erro.message
+                : "Falha ao simular a partida.",
+          });
+        }
+      },
+      matchdayComecar: () => {
+        try {
+          const ui = comecarPartidaMatchday();
+          if (ui.fase === "pos") {
+            const carreira = obterCarreiraAposMatchday();
+            geracao++;
+            set({
+              carreira,
+              matchday: ui,
+              alteracoesPendentes: true,
+              erro: null,
+              statusPersistencia: get().salvando ? "salvando" : "pendente",
+            });
+            if (!retryTimer) void drenar();
+          } else {
+            set({ matchday: ui });
+          }
+        } catch (erro) {
+          set({
+            erro:
+              erro instanceof Error
+                ? erro.message
+                : "Falha ao iniciar a partida.",
+          });
+        }
+      },
+      matchdayDecidir: (opcaoId) => {
+        try {
+          const ui = responderDecisaoMatchday(opcaoId);
+          if (ui.fase === "pos") {
+            const carreira = obterCarreiraAposMatchday();
+            geracao++;
+            set({
+              carreira,
+              matchday: ui,
+              alteracoesPendentes: true,
+              erro: null,
+              statusPersistencia: get().salvando ? "salvando" : "pendente",
+            });
+            if (!retryTimer) void drenar();
+          } else {
+            set({ matchday: ui });
+          }
+        } catch (erro) {
+          set({
+            erro:
+              erro instanceof Error
+                ? erro.message
+                : "Falha ao aplicar decisão.",
+          });
+        }
+      },
+      matchdayFechar: () => {
+        limparSessaoMatchday();
+        set({ matchday: null });
+      },
       proximaTemporada: () => aplicar(iniciarProximaTemporada),
       escolherObjetivo: t => aplicar(c => escolherObjetivo(c,t)),
       solicitarContrato: p => aplicar(c => solicitarContrato(c,p)),

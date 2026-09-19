@@ -1,4 +1,5 @@
 import type { Atributo, Posicao, StatusElenco } from './entidades/modelos';
+import { criarHistoricoCenas, type HistoricoCenasCarreira } from './cenas';
 
 export const CAPITULOS = ['origem', 'destaque', 'dificuldade', 'chegada'] as const;
 export type CapituloHistoria = typeof CAPITULOS[number];
@@ -99,6 +100,8 @@ export interface AcompanhamentoCarreira {
   base: { ultimaAvaliacao: string | null; texto: string | null; treinosProfissional: number; conviteAte: string | null };
   resumoSemanal: { data: string; treino: string; feedback: string; evolucoes: { atributo: Atributo; antes: number; depois: number }[]; overallAntes: number; overallDepois: number; mudancaElenco: MudancaElencoSemana | null } | null;
   ultimoEventoContextual: string | null;
+  /** Histórico do motor de cenas (saves antigos: ausente → default vazio). */
+  cenas?: HistoricoCenasCarreira;
 }
 export function criarCooldownsTreinador(valor: string | null = null): CooldownsTreinador {
   return { informativa: valor, pedido: valor, reclamacao: valor, cobranca: valor, posicional: valor };
@@ -125,5 +128,5 @@ export function criarAcompanhamento(): AcompanhamentoCarreira {
   return { conversas: [], cooldownsTreinador: criarCooldownsTreinador(), promessa: null, adaptacao: null, papelAceito: null,
     pedidosContrato: [], proximoPedidoContrato: null, objetivoPessoal: null, historicoObjetivos: [],
     base: { ultimaAvaliacao: null, texto: null, treinosProfissional: 0, conviteAte: null },
-    resumoSemanal: null, ultimoEventoContextual: null };
+    resumoSemanal: null, ultimoEventoContextual: null, cenas: criarHistoricoCenas() };
 }

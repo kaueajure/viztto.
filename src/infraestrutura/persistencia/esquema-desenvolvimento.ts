@@ -70,4 +70,15 @@ export const esquemaAcompanhamento = z.object({
     }).strict().nullable().default(null),
   }).strict().nullable(),
   ultimoEventoContextual: data.nullable(),
+  cenas: z.object({
+    registros: z.array(z.object({
+      id: texto,
+      tipo: texto,
+      categoria: texto,
+      data,
+      escolha: texto.optional(),
+    }).strict()).max(40).default([]),
+    cooldowns: z.record(texto, data.nullable()).default({}),
+    ultimaCena: data.nullable(),
+  }).strict().optional(),
 }).strict();

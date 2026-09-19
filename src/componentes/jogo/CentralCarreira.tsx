@@ -31,6 +31,7 @@ import { Treinamento } from "./Treinamento";
 import { MercadoClube } from "./MercadoClube";
 import { NoticiasHistorico } from "./NoticiasHistorico";
 import { ResumoPartida } from "@/componentes/partida/ResumoPartida";
+import { MatchdayModal } from "@/componentes/partida/MatchdayModal";
 import { Escudo } from "@/componentes/clube/Escudo";
 import { ConversaContrato } from "@/componentes/clube/ConversaContrato";
 import { PainelDesempenho } from "./PainelDesempenho";
@@ -80,7 +81,12 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
       operando,
       erro,
       saveIncompativel,
-      avancar,
+      matchday,
+      avancarComMatchday,
+      matchdayInstantaneo,
+      matchdayComecar,
+      matchdayDecidir,
+      matchdayFechar,
       proximaTemporada,
       reiniciar,
       excluir,
@@ -165,7 +171,7 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
     if (useJogoStore.getState().carreira?.temporada.encerrada)
       proximaTemporada();
     else {
-      avancar();
+      avancarComMatchday();
       definirResumo(false);
     }
     definirOcupado(false);
@@ -375,6 +381,16 @@ export function CentralCarreira({ secao = "" }: { secao?: string }) {
           partida={ultima}
           carreira={c}
           fechar={() => definirResumo(false)}
+        />
+      )}
+      {matchday && (
+        <MatchdayModal
+          carreira={c}
+          sessao={matchday}
+          onInstantaneo={matchdayInstantaneo}
+          onComecar={matchdayComecar}
+          onDecidir={matchdayDecidir}
+          onFechar={matchdayFechar}
         />
       )}
       {configuracoes && (

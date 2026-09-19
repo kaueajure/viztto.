@@ -1,4 +1,6 @@
 import type { PerfilFormacao, PreparacaoJogador, AcompanhamentoCarreira } from "../desenvolvimento";
+import type { HistoricoCenasCarreira } from "../cenas";
+import type { ContextoPartida } from "../matchday";
 import type { MercadoCarreira, TermosContrato } from "../mercado";
 import type { RatingMetadata } from "@/dominio/rating-metadata";
 export type Posicao =
@@ -342,9 +344,19 @@ export interface Participacao {
   moral: number;
   desenvolvimento: number;
 }
+export type TipoEventoPartida =
+  | "gol"
+  | "cartao"
+  | "defesa"
+  | "substituicao"
+  | "fim"
+  | "chance"
+  | "passe-chave"
+  | "desarme"
+  | "intervalo";
 export interface EventoPartida {
   minuto: number;
-  tipo: "gol" | "cartao" | "defesa" | "substituicao" | "fim";
+  tipo: TipoEventoPartida;
   clubeId: string;
   texto: string;
   jogador: boolean;
@@ -360,6 +372,8 @@ export interface Partida {
   golsVisitante: number | null;
   eventos: EventoPartida[];
   participacao: Participacao | null;
+  /** Metadados do Matchday (opcional; saves antigos sem o campo). */
+  contextoMatchday?: ContextoPartida | null;
 }
 export interface LinhaClassificacao {
   clubeId: string;

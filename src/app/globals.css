@@ -5620,3 +5620,61 @@ main:has(.formulario) {
 @media (prefers-reduced-motion: reduce) {
   .treino-cursor { transition: none; }
 }
+
+/* Matchday */
+.matchday-briefing {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0 24px;
+  font-size: 14px;
+}
+.matchday-briefing .rotulo {
+  margin-right: 6px;
+}
+.matchday-objetivos ul {
+  margin: 6px 0 0;
+  padding-left: 1.2em;
+}
+.matchday-acoes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.matchday-cronologia {
+  max-height: 220px;
+  overflow: auto;
+}
+.matchday-decisao {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.matchday-decisao h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+.matchday-opcoes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+.matchday-pos-contexto {
+  margin: 12px 0;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.matchday-objetivos-resultado {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+}
+.matchday-objetivos-resultado .cumprido {
+  color: var(--ok, #2a7a4b);
+}
+.matchday-objetivos-resultado .falhou {
+  opacity: 0.75;
+}

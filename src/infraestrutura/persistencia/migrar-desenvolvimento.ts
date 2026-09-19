@@ -49,6 +49,16 @@ function normalizarAcompanhamento(valor: unknown): unknown {
     a.adaptacao = ad;
   }
 
+  if (!a.cenas || typeof a.cenas !== 'object') {
+    a.cenas = { registros: [], cooldowns: {}, ultimaCena: null };
+  } else {
+    const cen = { ...(a.cenas as Record<string, unknown>) };
+    if (!Array.isArray(cen.registros)) cen.registros = [];
+    if (!cen.cooldowns || typeof cen.cooldowns !== 'object') cen.cooldowns = {};
+    if (cen.ultimaCena === undefined) cen.ultimaCena = null;
+    a.cenas = cen;
+  }
+
   return a;
 }
 

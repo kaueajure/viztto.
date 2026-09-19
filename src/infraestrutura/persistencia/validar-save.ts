@@ -104,6 +104,25 @@ const partidas = z.array(
       }),
     ),
     participacao: participacao.nullable(),
+    contextoMatchday: z
+      .object({
+        instrucao: texto,
+        objetivos: z.array(
+          z.object({
+            id: texto,
+            descricao: texto,
+            criterio: texto,
+            meta: numero,
+            cumprido: z.boolean().optional(),
+          }),
+        ),
+        impactoTreinador: numero,
+        impactoHierarquia: texto.nullable(),
+        reacaoImprensa: texto.nullable(),
+        reacaoTreinador: texto.nullable(),
+      })
+      .nullable()
+      .optional(),
   }),
 );
 const esquemaTemporada = z.object({

@@ -1,5 +1,6 @@
 import { responderContexto } from "./contexto";
 import { posicoesPlausiveis } from "../elenco/hierarquia";
+import { responderCena } from "@/simulacao/cenas/motor-cenas";
 import type {
   DecisaoPendente,
   EstadoCarreira,
@@ -139,6 +140,8 @@ export function responderDecisao(
 
   if (["entrevista", "pressao", "conflito-treino", "conselho-veterano"].includes(decisao.tipo)) {
     responderContexto(carreira, opcaoId);
+  } else if (decisao.tipo.startsWith("cena:")) {
+    responderCena(carreira, decisao.tipo, opcaoId);
   } else if (decisao.tipo === "papel-elenco") {
     if (opcaoId === "aceitar") {
       j.confianca = limitar(j.confianca + 6);
